@@ -2624,5 +2624,116 @@ python -m pip install --extra-index-url http://localhost:7777 SomeProject
 
 TODO
 
+## 1.79 时间字符串、时间戳、日期时间互相转换
+
+### datetime转timestamp
+
+直接使用datetime模块中datetime类的timestamp()实例方法。
+
+```python
+import datetime
+import time
+
+dt = datetime.datetime.now()
+ts = dt.timestamp()
+print(dt) # datetime.datetime(2019, 9, 11, 11, 20, 6, 681320)
+print(ts) # 1568172006.68132
+```
+
+### datetime转时间字符串
+
+直接使用datetime模块中的datetime类的strftime()实例方法即可。
+
+```python
+import datetime
+import time
+
+dt = datetime.datetime.now()
+format = '%Y-%m-%d %H:%M:%S' # 根据此格式来解析datetime.datetime()对象为时间字符串
+
+print(dt) # datetime.datetime(2019, 9, 11, 11, 20, 6, 681320)
+print(dt.strftime(format)) # '2019-09-11 11:20:06'
+```
+
+### timestamp转datetime
+
+```python
+import datetime
+import time
+
+ts = 1568172006.68132 # 时间戳
+dt = datetime.datetime.fromtimestamp(ts)
+
+print(dt) # datetime.datetime(2019, 9, 11, 11, 20, 6, 681320)
+```
+
+### timestamp转时间字符串
+
+转换必须通过`time.struct_time`对象作为桥梁。
+先转成`datetime.datetime`对象，再转成时间字符串。
+
+```python
+import datetime
+import time
+
+# 方法1
+ts = 1568172006.68132 # 时间戳
+format = '%Y-%m-%d %H:%M:%S' # 根据此格式来时间戳解析为时间字符串
+
+# 时间戳转time.struct_time
+ts_struct = time.localtime(ts)
+
+# time.struct_time转时间字符串
+date_string = time.strftime(format, ts_struct)
+
+print(date_string) # '2019-09-11 11:20:06'
+
+# 方法2
+dt = datetime.datetime.fromtimestamp(ts)
+date_string = dt.strftime(format)
+```
 
 
+
+### 时间字符串转datetime
+
+只需要使用datetime模块中的datetime类的strptime(date_string, format)类方法即可。
+这个方法的作用就是：根据指定的format格式将时间字符串date_string，转换成`datetime.datetime()`对象。
+
+```python
+import datetime
+import time
+
+date_string = '2019-09-11 11:20:06'
+format = '%Y-%m-%d %H:%M:%S' # 根据此格式来解析时间字符串为datetime.datetime()对象
+
+dt = datetime.strptime(date_string, format)
+
+print(dt) # datetime.datetime(2019, 9, 11, 11, 20, 6)
+```
+
+### 时间字符串转timestamp
+
+转换必须通过`time.struct_time`对象作为桥梁。
+先转成`datetime.datetime`对象，再转成`timestamp`。
+
+```python
+import datetime
+import time
+
+# 方法1
+date_string = '2019-09-11 11:20:06'
+format = '%Y-%m-%d %H:%M:%S' # 根据此格式来解析时间字符串为time()对象
+
+# 时间字符串转time.struct_time
+ts_struct = time.strptime(date_string, format)
+
+# time.struct_time转时间戳
+ts = time.mktime(ts_struct)
+
+print(ts) # 1568172006.0
+
+# 方法2
+dt = datetime.datetime.strptime(date_string, format)
+ts = dt.timestamp()
+```

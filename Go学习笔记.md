@@ -1,8 +1,8 @@
-## 1. Go简介
+# 1. Go简介
 
 
 
-### 1.2 安装Go
+## 1.1 安装Go
 
 没啥好说的照着这个去装的就行了。
 
@@ -10,11 +10,92 @@
 
 [Microsoft 教你学Go](https://docs.microsoft.com/zh-cn/learn/browse/?terms=go)
 
-## 2. 基础
+`GOPATH`：项目目录。
 
-### 2.1 包、变量和函数
+`GOROOT`：安装的go.exe文件的位置
 
-#### 2.1.1 包
+`GOARCH`：所处平台，如：amd64
+
+
+
+我是将`D:\work\Go`设置为我的`GOPATH`，下面有三个目录：`bin`、`pkg`、`src`。
+
+**Go项目结构**
+
+![image-20210421202850831](Go学习笔记.assets/image-20210421202850831.png)
+
+
+
+![image-20210421202935887](Go学习笔记.assets/image-20210421202935887.png)
+
+**VS Code中Go插件安装**
+
+由于国内众所周知的原因，无法安装很多go插件。下面是我的go环境变量
+
+```powershell
+(base) PS C:\Users\sjl> go env
+set GO111MODULE=
+set GOARCH=amd64
+set GOBIN=
+set GOCACHE=C:\Users\sjl\AppData\Local\go-build
+set GOENV=C:\Users\sjl\AppData\Roaming\go\env
+set GOEXE=.exe
+set GOFLAGS=
+set GOHOSTARCH=amd64
+set GOHOSTOS=windows
+set GOINSECURE=
+set GOMODCACHE=D:\work\Go\pkg\mod
+set GONOPROXY=
+set GONOSUMDB=
+set GOOS=windows
+set GOPATH=D:\work\Go
+set GOPRIVATE=
+set GOPROXY=https://proxy.golang.org,direct
+set GOROOT=C:\Program Files\Go
+set GOSUMDB=sum.golang.org
+set GOTMPDIR=
+set GOTOOLDIR=C:\Program Files\Go\pkg\tool\windows_amd64
+set GOVCS=
+set GOVERSION=go1.16.3
+set GCCGO=gccgo
+set AR=ar
+set CC=gcc
+set CXX=g++
+set CGO_ENABLED=1
+set GOMOD=NUL
+set CGO_CFLAGS=-g -O2
+set CGO_CPPFLAGS=
+set CGO_CXXFLAGS=-g -O2
+set CGO_FFLAGS=-g -O2
+set CGO_LDFLAGS=-g -O2
+set PKG_CONFIG=pkg-config
+set GOGCCFLAGS=-m64 -mthreads -fno-caret-diagnostics -Qunused-arguments -fmessage-length=0 -fdebug-prefix-map=C:\Users\sjl\AppData\Local\Temp\go-build4068821133=/tmp/go-build -gno-record-gcc-switches
+```
+
+唯一要做的是，修改其中的`GOPROXY`。
+
+可以看到其原始值为`GOPROXY=https://proxy.golang.org,direct`，即默认回去这个URL下载go的插件。我们需要修改其为`GOPROXY=https://goproxy.io,direct`
+
+`GOPROXY=https://goproxy.cn`
+
+## 1.2 基础
+
+[Go语言旅程](https://tour.go-zh.org/welcome/1)
+
+go version 为 go 1.16.3
+
+```go
+// 为你的项目初始化一个go.mod
+go mod init learn.go
+// 将项目中的go依赖添加到go.mod文件中
+go mod tidy
+```
+
+
+
+### 1.2.1 包、变量和函数
+
+#### 1.2.1.1 包
 
 每个 Go 程序都是由包构成的。
 
@@ -261,9 +342,9 @@ func main() {
 
 
 
-### 2.2 流程控制语句
+### 1.2.2 流程控制语句
 
-#### 2.2.1 for
+#### 1.2.2.1 for循环
 
 Go 只有一种循环结构：`for` 循环。
 
@@ -308,7 +389,7 @@ func main() {
 
 
 
-#### 2.2.2 if/else
+#### 1.2.2.2 if/else条件判断
 
 Go 的 `if` 语句与 `for` 循环类似，表达式外无需小括号 `( )` ，而大括号 `{ }` 则是必须的。
 
@@ -351,7 +432,7 @@ func pow(x, n, lim float64) float64 {
 
 
 
-#### 2.2.3 switch
+#### 1.2.2.3 switch条件判断
 
 `switch` 是编写一连串 `if - else` 语句的简便方法。它运行第一个值等于条件表达式的 `case `语句。
 
@@ -416,7 +497,7 @@ func main() {
 
 
 
-#### 2.2.4 defer
+#### 1.2.2.4 defer语句
 
 defer 语句会将函数推迟到外层函数返回之后执行。
 
@@ -440,9 +521,9 @@ defer 语句会将函数推迟到外层函数返回之后执行。
 	}
 
 
-### 2.3 更多类型：struct、slice和映射
+### 1.2.3 更多类型：struct、slice和映射
 
-#### 2.3.1 指针
+#### 1.2.3.1 指针
 
 Go 拥有指针。指针保存了值的内存地址。
 
@@ -487,7 +568,7 @@ func main() {
 
 
 
-#### 2.3.2 结构体
+#### 1.2.3.2 结构体
 
 一个结构体（`struct`）就是一组字段（field）。
 
@@ -558,7 +639,7 @@ var (
 
 
 
-#### 2.3.3 数组
+#### 1.2.3.3 数组
 
 类型 `[n]T` 表示拥有 `n` 个 `T` 类型的值的数组。
 
@@ -588,7 +669,7 @@ func main() {
 
 
 
-#### 2.3.4 切片
+#### 1.2.3.4 切片
 
 **每个数组的大小都是固定的。而切片则为数组元素提供动态大小的、灵活的视角。**在实践中，切片比数组更常用。
 
@@ -690,7 +771,7 @@ func append(s []T, vs ...T) []T
 
 （要了解关于切片的更多内容，请阅读文章 [Go 切片：用法和本质](https://blog.go-zh.org/go-slices-usage-and-internals)。）
 
-#### 2.3.5 Range
+#### 1.2.3.5 Range
 
 `for` 循环的 `range` 形式可遍历切片或映射。
 
@@ -719,7 +800,7 @@ for _, value := range pow
 for i := range pow
 ```
 
-#### 2.3.6 映射
+#### 1.2.3.6 映射
 
 映射将键映射到值。
 
@@ -795,9 +876,9 @@ elem, ok := m[key]
 
 #### 
 
-## 3. 方法和接口
+## 1.3 方法和接口
 
-### 3.1 方法
+### 1.3.1 方法
 
 Go 没有类。不过你**可以为结构体类型定义方法**。
 
@@ -871,7 +952,7 @@ func main() {
 
 
 
-### 3.2 指针接收者
+### 1.3.2 指针接收者
 
 你可以为指针接收者声明方法。
 
@@ -908,7 +989,7 @@ func main() {
 
 
 
-### 3.3 指针与函数
+### 1.3.3 指针与函数
 
 现在我们要把 `Abs` 和 `Scale` 方法重写为函数。
 
@@ -937,7 +1018,7 @@ func main() {
 
 
 
-### 3.4 方法与指针重定向
+### 1.3.4 方法与指针重定向
 
 比较前两个程序，你大概会注意到带指针参数的函数必须接受一个指针：
 
@@ -1016,7 +1097,7 @@ fmt.Println(p.Abs()) // OK，实际是(*p).Abs()
 
 
 
-### 3.5 接口
+### 1.3.5 接口
 
 **接口类型** 是由一组方法签名定义的集合。
 
@@ -1099,7 +1180,7 @@ nil 接口值既不保存值也不保存具体类型。
 
 为 nil 接口调用方法会产生运行时错误，因为接口的元组内并未包含能够指明该调用哪个 **具体** 方法的类型。
 
-#### 空接口
+#### 1.3.5.1空接口
 
 指定了零个方法的接口值被称为 *空接口：*
 
@@ -1111,7 +1192,7 @@ interface{}
 
 空接口被用来处理未知类型的值。例如，`fmt.Print` 可接受类型为 `interface{}` 的任意数量的参数。
 
-### 3.6 类型断言
+### 1.3.6 类型断言
 
 **类型断言** 提供了访问接口值底层具体值的方式。
 
@@ -1156,7 +1237,7 @@ default:
 
 此选择语句判断接口值 `i` 保存的值类型是 `T` 还是 `S`。在 `T` 或 `S` 的情况下，变量 `v` 会分别按 `T` 或 `S` 类型保存 `i` 拥有的值。在默认（即没有匹配）的情况下，变量 `v` 与 `i` 的接口类型和值相同。
 
-### 3.7 错误
+### 1.3.7 错误
 
 Go 程序使用 `error` 值来表示错误状态。
 
@@ -1239,9 +1320,9 @@ func main() {
 }
 ```
 
-## 4. 并发
+## 1.4 并发
 
-### 4.1 Go程
+### 1.4.1 Go程
 
 **Go 程（`goroutine`）是由 Go 运行时管理的轻量级线程。**
 
@@ -1275,7 +1356,7 @@ func main() {
 
 
 
-### 4.2 信道
+### 1.4.2 信道
 
 **信道是带有类型的管道，你可以通过它用信道操作符 `<-` 来发送或者接收值。**
 
@@ -1384,7 +1465,7 @@ func main() {
 
 
 
-### 4.3 select语句
+### 1.4.3 select语句
 
 **`select` 语句使一个 Go 程可以等待多个通信操作。**
 
@@ -1432,7 +1513,7 @@ default:
 }
 ```
 
-### 4.4 sync.Mutex
+### 1.4.4 sync.Mutex
 
 我们已经看到信道非常适合在各个 Go 程间进行通信。
 
@@ -1493,7 +1574,58 @@ func main() {
 
 
 
-## 2. 常用代码段
+# 2. 关键字
+
+
+
+## 2.1 `type`关键字使用
+
+[golang `type`关键字使用](https://studygolang.com/articles/17179?fr=sidebar)
+
+`type`是go语法中的重要而且常用的关键字，`type`绝对不只是对应于C/C++中的`typedef`。搞清楚type的使用，就容易理解go语言中的核心概念`struct`、`interface`、函数等的使用。下面是代码总结：
+
+### 2.1.1 定义结构体
+
+```go
+type person struct{
+    name string // 后面不能有逗号
+    age int
+}
+
+func main(){
+    p1 := person{
+        name: "taozs", //后面需要加逗号
+        age: 18,
+    }
+    // 当初始化结构体时，若未指定全部的字段，则这些字段取默认值。
+    p2 := person{
+        age: 18,
+    }
+    fmt.Println("The person's name is %s, age is %d", p1.name, p1.age)
+    fmt.Println("The person's name is %s, age is %d", p2.name, p2.age)
+}
+```
+
+### 2.1.2 结构体内嵌匿名成员
+
+```go
+type person struct{
+    string //直接写字段类型，匿名
+    age int
+}
+```
+
+
+
+### 2.1.3 类型等价定义
+
+### 2.1.4 定义接口类型
+
+### 2.1.5 定义函数类型
+
+
+
+# 3. 常用代码段
 
 字符串转字节数组
 
