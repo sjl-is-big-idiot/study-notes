@@ -1535,9 +1535,358 @@ sbin/start-yarn.sh [start|stop]
 
 TODO
 
+#### 5.3.3 在window10中编译hadoop-2.7.2源码
+
+[win7通过源码编译hadoop-2.7.0](https://blog.csdn.net/feinifi/article/details/82905701)
+
+[Win10-x64编译Hadoop2.7.3](https://blog.csdn.net/mrbcy/article/details/55806809)
+
+[Windows 源码编译Hadoop 2.7.4生成X64](https://blog.csdn.net/weixin_39158271/article/details/78722648)
+
+[Win10x64编译Hadoop2.7.4源码包](https://blog.csdn.net/weixin_38023225/article/details/100576751)
+
+[Hadoop源代码在Windows下面的编译](https://blog.csdn.net/hugeship2002/article/details/84663294)
+
+> 编译hadoop源代码，意义在于当我们使用eclipse进行hadoop开发时，可以直接在本地运行，而无需打包成jar，然后再提交到hadoop服务器进行运行。当然，这还需要一个可以支持hadoop对应版本的eclipse插件，即`hadoop-eclipse-2.x.x.jar`。
+>
+> 如果在linux系统上，其实很容易，没有那么多磕磕盼盼。在windows系统上编译，需要安装的程序或者工具比较多。但是总结起来，就那么几个，能够通过`ant`,`maven`构建`java`项目，能够通过`gcc`编译`c++`项目。这其中还需要依赖`protobuf`库。
+
+我当前的环境是：
+
+`windows`版本：`windows 10`教育版
+
+`Hadoop`：`2.7.2`
+
+
+
+##### 1. 准备工作
+
+1. 下载`hadoop-2.7.2-src.zip`，对此版本的Hadoop进行编译得到最终的jar，好在
+
+2. 解压`hadoop-2.7.2-src.zip`
+
+   加压后的目录结构如下：![image-20210618214115327](Hadoop.assets/image-20210618214115327.png)
+
+3. 查看上面的`BUILDING.txt`，了解构建的详情
+
+   编译的说明在`BUILDING.txt`文件中，通过搜索`windows`找到`windows`编译的说明。
+
+   ![image-20210617203627473](Hadoop.assets/image-20210617203627473.png)
+
+   根据需要安装如下这些库
+
+   ```txt
+   Building on Windows
+   
+   ----------------------------------------------------------------------------------
+   Requirements:
+   
+   * Windows System
+   * JDK 1.7+
+   * Maven 3.0 or later
+   * Findbugs 1.3.9 (if running findbugs)
+   * ProtocolBuffer 2.5.0
+   * CMake 2.6 or newer
+   * Windows SDK 7.1 or Visual Studio 2010 Professional
+   * Windows SDK 8.1 (if building CPU rate control for the container executor)
+   * zlib headers (if building native code bindings for zlib)
+   * Internet connection for first build (to fetch all Maven and Hadoop dependencies)
+   * Unix command-line tools from GnuWin32: sh, mkdir, rm, cp, tar, gzip. These
+     tools must be present on your PATH.
+     
+   Unix command-line tools are also included with the Windows Git package which
+   can be downloaded from http://git-scm.com/download/win.
+   
+   If using Visual Studio, it must be Visual Studio 2010 Professional (not 2012).
+   Do not use Visual Studio Express.  It does not support compiling for 64-bit,
+   which is problematic if running a 64-bit system.  The Windows SDK 7.1 is free to
+   download here:
+   
+   http://www.microsoft.com/en-us/download/details.aspx?id=8279
+   ```
+
+   根据`BUILDING.txt`中所述，在windows10中使用如下的库：
+
+   - [JDK 1.8](https://www.oracle.com/java/technologies/javase/javase-jdk8-downloads.html)
+
+   - [windows 10 sdk](https://developer.microsoft.com/zh-cn/windows/downloads/windows-10-sdk)
+
+   - [Maven 3.3](https://maven.apache.org/download.cgi)
+
+   - [apache-ant-1.9.15-bin.zip](https://ant.apache.org/bindownload.cgi)
+
+   - [Findbugs 1.3.9](http://findbugs.sourceforge.net/downloads.html)
+
+   - [ProtocolBuffer 2.5.0](https://github.com/protocolbuffers/protobuf/releases/tag/v2.5.0)
+
+   - [CMake 3.19.8](https://cmake.org/download/)
+
+   - [Zlib](http://zlib.net/zlib128-dll.zip)
+
+   - [git-2.32.0-64-bit.exe](https://git-scm.com/downloads)，通过安装git就能够在`cmd`中使用`ls`、`sh`等`linux`命令，这个在编译过程中是需要的。
+
+   - [Visual Studio 2019 Community](https://visualstudio.microsoft.com/zh-hans/downloads/) 选择需要安装的组件，C++的是必须的。注意是Visual Studio不是Visual Studio Code。
+
+   - [openssl](http://slproweb.com/products/Win32OpenSSL.html)，使用第三方下载[Windows安装使用Openssl](https://blog.csdn.net/zha6476003/article/details/80900988)更方便
+
+   - [cygwin](https://cygwin.com/install.html)
+
+     安装有疑问的网上搜索都会有教程的。
+
+     最终的环境变量Path如下图所示：
+
+![image-20210618223032246](Hadoop.assets/image-20210618223032246.png)
+
+```powershell
+ # 新增环境变量
+ JAVA_HOME=C:\Program Files\Java\jdk1.8.0_261
+ HADOOP_HOME=D:\software\hadoop-2.7.2
+ ANT_HOME=C:\Users\sjl\Downloads\apache-ant-1.9.15
+ CYGWIN64_HOME=C:\cygwin64
+ OPENSLL_HOME=C:\Program Files\OpenSSL-Win64
+ Platform=x64
+ ZLIB_HOME=D:\Program Files\zlib127-dll\include
+ MAVEN_HOME=D:\Program Files\apache-maven-3.6.3-bin\apache-maven-3.6.3
+
+# 在系统环境变量Path中添加
+%JAVA_HOME%\bin
+%CYGWIN64_HOME%\bin
+%MAVEN_HOME%\bin
+%JAVA_HOME%\jre\bin
+%HADOOP_HOME%\bin
+C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\
+D:\Program Files\findbugs-1.3.9\bin
+D:\Program Files\protobuf-2.5.0\src
+%ANT_HOME%\bin
+C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin
+%OPENSSL_HOME%\bin
+%CYGWIN64_HOME%\bin
+
+```
+
+
+
+  在`cmd`中验证：
+    
+
+```powershell
+ant -v
+mvn -v
+protoc --version
+java -version
+findbugs -version
+cmake -version
+
+# 当这些库都准备好之后，就可以开始编译了。
+```
+
+##### 2. 编译
+
+![image-20210620125210657](Hadoop.assets/image-20210620125210657.png)
+
+通过`开始`> `Visual Studio 2019`>`Developer Command Prompt for VS2019`
+
+```powershell
+C:\Program Files (x86)\Microsoft Visual Studio\2019\Community>
+C:\Program Files (x86)\Microsoft Visual Studio\2019\Community>d:
+D:\>cd hadoop-2.7.2-src
+D:\hadoop-2.7.2-src>ls
+BUILDING.txt  dev-support            hadoop-dist               hadoop-minicluster   hadoop-yarn-project
+LICENSE.txt   hadoop-assemblies      hadoop-hdfs-project       hadoop-project       pom.xml
+NOTICE.txt    hadoop-client          hadoop-mapreduce-project  hadoop-project-dist
+README.txt    hadoop-common-project  hadoop-maven-plugins      hadoop-tools
+# 注意，一定要进入hadoop-2.7.2-src根目录，要有pom.xml才能进行编译
+mvn clean package -Pdist -DskipTests
+或者
+mvn package -Pdist,native,docs -DskipTests -Dtar
+# 如果编译失败，修改配置或安装所需库之后，在重复执行上面的mvn。
+```
+
+
+
+如果编译中没啥问题的话，就会出现如下结果：
+
+![image-20210620125620912](Hadoop.assets/image-20210620125620912.png)
+
+
+
+编译好的jar包路径为:`D:\hadoop-2.7.2-src\hadoop-dist\target\hadoop-2.7.2`
+
+##### 3. 问题总结
+
+通常在编译过程中都会出现点问题，现总结如下：
+
+**问题1：**
+
+```shell
+[ERROR] Failed to execute goal org.codehaus.mojo:exec-maven-plugin:1.3.1:exec (compile-ms-winutils) on project hadoop-common: Command execution failed.: Cannot run program "msbuild" (in directory "D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common"): CreateProcess error=2, 系统找不到指定的文件。 -> [Help 1]
+```
+
+`msbuild`是微软的一个编译工具，这里提示找不到msbuild，因此可能是没有安装`msbuild`或没有配置到环境变量中。下面这样是不行的，还会报其他的错，正确的方式是需要下载`Visual Studio`，并将`msbuild`的路径（如，`C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin`）加入到系统环境变量`Path`中。
+
+```powershell
+# 因为这个目录下有msbuild.exe文件
+C:\Windows\Microsoft.NET\Framework\v4.0.30319
+```
+
+**问题2：**
+
+```powershell
+[INFO] --- exec-maven-plugin:1.3.1:exec (compile-ms-winutils) @ hadoop-common ---
+在此解决方案中一次生成一个项目。若要启用并行生成，请添加“/m”开关。
+生成启动时间为 2021/6/18 12:06:02。
+节点 1 上的项目“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.sln”(默认目标)。
+ValidateSolutionConfiguration:
+  正在生成解决方案配置“Release|x64”。
+项目“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.sln”(1)正在节点 1 上生成“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.vcxproj.
+metaproj”(2) (默认目标)。
+项目“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.vcxproj.metaproj”(2)正在节点 1 上生成“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\libw
+inutils.vcxproj”(3) (默认目标)。
+D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\libwinutils.vcxproj(44,3): error MSB4019: 未找到导入的项目“D:\Microsoft.Cpp.Default.props”。请确认 <Import> 声明中的路径正确，且磁
+盘上存在该文件。
+已完成生成项目“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\libwinutils.vcxproj”(默认目标)的操作 - 失败。
+已完成生成项目“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.vcxproj.metaproj”(默认目标)的操作 - 失败。
+已完成生成项目“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.sln”(默认目标)的操作 - 失败。
+
+生成失败。
+
+“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.sln”(默认目标) (1) ->
+“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.vcxproj.metaproj”(默认目标) (2) ->
+“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\libwinutils.vcxproj”(默认目标) (3) ->
+  D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\libwinutils.vcxproj(44,3): error MSB4019: 未找到导入的项目“D:\Microsoft.Cpp.Default.props”。请确认 <Import> 声明中的路径正确，且
+磁盘上存在该文件。
+
+    0 个警告
+    1 个错误
+
+已用时间 00:00:00.74
+```
+
+解决办法是：
+
+用`Visual Studio`分别打开如下这两个文件，`项目 > 重定目标解决方案 > 确定`。目的是将项目信息升级到你的`Visual Studio`的版本。
+
+`D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.sln`
+
+`D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\native\native.sln`
+
+
+
+
+
+![image-20210620165650006](Hadoop.assets/image-20210620165650006.png)
+
+![image-20210620165709301](Hadoop.assets/image-20210620165709301.png)
+
+从`Visual Studio`的输出可以到，通过升级将某些文件中的v100，修改为v142了。
+
+![image-20210620165747186](Hadoop.assets/image-20210620165747186.png)
+
+`weinutils.sln`也是类似处理。
+
+![image-20210620170148374](Hadoop.assets/image-20210620170148374.png)
+
+**问题3：**
+
+```powershell
+严重性	代码	说明	项目	文件	行	禁止显示状态
+错误		CMake Error at C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.20/Modules/FindPackageHandleStandardArgs.cmake:230 (message):
+  Could NOT find OpenSSL, try to set the path to OpenSSL root folder in the
+  system variable OPENSSL_ROOT_DIR (missing: OPENSSL_CRYPTO_LIBRARY
+  OPENSSL_INCLUDE_DIR)		C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.20/Modules/FindPackageHandleStandardArgs.cmake	230	
+```
+
+提示没有找到`openssl`，
+
+解决办法是：在window10中安装`openssl`，并在系统环境变量中`Path`中配置`openssl`的路径。
+
+**问题4：**
+
+```powershell
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-antrun-plugin:1.7:run (pre-dist) on project hadoop-project-dist: An Ant BuildException has occured: Execute failed: java.io.IOException: Cannot run program "sh" (in directory "D:
+\gitCode\JDHadoop-2.7.1\hadoop-project-dist\target"): CreateProcess error=2, ?????????
+[ERROR] around Ant part ...<exec dir="D:\gitCode\JDHadoop-2.7.1\hadoop-project-dist\target" executable="sh" failonerror="true">... @ 41:103 in D:\gitCode\JDHadoop-2.7.1\hadoop-project-dist\target\antrun\build-main.xml
+[ERROR] -> [Help 1]
+```
+
+解决办法是：安装cygwin64，并配置环境变量。
+
+
+
+**问题5：**
+
+```powershell
+项目“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.vcxproj.metaproj”(2)正在节点 1 上生成“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\libwinutils.
+vcxproj”(3) (默认目标)。
+C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Microsoft\VC\v160\Microsoft.CppBuild.targets(439,5): error MSB8020: 无法找到 Visual Studio 2010 的生成工具(平台工具集 =“v100”)。若要使用 v100
+生成工具进行生成，请安装 Visual Studio 2010 生成工具。或者，可以升级到当前 Visual Studio 工具，方式是通过选择“项目”菜单或右键单击该解决方案，然后选择“重定解决方案目标”。 [D:\hadoop-2.7.2-src\hadoop-common-projec
+t\hadoop-common\src\main\winutils\libwinutils.vcxproj]
+已完成生成项目“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\libwinutils.vcxproj”(默认目标)的操作 - 失败。
+已完成生成项目“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.vcxproj.metaproj”(默认目标)的操作 - 失败。
+已完成生成项目“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.sln”(默认目标)的操作 - 失败。
+
+生成失败。
+
+“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.sln”(默认目标) (1) ->
+“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\winutils.vcxproj.metaproj”(默认目标) (2) ->
+“D:\hadoop-2.7.2-src\hadoop-common-project\hadoop-common\src\main\winutils\libwinutils.vcxproj”(默认目标) (3) ->
+(PrepareForBuild 目标) ->
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Microsoft\VC\v160\Microsoft.CppBuild.targets(439,5): error MSB8020: 无法找到 Visual Studio 2010 的生成工具(平台工具集 =“v100”)。若要使用 v100
+ 生成工具进行生成，请安装 Visual Studio 2010 生成工具。或者，可以升级到当前 Visual Studio 工具，方式是通过选择“项目”菜单或右键单击该解决方案，然后选择“重定解决方案目标”。 [D:\hadoop-2.7.2-src\hadoop-common-proje
+ct\hadoop-common\src\main\winutils\libwinutils.vcxproj]
+
+    0 个警告
+    1 个错误
+
+已用时间 00:00:00.58
+```
+
+这是因为在`Hadoop-2.7.2-src/BUILDING.txt`中要求的是`Visual Studio 2010`，而当前使用的是`Visual Studio 2019`，因此在构建时系统没找到`Visual Studio 2010`。
+
+解决办法是：
+
+修改`D:\hadoop-2.7.2-src\hadoop-hdfs-project\hadoop-hdfs\pom.xml`中，搜索`Visual Studio`，修改`Visual Studio 2010`为你所使用的版本。如我修改前后分别为：
+
+```powershell
+# 修改前
+	<condition property="generator" value="Visual Studio 10" else="Visual Studio 10 Win64">
+# 修改后
+	<condition property="generator" value="Visual Studio 16 2019" else="Visual Studio 16 2019">
+```
+
+如果修改后的版本不对的话，在终端中会提示`Visual Studio`的正确版本是哪些的，选择对应的字符串填到上面的位置就行 。
+
+可参考[win7通过源码编译hadoop-2.7.0](https://blog.csdn.net/feinifi/article/details/82905701)
+
+**问题6：**
+
+```powershell
+错误 MSB4019 Microsoft.Cpp.Default.props
+```
+
+参看[vs2019 错误 MSB4019 Microsoft.Cpp.Default.props](https://xiaoxingyun-yu.blog.csdn.net/article/details/109028916?utm_medium=distribute.pc_relevant.none-task-blog-2%7Edefault%7EBlogCommendFromBaidu%7Edefault-3.control&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2%7Edefault%7EBlogCommendFromBaidu%7Edefault-3.control)
+
+这个错误原因是`msbuild`没有安装好,或在安装`Visual Studio`时没有安装C++组件，或者配置在系统环境变量`Path`中的路径有问题，需要修改为`Visual Studio`下的正确路径，如:
+
+```powershell
+C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin
+```
+
+![img](Hadoop.assets/2020101215410911.png)
+
+找到自己的原因，然后解决。
+
+从错误编译走向成功编译的过程很枯燥，如果心烦了，就冥想一会而，或出去走走，散去负能量，撸起袖子加油干。
+
 ## 6. 常见错误及解决方案
 
 TODO
+
+
+
+
+
+
 
 
 
@@ -1715,35 +2064,581 @@ hadoop fs -count -q -v -h /
 
    ![image-20210615224327457](Hadoop.assets/image-20210615224327457.png)
 
-3. xx
+3. 配置Path环境变量
+
+   ![image-20210621145336109](Hadoop.assets/image-20210621145336109.png)
+
+4. 创建一个Maven工程HdfsClientDemo
+
+5. 导入相应的依赖坐标+日志添加
+
+
+
+我们这一步的目的是在windows中连接HDFS，并进行操作。在运行咱的java代码前，需要保证：
+
+1. 启动这三个虚拟机
+
+2. jps查看每个节点上的服务是否都启动了
+
+3. ifconfig查看每个节点的ip对不对
+
+   首先可以看到hadoop102这个节点上的服务都已经启动了。
+
+   可以看到在将虚拟机挂起，恢复后，虚拟机的ip变了，通过`sudo systemctl retart network`重启网络服务。
+
+   ```shell
+   [atguigu@hadoop102 ~]$ jps
+   14928 Jps
+   8081 NameNode
+   8227 DataNode
+   8539 NodeManager
+   [atguigu@hadoop102 ~]$ ifconfig
+   br-9f19cd8b27c1: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+           ether 02:42:5b:cd:ac:9a  txqueuelen 0  (Ethernet)
+           RX packets 0  bytes 0 (0.0 B)
+           RX errors 0  dropped 0  overruns 0  frame 0
+           TX packets 0  bytes 0 (0.0 B)
+           TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+   
+   docker0: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+           inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
+           ether 02:42:31:7a:b6:b8  txqueuelen 0  (Ethernet)
+           RX packets 0  bytes 0 (0.0 B)
+           RX errors 0  dropped 0  overruns 0  frame 0
+           TX packets 0  bytes 0 (0.0 B)
+           TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+   
+   docker_gwbridge: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+           ether 02:42:d2:aa:9a:d5  txqueuelen 0  (Ethernet)
+           RX packets 262659  bytes 252065695 (240.3 MiB)
+           RX errors 0  dropped 0  overruns 0  frame 0
+           TX packets 246923  bytes 249309128 (237.7 MiB)
+           TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+   
+   ens33: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+           inet 192.168.1.37  netmask 255.255.255.0  broadcast 192.168.1.255
+           inet6 fe80::723d:e330:f72b:acf3  prefixlen 64  scopeid 0x20<link>
+           ether 00:0c:29:d3:23:e4  txqueuelen 1000  (Ethernet)
+           RX packets 262659  bytes 252065695 (240.3 MiB)
+           RX errors 0  dropped 0  overruns 0  frame 0
+           TX packets 246923  bytes 249309128 (237.7 MiB)
+           TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+   
+   lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536
+           inet 127.0.0.1  netmask 255.0.0.0
+           inet6 ::1  prefixlen 128  scopeid 0x10<host>
+           loop  txqueuelen 1000  (Local Loopback)
+           RX packets 32598  bytes 5999482 (5.7 MiB)
+           RX errors 0  dropped 0  overruns 0  frame 0
+           TX packets 32598  bytes 5999482 (5.7 MiB)
+           TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+   
+   virbr0: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+           ether 52:54:00:14:1b:9b  txqueuelen 1000  (Ethernet)
+           RX packets 0  bytes 0 (0.0 B)
+           RX errors 0  dropped 0  overruns 0  frame 0
+           TX packets 0  bytes 0 (0.0 B)
+           TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+   
+   ```
+
+   hadoop103，hadoop104节点也是如此。
+
+   通过创建一个文件夹来测试下是否可以直接操作HDFS了。
+
+   在测试时，发现使用sjl用户没有wirte权限。
+
+   ![image-20210621173853016](../image-20210621173853016.png)
+
+在FileSystem.get()的时候使用另外一个签名的方法，这个方法可以指定用户名。可以发现的是目前hadoop中没有认证机制。
+
+通过在`http://192.168.1.102:50070/explorer.html#/0529`查看，可以发现已经创建成功了。
+
+![image-20210621174720432](Hadoop.assets/image-20210621174720432.png)
+
+
+
+intellij相关问题
+
+intellij 如何自动导入
+
+intellij如何创建一个maven项目
+
+intellij配置maven仓库
+
+intellij运行单元测试中的某一个函数
+
+如何下载hadoop-2.7.2有注释版本
+
+intellij常用的快捷键
+
+
 
 ### 3.2 HDFS的API操作
 
-#### 3.2.1 HDFS文件上传（测试
+项目结构如下图红框中所示。这是创建的一个intellij的Maven项目。
+
+![image-20210621194755615](Hadoop.assets/image-20210621194755615.png)
+
+#### 3.2.1 HDFS文件上传（测试参数优先级）
+
+```java
+package org.sjl.hdfs;
+/*省略部分内容哈
+ *
+ *
+ */
+public class HDFSClient {   
+// 1. 文件上传
+    public void myCopyFromLocalFile() throws IOException, URISyntaxException, InterruptedException {
+        // 1. 获取fs对象
+        Configuration conf = new Configuration();
+        conf.set("dfs.defaultFS", "2");
+        FileSystem fs = FileSystem.get(new URI("hdfs://192.168.1.102:9000"), conf, "atguigu");
+
+        // 2. 执行上传API
+        fs.copyFromLocalFile(new Path("d:/banzhang.txt"), new Path("/banhua.txt"));
+
+        // 3. 关闭资源
+        fs.close();    
+        System.out.println("test my conpyFromLocalFile method");
+    }
+}
+```
+
+参数优先级，就是最近原则，离代码越近，优先级越高，这没啥好说的。
 
 #### 3.2.2 HDFS文件下载
 
+#### 
+
+```java
+package org.sjl.hdfs;
+/*省略部分内容哈
+ *
+ *
+ */
+public class HDFSClient {   
+    // 2. 文件下载
+    public void myCopyToLocalFile() throws IOException, URISyntaxException, InterruptedException {
+        // 1. 获取fs对象
+        Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(new URI("hdfs://192.168.1.102:9000"), conf, "atguigu");
+        // 2. 调用下载API
+//        fs.copyToLocalFile(new Path("/banhua.txt"), new Path("d:/download-banhua.txt"));
+        fs.copyToLocalFile(true, new Path("/banhua.txt"), new Path("d:/download-banhua.txt"), false);
+
+        // 3. 关闭资源
+        fs.close();
+        System.out.println("download banhua.txt success.");
+    }
+}
+```
+
+
+
 #### 3.2.3 HDFS文件夹删除
+
+#### 
+
+```java
+package org.sjl.hdfs;
+/*省略部分内容哈
+ *
+ *
+ */
+public class HDFSClient {   
+    // 3. hdfs文件/文件夹的删除
+    public void myDelete() throws IOException, URISyntaxException, InterruptedException {
+        // 1. 获取fs对象
+        Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(new URI("hdfs://192.168.1.102:9000"), conf, "atguigu");
+        // 2. 调用删除的API
+        fs.delete(new Path("/banhua.txt"), true);
+        // 3. 关闭资源
+        fs.close();
+        System.out.println("delete file done.");
+    }
+}
+```
+
+
 
 #### 3.2.4 HDFS文件名更改
 
+#### 
+
+```java
+package org.sjl.hdfs;
+/*省略部分内容哈
+ *
+ *
+ */
+public class HDFSClient {   
+    // 4. hdfs文件改名
+    public void myRename() throws IOException, URISyntaxException, InterruptedException {
+        // 1. 获取fs对象
+        Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(new URI("hafs://192.168.1.102:9000"), conf, "atguigu");
+
+        // 2. 调用API
+        fs.rename(new Path("/banzhang.txt"), new Path("/yanjing.txt"));
+
+        // 3. 关闭资源
+        fs.close();
+        System.out.println("Change file Name Done.");
+    }
+}
+```
+
+
+
 #### 3.2.5 HDFS文件详情查看
+
+查看文件名称、权限、长度、块信息。
+
+```java
+package org.sjl.hdfs;
+/*省略部分内容哈
+ *
+ *
+ */
+public class HDFSClient {   
+    // 5. hdfs文件详情查看
+    public void myListFiles() throws URISyntaxException, IOException, InterruptedException {
+        // 1. 获取fs对象
+        Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(new URI("hdfs://192.168.1.102:9000"), conf, "atguigu");
+        // 2. 调用API
+        RemoteIterator<LocatedFileStatus> listFiles = fs.listFiles(new Path("/"), true);
+
+        while (listFiles.hasNext()) {
+            LocatedFileStatus fileStatus = listFiles.next();
+            // 查看文件名称、权限、长度、块信息
+            System.out.println(fileStatus.getPath().getName());
+            System.out.println(fileStatus.getPermission());
+            System.out.println(fileStatus.getLen());
+
+            BlockLocation[] blockLocations = fileStatus.getBlockLocations();
+            for (BlockLocation blockLocation: blockLocations
+                 ) {
+                String[] hosts = blockLocation.getHosts();
+                for (String host: hosts
+                     ) {
+                    System.out.println(host);
+                }
+            }
+            System.out.println("-----------------");
+
+        }
+        // 3. 关闭资源
+        fs.close();
+    }
+}
+```
+
+
+
+
 
 #### 3.2.6 HDFS文件和文件夹判断
 
+#### 
+
+```java
+package org.sjl.hdfs;
+/*省略部分内容哈
+ *
+ *
+ */
+public class HDFSClient {   
+    // 6. 判断路径是文件还是文件夹
+    public void myListStatus() throws URISyntaxException, IOException, InterruptedException {
+        // 1. 获取fs对象
+        Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(new URI("hdfs://192.168.1.102:9000"), conf, "atguigu");
+        // 2. 调用API
+        FileStatus[] listStatus = fs.listStatus(new Path("/"));
+
+        for (FileStatus fileStatus : listStatus) {
+
+            // 如果是文件
+            if (fileStatus.isFile()) {
+                System.out.println("f:"+fileStatus.getPath().getName());
+            }else {
+                System.out.println("d:"+fileStatus.getPath().getName());
+            }
+        }
+
+        // 3. 关闭资源
+        fs.close();
+    }
+
+}
+```
+
+
+
+在`C:\Users\sjl\IdeaProjects\HdfsClientDemo\src\test\java\org\sjl\AppTest.java`中调用之前定义的这些方法。
+
+```java
+package org.sjl;
+
+import org.sjl.hdfs.HDFSClient;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.net.URISyntaxException;
+
+import static org.junit.Assert.assertTrue;
+
+/**
+ * Unit test for simple App.
+ */
+public class AppTest 
+{
+    /**
+     * Rigorous Test :-)
+     */
+    @Test
+    public void shouldAnswerWithTrue()
+    {
+        assertTrue( true );
+    }
+
+    @Test
+    public void testMyCopyFromLocalFile() throws IOException, URISyntaxException, InterruptedException {
+        HDFSClient hdfsclient = new HDFSClient();
+        hdfsclient.myCopyFromLocalFile();
+    }
+
+    @Test
+    public void testMyCopyToLocalFile() throws InterruptedException, IOException, URISyntaxException {
+        HDFSClient hdfsClient = new HDFSClient();
+        hdfsClient.myCopyToLocalFile();
+    }
+
+    @Test
+    public void testMyDeleteFile() throws InterruptedException, IOException, URISyntaxException {
+        HDFSClient hdfsClient = new HDFSClient();
+        hdfsClient.myDelete();
+    }
+
+    @Test
+    public void testMyRename() throws InterruptedException, IOException, URISyntaxException {
+        HDFSClient hdfsClient = new HDFSClient();
+        hdfsClient.myRename();
+    }
+    
+    @Test
+    public void testMyListFiles() throws InterruptedException, IOException, URISyntaxException {
+        HDFSClient hdfsClient = new HDFSClient();
+        hdfsClient.myListFiles();
+    }
+
+    @Test
+    public void testMyListStatus() throws InterruptedException, IOException, URISyntaxException {
+        HDFSClient hdfsClient = new HDFSClient();
+        hdfsClient.myListStatus();
+    }
+}
+
+```
+
+
+
 ### 3.3 HDFS的I/O流操作
+
+上面我们学的API操作HDFS系统都是框架封装好的。那么如果我们想自己实现上述API的操作该怎么实现呢？
+
+我们可以采用IO流的方式实现数据的上传和下载。
 
 #### 3.3.1 HDFS文件上传
 
+1. 需求：把D盘下的download-banhua.txt上传到HDFS根目录。
+
+2. 编写代码
+
+   ```java
+   public class HDFSIO {
+       /*
+       通过IO流上传文件到HDFS
+        */
+       public void putFileToHDFS() throws IOException, InterruptedException, URISyntaxException {
+           // 1. 获取fs对象
+           Configuration conf = new Configuration();
+           URI uri = new URI("hdfs://192.168.1.102:9000");
+           FileSystem fs = FileSystem.get(uri, conf, "atguigu");
+   
+           // 2. 获取输入流
+           FileInputStream fis = new FileInputStream(new File("d:/banzhang.txt"));
+           // 3. 获取输出流
+           FSDataOutputStream fos = fs.create(new Path("/banhua.txt"));
+   
+           // 4. 流的对拷
+           IOUtils.copyBytes(fis, fos, conf);
+   
+           // 5. 关闭资源
+           IOUtils.closeStream(fos);
+           IOUtils.closeStream(fis);
+           fs.close();
+   
+           System.out.println("put file to HDFS by myself method.");
+   
+       }
+   }
+   ```
+
+   
+
+3. 验证
+
 #### 3.3.2 HDFS文件下载
+
+1. 需求：从HDFS上下载banhua.txt到本地
+
+2. 编写代码
+
+   ```java
+      /*
+       通过IO流下载/banhua.txt到本地
+        */
+       public void getFileFromHDFS() throws URISyntaxException, IOException, InterruptedException {
+           // 1. 获取fs对象
+           Configuration conf = new Configuration();
+           URI uri = new URI("hdfs://192.168.1.102:9000");
+           FileSystem fs = FileSystem.get(uri, conf, "atguigu");
+   
+           // 2. 获取输入流
+           FSDataInputStream fis = fs.open(new Path("/banhua.txt"));
+           // 3. 获取输出流
+           FileOutputStream fos = new FileOutputStream(new File("d:/banhua.txt"));
+   
+           // 4. 流的对拷
+           IOUtils.copyBytes(fis, fos, conf);
+   
+           // 5. 关闭资源
+           IOUtils.closeStream(fos);
+           IOUtils.closeStream(fis);
+           fs.close();
+           System.out.println("get file from HDFS by myself method.");
+       }
+   ```
+
+   
+
+3. 验证
 
 #### 3.3.3 定位文件读取
 
+1. 需求：分块读取HDFS上的大文件，如根目录下的hadoop-2.7.2.tar.gz
+
+2. 编写代码
+
+   ```java
+      /*
+       下载第一块
+        */
+       public void readFileSeek1() throws IOException, InterruptedException, URISyntaxException {
+           // 1. 获取fs对象
+           Configuration conf = new Configuration();
+           URI uri = new URI("hdfs://192.168.1.102:9000");
+           FileSystem fs = FileSystem.get(uri, conf, "atguigu");
+   
+           // 2. 获取输入流
+           FSDataInputStream fis = fs.open(new Path("/hadoop-2.7.2.tar.gz"));
+   
+           // 3. 获取输出流
+           FileOutputStream fos = new FileOutputStream(new File("d:/hadoop-2.7.2.tar.gz.part1"));
+   
+           // 4. 流的对拷（只拷贝第一个block，即128M）
+           byte[] buf = new byte[1024];
+           for (int i = 0; i < 1024 * 128; i++) {
+               fis.read(buf);
+               fos.write(buf);
+           }
+           // 5. 关闭资源
+           IOUtils.closeStream(fos);
+           IOUtils.closeStream(fis);
+           fs.close();
+           System.out.println("get 1 block by myself method.");
+       }
+   
+       /*
+       下载第二块
+        */
+       public void readFileSeek2() throws IOException, URISyntaxException, InterruptedException {
+           // 1. 获取fs对象
+           Configuration conf = new Configuration();
+           FileSystem fs = FileSystem.get(new URI("hdfs://192.168.1.102:9000"), conf, "atguigu");
+   
+           // 2. 获取输入流
+           FSDataInputStream fis = fs.open(new Path("/hadoop-2.7.2.tar.gz"));
+           // 3. 设置指定的读取点
+           fis.seek(1024 * 1024 * 128);
+   
+           // 4. 获取输出流
+           FileOutputStream fos = new FileOutputStream(new File("d:/hadoop-2.7.2.tar.gz.part2"));
+   
+           // 5. 流的对拷
+           IOUtils.copyBytes(fis, fos, conf);
+   
+           // 6. 关闭资源
+           IOUtils.closeStream(fos);
+           IOUtils.closeStream(fis);
+           fs.close();
+       }
+   ```
+
+   
+
+3. 验证
+
+   把第二个block的内容拼接到第一个block的内容，查看是否是完成的`hadoop-2.7.2.tar.gz`。
+
+   ```cmd
+   type hadoop-2.7.2.tar.gz.part2 >> hadoop-2.7.2.tar.gz.part1
+   ```
+
+   牛啊！！！
+
 ## 4. HDFS的数据流（面试重点）
+
+### 4.1 HDFS写数据流程
+
+#### 4.1.1 剖析文件写入
+
+#### 4.1.2 网络拓扑-节点距离计算
+
+#### 4.1.3 机架感知（副本存储节点选择）
+
+### 4.2 HDFS读数据流程
 
 ## 5. NAmaeNode和SecondaryNameNode
 
+### 5.1 NN和2NN工作机制
+
+### 5.2 Fsimage和Edits解析
+
+### 5.3 CheckPoint时间设置
+
+### 5.4 NameNode故障处理
+
+### 5.5 集群安全模式
+
+### 5.6 NameNode多目录设置
+
 ## 6. DataNode（面试开发重点）
+
+### 6.1 DataNode工作机制
+
+### 6.2 数据完整性
+
+### 6.3 掉线时限参数设置
+
+### 6.4 服役新数据节点
+
+### 6.5 退役旧数据节点
 
 ## 7. HDFS 2.x新特性
 
