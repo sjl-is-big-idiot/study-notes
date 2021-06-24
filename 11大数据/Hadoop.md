@@ -2606,13 +2606,33 @@ public class AppTest
 
 ### 4.1 HDFS写数据流程
 
+
+
 #### 4.1.1 剖析文件写入
+
+![image-20210624202158182](Hadoop.assets/image-20210624202158182.png)
 
 #### 4.1.2 网络拓扑-节点距离计算
 
+为什么是2，4，6呢？
+
+n0到r1是1，
+
+r1到d1是1，
+
+n1到r1是1，
+
+n0到n1 == n0到r1 + n1到r1，即2，其他也是类似。
+
+![image-20210624202623260](Hadoop.assets/image-20210624202623260.png)
+
 #### 4.1.3 机架感知（副本存储节点选择）
 
+![image-20210624203126424](Hadoop.assets/image-20210624203126424.png)
+
 ### 4.2 HDFS读数据流程
+
+![image-20210624204953171](Hadoop.assets/image-20210624204953171.png)
 
 ## 5. NAmaeNode和SecondaryNameNode
 
