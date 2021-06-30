@@ -2634,19 +2634,284 @@ n0到n1 == n0到r1 + n1到r1，即2，其他也是类似。
 
 ![image-20210624204953171](Hadoop.assets/image-20210624204953171.png)
 
-## 5. NAmaeNode和SecondaryNameNode
+## 5. NameNode和SecondaryNameNode
 
 ### 5.1 NN和2NN工作机制
 
+![image-20210628183826860](Hadoop.assets/image-20210628183826860.png)
+
+fsimage + edits == NN内存中的元数据
+
 ### 5.2 Fsimage和Edits解析
+
+```shell
+[atguigu@hadoop102 dfs]$ hdfs --help
+Usage: hdfs [--config confdir] [--loglevel loglevel] COMMAND
+       where COMMAND is one of:
+  dfs                  run a filesystem command on the file systems supported in Hadoop.
+  classpath            prints the classpath
+  namenode -format     format the DFS filesystem
+  secondarynamenode    run the DFS secondary namenode
+  namenode             run the DFS namenode
+  journalnode          run the DFS journalnode
+  zkfc                 run the ZK Failover Controller daemon
+  datanode             run a DFS datanode
+  dfsadmin             run a DFS admin client
+  haadmin              run a DFS HA admin client
+  fsck                 run a DFS filesystem checking utility
+  balancer             run a cluster balancing utility
+  jmxget               get JMX exported values from NameNode or DataNode.
+  mover                run a utility to move block replicas across
+                       storage types
+  oiv                  apply the offline fsimage viewer to an fsimage
+  oiv_legacy           apply the offline fsimage viewer to an legacy fsimage
+  oev                  apply the offline edits viewer to an edits file
+  fetchdt              fetch a delegation token from the NameNode
+  getconf              get config values from configuration
+  groups               get the groups which users belong to
+  snapshotDiff         diff two snapshots of a directory or diff the
+                       current directory contents with a snapshot
+  lsSnapshottableDir   list all snapshottable dirs owned by the current user
+						Use -help to see options
+  portmap              run a portmap service
+  nfs3                 run an NFS version 3 gateway
+  cacheadmin           configure the HDFS cache
+  crypto               configure HDFS encryption zones
+  storagepolicies      list/get/set block storage policies
+  version              print the version
+
+Most commands print help when invoked w/o parameters.
+
+# 查看fsimage
+[atguigu@hadoop102 hadoop-2.7.2]$ hdfs oiv -p XML -i data/tmp/dfs/name/current/fsimage_0000000000000000343 -o fs.xml
+[atguigu@hadoop102 hadoop-2.7.2]$ ll
+total 40
+drwxr-xr-x. 2 atguigu atguigu   194 Jan 26  2016 bin
+drwxrwxr-x. 3 atguigu atguigu    17 Jun 15 14:39 data
+drwxr-xr-x. 3 atguigu atguigu    20 Jan 26  2016 etc
+-rw-rw-r--. 1 atguigu atguigu  6875 Jun 28 19:17 fs.xml
+drwxr-xr-x. 2 atguigu atguigu   106 Jan 26  2016 include
+drwxr-xr-x. 3 atguigu atguigu    20 Jan 26  2016 lib
+drwxr-xr-x. 2 atguigu atguigu   239 Jan 26  2016 libexec
+-rw-r--r--. 1 atguigu atguigu 15429 Jan 26  2016 LICENSE.txt
+drwxrwxr-x. 3 atguigu atguigu  4096 Jun 15 16:44 logs
+-rw-r--r--. 1 atguigu atguigu   101 Jan 26  2016 NOTICE.txt
+-rw-r--r--. 1 atguigu atguigu  1366 Jan 26  2016 README.txt
+drwxr-xr-x. 2 atguigu atguigu  4096 Jan 26  2016 sbin
+drwxr-xr-x. 4 atguigu atguigu    31 Jan 26  2016 share
+[atguigu@hadoop102 hadoop-2.7.2]$ 
+
+
+# 查看edits
+[atguigu@hadoop102 hadoop-2.7.2]$ hdfs oev -p XML -i data/tmp/dfs/name/current/edits_0000000000000000106-0000000000000000107 -o e.xml
+[atguigu@hadoop102 hadoop-2.7.2]$ ll
+total 44
+drwxr-xr-x. 2 atguigu atguigu   194 Jan 26  2016 bin
+drwxrwxr-x. 3 atguigu atguigu    17 Jun 15 14:39 data
+drwxr-xr-x. 3 atguigu atguigu    20 Jan 26  2016 etc
+-rw-rw-r--. 1 atguigu atguigu   313 Jun 28 19:18 e.xml
+-rw-rw-r--. 1 atguigu atguigu  6875 Jun 28 19:17 fs.xml
+drwxr-xr-x. 2 atguigu atguigu   106 Jan 26  2016 include
+drwxr-xr-x. 3 atguigu atguigu    20 Jan 26  2016 lib
+drwxr-xr-x. 2 atguigu atguigu   239 Jan 26  2016 libexec
+-rw-r--r--. 1 atguigu atguigu 15429 Jan 26  2016 LICENSE.txt
+drwxrwxr-x. 3 atguigu atguigu  4096 Jun 15 16:44 logs
+-rw-r--r--. 1 atguigu atguigu   101 Jan 26  2016 NOTICE.txt
+-rw-r--r--. 1 atguigu atguigu  1366 Jan 26  2016 README.txt
+drwxr-xr-x. 2 atguigu atguigu  4096 Jan 26  2016 sbin
+drwxr-xr-x. 4 atguigu atguigu    31 Jan 26  2016 share
+
+```
+
+**NN和2NN工作机制详解：**
+
+Fsimage：NameNode内存中元数据序列化后形成的文件。
+
+Edits：记录客户端更新元数据信息的每一步操作（可通过Edits运算出元数据）。
+
+NameNode启动时，先滚动Edits并生成一个空的edits.inprogress，然后加载Edits和Fsimage到内存中，此时NameNode内存就持有最新的元数据信息。Client开始对NameNode发送元数据的增删改的请求，这些请求的操作首先会被记录到edits.inprogress中（查询元数据的操作不会被记录在Edits中，因为查询操作不会更改元数据信息），如果此时NameNode挂掉，重启后会从Edits中读取元数据的信息。然后，NameNode会在内存中执行元数据的增删改的操作。
+
+由于Edits中记录的操作会越来越多，Edits文件会越来越大，导致NameNode在启动加载Edits时会很慢，所以需要对Edits和Fsimage进行合并（所谓合并，就是将Edits和Fsimage加载到内存中，照着Edits中的操作一步步执行，最终形成新的Fsimage）。SecondaryNameNode的作用就是帮助NameNode进行Edits和Fsimage的合并工作。
+
+SecondaryNameNode首先会询问NameNode是否需要CheckPoint（触发CheckPoint需要满足两个条件中的任意一个，定时时间到和Edits中数据写满了）。直接带回NameNode是否检查结果。SecondaryNameNode执行CheckPoint操作，首先会让NameNode滚动Edits并生成一个空的edits.inprogress，滚动Edits的目的是给Edits打个标记，以后所有新的操作都写入edits.inprogress，其他未合并的Edits和Fsimage会拷贝到SecondaryNameNode的本地，然后将拷贝的Edits和Fsimage加载到内存中进行合并，生成fsimage.chkpoint，然后将fsimage.chkpoint拷贝给NameNode，重命名为Fsimage后替换掉原来的Fsimage。NameNode在启动时就只需要加载之前未合并的Edits和Fsimage即可，因为合并过的Edits中的元数据信息已经被记录在Fsimage中。
+
+![image-20210628192126490](Hadoop.assets/image-20210628192126490.png)
+
+**思考：可以看出，Fsimage中没有记录块所对应DataNode，为什么？**
+
+在集群启动后，要求DataNode上报数据块信息，并间隔一段时间后再次上报。
+
+**思考：NameNode如何确定下次开机启动的时候合并哪些Edits？**
+
+seen_txid记录了当前是哪个edit，合并当前fsimage和当前edits。
 
 ### 5.3 CheckPoint时间设置
 
+（1）通常情况下，SecondaryNameNode每隔一小时执行一次。`[hdfs-default.xml]`
+
+```xml
+<property>
+
+ <name>dfs.namenode.checkpoint.period</name>
+
+ <value>3600</value>
+
+</property>
+```
+
+（2）一分钟检查一次操作次数，3当操作次数达到1百万时，SecondaryNameNode执行一次。
+
+```xml
+<property>
+
+ <name>dfs.namenode.checkpoint.txns</name>
+
+ <value>1000000</value>
+
+<description>操作动作次数</description>
+
+</property>
+
+ 
+
+<property>
+
+ <name>dfs.namenode.checkpoint.check.period</name>
+
+ <value>60</value>
+
+<description> 1分钟检查一次操作次数</description>
+
+</property >
+```
+
 ### 5.4 NameNode故障处理
+
+NameNode故障后，可以采用如下两种方法恢复数据。
+
+方法一：将SecondaryNameNode中数据拷贝到NameNode存储数据的目录；
+
+```shell
+#1. kill -9 NameNode进程
+
+#2. 删除NameNode存储的数据（/opt/module/hadoop-2.7.2/data/tmp/dfs/name）
+[atguigu@hadoop102 hadoop-2.7.2]$ rm -rf /opt/module/hadoop-2.7.2/data/tmp/dfs/name/*
+
+#3. 拷贝SecondaryNameNode中数据到原NameNode存储数据目录
+[atguigu@hadoop102 dfs]$ scp -r atguigu@hadoop104:/opt/module/hadoop-2.7.2/data/tmp/dfs/namesecondary/* ./name/
+
+#4. 重新启动NameNode
+[atguigu@hadoop102 hadoop-2.7.2]$ sbin/hadoop-daemon.sh start namenode
+```
+
+
+
+
+
+**方法二：使用-importCheckpoint****选项启动NameNode****守护进程，从而将SecondaryNameNode****中数据拷贝到NameNode****目录中。**
+
+```shell
+#1.  修改hdfs-site.xml中的
+<property>
+ <name>dfs.namenode.checkpoint.period</name>
+ <value>120</value>
+</property>
+
+<property>
+ <name>dfs.namenode.name.dir</name>
+ <value>/opt/module/hadoop-2.7.2/data/tmp/dfs/name</value>
+</property>
+
+#2. kill -9 NameNode进程
+
+#3.  删除NameNode存储的数据（/opt/module/hadoop-2.7.2/data/tmp/dfs/name）
+[atguigu@hadoop102 hadoop-2.7.2]$ rm -rf /opt/module/hadoop-2.7.2/data/tmp/dfs/name/*
+
+#4.  如果SecondaryNameNode不和NameNode在一个主机节点上，需要将SecondaryNameNode存储数据的目录拷贝到NameNode存储数据的平级目录，并删除in_use.lock文件
+[atguigu@hadoop102 dfs]$ scp -r atguigu@hadoop104:/opt/module/hadoop-2.7.2/data/tmp/dfs/namesecondary ./
+
+[atguigu@hadoop102 namesecondary]$ rm -rf in_use.lock
+
+[atguigu@hadoop102 dfs]$ pwd
+
+/opt/module/hadoop-2.7.2/data/tmp/dfs
+ 
+[atguigu@hadoop102 dfs]$ ls
+data name namesecondary
+
+#5.  导入检查点数据（等待一会ctrl+c结束掉）
+[atguigu@hadoop102 hadoop-2.7.2]$ bin/hdfs namenode -importCheckpoint
+
+#6.  启动NameNode
+[atguigu@hadoop102 hadoop-2.7.2]$ sbin/hadoop-daemon.sh start namenode
+```
+
+**思考：先删除了`/opt/module/hadoop-2.7.2/data/tmp/dfs/name`，会丢掉最新的`edit_inprogress`日志的吧**
+
+的确是这样，所以需要NFS或QJM来共享edits日志。但目前并没有讲到这里。
 
 ### 5.5 集群安全模式
 
+![image-20210628220117065](Hadoop.assets/image-20210628220117065.png)
+
+基本语法：
+
+```shell
+# 查看安全模式状态+
+bin/hdfs dfsadmin -safemode get
+# 进入安全模式
+bin/hdfs dfsadmin -safemode enter
+# 退出安全模式
+bin/hdfs dfsadmin -safemode leave
+# 等待安全模式状态
+bin/hdfs dfsadmin -safemode wait
+```
+
+
+
 ### 5.6 NameNode多目录设置
+
+NameNode的本地目录可以配置成多个，且每个目录存放内容相同，增加了可靠性。
+
+具体配置如下
+
+​    （1）在hdfs-site.xml文件中增加如下内容
+
+```xml
+<property>
+  <name>dfs.namenode.name.dir</name>
+<value>file:///${hadoop.tmp.dir}/dfs/name1,file:///${hadoop.tmp.dir}/dfs/name2</value>
+</property>
+```
+
+（2）停止集群，删除data和logs中所有数据。
+
+```shell
+[atguigu@hadoop102 hadoop-2.7.2]$ rm -rf data/ logs/
+[atguigu@hadoop103 hadoop-2.7.2]$ rm -rf data/ logs/
+[atguigu@hadoop104 hadoop-2.7.2]$ rm -rf data/ logs/
+```
+
+（3）格式化集群并启动。
+
+```shell
+[atguigu@hadoop102 hadoop-2.7.2]$ bin/hdfs namenode –format
+[atguigu@hadoop102 hadoop-2.7.2]$ sbin/start-dfs.sh
+```
+
+（4）查看结果
+
+```shell
+[atguigu@hadoop102 dfs]$ ll
+总用量 12
+drwx------. 3 atguigu atguigu 4096 12月 11 08:03 data
+drwxrwxr-x. 3 atguigu atguigu 4096 12月 11 08:03 name1
+drwxrwxr-x. 3 atguigu atguigu 4096 12月 11 08:03 name2
+```
+
+
+
+
 
 ## 6. DataNode（面试开发重点）
 
