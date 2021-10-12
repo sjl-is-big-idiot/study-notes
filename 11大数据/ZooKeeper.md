@@ -112,6 +112,74 @@ Mode: standalone
 [root@agent apache-zookeeper-3.5.9-bin]# bin/zkServer.sh stop
 ```
 
+ZK bin下脚本使用解读
+
+```shell
+bin/zkCli.sh help #查看帮助命令
+ZooKeeper -server host:port cmd args
+	addauth scheme auth
+	close 
+	config [-c] [-w] [-s]
+	connect host:port
+	create [-s] [-e] [-c] [-t ttl] path [data] [acl]
+	delete [-v version] path
+	deleteall path
+	delquota [-n|-b] path
+	get [-s] [-w] path
+	getAcl [-s] path
+	history 
+	listquota path
+	ls [-s] [-w] [-R] path
+	ls2 path [watch]
+	printwatches on|off
+	quit 
+	reconfig [-s] [-v version] [[-file path] | [-members serverID=host:port1:port2;port3[,...]*]] | [-add serverId=host:port1:port2;port3[,...]]* [-remove serverId[,...]*]
+	redo cmdno
+	removewatches path [-c|-d|-a] [-l]
+	rmr path
+	set [-s] [-v version] path data
+	setAcl [-s] [-v version] [-R] path acl
+	setquota -n|-b val path
+	stat [-w] path
+	sync path
+Command not found: Command not found help
+
+
+bin/zkServer.sh help # 查看帮助命令
+
+# 通过zkCli.sh 连接zk服务器后，也可以在交互模式下使用help查看命令帮助
+[zk: hadoop102:2181(CONNECTED) 13] help
+ZooKeeper -server host:port cmd args
+	addauth scheme auth
+	close 
+	config [-c] [-w] [-s]
+	connect host:port
+	create [-s] [-e] [-c] [-t ttl] path [data] [acl]
+	delete [-v version] path
+	deleteall path
+	delquota [-n|-b] path
+	get [-s] [-w] path
+	getAcl [-s] path
+	history 
+	listquota path
+	ls [-s] [-w] [-R] path
+	ls2 path [watch]
+	printwatches on|off
+	quit 
+	reconfig [-s] [-v version] [[-file path] | [-members serverID=host:port1:port2;port3[,...]*]] | [-add serverId=host:port1:port2;port3[,...]]* [-remove serverId[,...]*]
+	redo cmdno
+	removewatches path [-c|-d|-a] [-l]
+	rmr path
+	set [-s] [-v version] path data
+	setAcl [-s] [-v version] [-R] path acl
+	setquota -n|-b val path
+	stat [-w] path
+	sync path
+Command not found: Command not found help
+```
+
+
+
 配置参数解读
 
 ```yml
@@ -231,3 +299,51 @@ ephemeralOwner：如果是临时节点，则是znode拥有者的session id，如
 ![image-20210530235203974](ZooKeeper.assets/image-20210530235203974.png)
 
 好奇的是，zk中如何保证leader和follower之前数据一致的？
+
+
+
+TODO
+
+
+
+- 监听器可以对不存在的目录进行监听
+- 监听目录下子节点发生变化，可以接受到通知，携带数据有子节点列表
+- 监听目录创建和删除本身也会被监听到
+
+
+
+### ZooKeeper的watch的案例实操
+
+https://blog.csdn.net/qq_27661881/article/details/105500424
+
+```shell
+stat path [watch]
+ls path [watch]
+ls2 path [watch]
+get path [watch]
+```
+
+watch监听有不同的类型，有监听状态的stat ，内容的get，目录结构的ls。
+
+命令使用一次，只监听一次，监听到了就打印内容，打印结束就退出了监听。
+
+新版本的zookeeper 不支持ls2命令，用ls -s path 取代ls2
+
+不支持rmr命令 用deleteall path 取代rmr
+
+zk事件监听命令，加-w：
+
+```shell
+ls -w [path]：监听子节点的增删，不能监听孙节点的增删
+get -w [path] 此节点数据变化，不能监听子孙节点的数据变化
+stat -w [path] 节点属性变化（只要是造成节点属性发生变化的操作都会被监听到，包括修改此节点数据，增删子节点等），不能监听子节点的增删，不能监听孙节点的增删，
+```
+
+zk事件类型：
+
+- `None` 连接建立事件
+- `NodeCreated`，`NodeDeleted` 节点创建，节点删除
+- `NodeDataChanged` 节点数据变化
+- `NodeChildrenChanged` 子节点列表变化
+- `DataWatchRemoved` 节点监听移除
+- `ChildrenWatchRemoved `子节点监听移除
