@@ -112,6 +112,7 @@ Mode: standalone
 [root@agent apache-zookeeper-3.5.9-bin]# bin/zkServer.sh stop
 ```
 
+<<<<<<< HEAD
 ZK bin下脚本使用解读
 
 ```shell
@@ -180,6 +181,8 @@ Command not found: Command not found help
 
 
 
+=======
+>>>>>>> 3777eaa39c5bdf7bdd5ad246caaca1cf3fe248ab
 配置参数解读
 
 ```yml
@@ -298,6 +301,7 @@ ephemeralOwner：如果是临时节点，则是znode拥有者的session id，如
 
 ![image-20210530235203974](ZooKeeper.assets/image-20210530235203974.png)
 
+<<<<<<< HEAD
 好奇的是，zk中如何保证leader和follower之前数据一致的？
 
 
@@ -347,3 +351,6 @@ zk事件类型：
 - `NodeChildrenChanged` 子节点列表变化
 - `DataWatchRemoved` 节点监听移除
 - `ChildrenWatchRemoved `子节点监听移除
+=======
+好奇的是，zk中如何保证leader和follower之前数据一致的？
+>>>>>>> 3777eaa39c5bdf7bdd5ad246caaca1cf3fe248ab
