@@ -409,3 +409,4 @@ https://sqoop.apache.org/docs/1.4.7/SqoopUserGuide.html
 
 
 
+目前，Sqoop不支持增量迁移导入/导出数据，这也许是Sqoop的一大缺点。
