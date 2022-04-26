@@ -1711,4 +1711,22 @@ flushall    // 清除所有数据库的所有keys
 
 
 
+### 查看redis内存使用
+
+info 
+
+或
+
+info memory
+
+
+
+### 查看redis有所有key
+
+dbsize
+
+
+
+
+
 

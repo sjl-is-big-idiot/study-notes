@@ -4,31 +4,50 @@
 
 [Sqoop官网](http://sqoop.apache.org/)
 
-Sqoop是一款开源工具，主要用于在Hadoop（Hive）与传统的数据库（MySQL、PostgresSQL等）间进行数据的传递，可以将一个关系型数据库（例如：MySQL，Oracle，Postgres等）中的数据导入（`import`）到Hadoop的HDFS中，也可以将HDFS的数据导出（`export`）到关系型数据库中。
+`Sqoop`是一款开源工具，主要用于在`Hadoop`（`Hive`）与传统的数据库（`MySQL`、`PostgresSQL`等）间进行数据的传递，可以将一个关系型数据库（例如：`MySQL`，`Oracle`，`PostgreSQL`等）中的数据导入（`import`）到`Hadoop`的`HDFS`中，也可以将`HDFS`的数据导出（`export`）到关系型数据库中。
 
-Sqoop项目开始与2009年，最早是作为Hadoop的一个第三方模块存在，后来为了让使用者能够快速部署，也为了让开发人员能够更快速地迭代开发，Sqoop独立称为一个Apache项目。
+`Sqoop`项目开始与2009年，最早是作为`Hadoop`的一个第三方模块存在，后来为了让使用者能够快速部署，也为了让开发人员能够更快速地迭代开发，`Sqoop`独立称为一个`Apache`项目。
 
-Sqoop2的最新版本是1.99.7。请注意，2与1不兼容，且特征不完整，它并不打算用于生产部署。
+`Sqoop2`的最新版本是1.99.7。请注意，2与1不兼容，且特征不完整，它并不打算用于生产部署。截止到2022-04-16像腾讯的`emr-3.2.1`还是用的`sqoop`，没有用`sqoop2`。
+
+sqoop其实是一系列相关工具的集合，这些工具有：
+
+  codegen            Generate code to interact with database records
+  create-hive-table  Import a table definition into Hive
+  eval               Evaluate a SQL statement and display the results
+  export             Export an HDFS directory to a database table
+  help               List available commands
+  import             Import a table from a database to HDFS
+  import-all-tables  Import tables from a database to HDFS
+  list-databases     List available databases on a server
+  list-tables        List available tables in a database
+  version            Display version information
+
+
 
 
 
 # 2. Sqoop原理
 
-将导入或导出命令翻译成mapreduce程序来实现。
+将导入或导出命令翻译成`mapreduce`程序来实现。
 
-在翻译出的mapreduce中主要是对inputformat和outputformat进行定制。
+在翻译出的`mapreduce`中主要是对`inputformat`和`outputformat`进行定制。
+
+sqoop可以指定导出/导入哪些行，哪些列，数据文件的分隔符，转义符是什么，数据文件格式是什么等。
+
+
 
 # 3. Sqoop安装
 
-安装Sqoop的前提是已经具备Java和Hadoop的环境。
+安装`Sqoop`的前提是已经具备`Java`和`Hadoop`的环境。
 
 ## 3.1 下载并解压
 
-1. 下载地址：
+1. 下载地址：http://archive.apache.org/dist/sqoop/
 
 2. 上传安装包到虚拟机中
 
-3. 解压sqoop安装包到指定目录，如：
+3. 解压`sqoop`安装包到指定目录，如：
 
    ```shel
    $ tar -zxf sqoop-1.4.6.bin__hadoop-2.0.4-alpha.tar.gz -C /opt/module/
@@ -38,7 +57,7 @@ Sqoop2的最新版本是1.99.7。请注意，2与1不兼容，且特征不完整
 
 ## 3.2 修改配置文件
 
-Sqoop的配置文件与大多数大数据框架类似，在sqoop根目录下的conf目录中。
+`Sqoop`的配置文件与大多数大数据框架类似，在`sqoop`根目录下的`conf`目录中。
 
 1. 重命名配置文件
 
@@ -75,7 +94,6 @@ $ cp mysql-connector-java-5.1.27-bin.jar /opt/module/sqoop-1.4.6.bin__hadoop-2.0
 
 ```shell
 $ bin/sqoop help
-
 ```
 
 出现一些warning警告（警告信息已省略），并伴随着帮助命令的输出：
@@ -120,11 +138,11 @@ performance_schema
 
 ## 4.1 导入数据
 
-==在Sqoop中，“导入”概念指：从非大数据集群（RDBMS）向大数据集群（HDFS, HIVE, HBASE）中传输数据，即使用`import`关键字。==
+==在Sqoop中，“导入”概念指：从关系型数据库（RDBMS）向大数据集群（HDFS, HIVE, HBASE）中传输数据，即使用`import`关键字。==
 
 ### 4.1.1 RDBMS到HDFS
 
-（1）确定M有SQL服务开启正常
+（1）确定MySQL服务开启正常
 
 （2）在MySQL中新建一张表并插入一些数据
 
@@ -193,7 +211,7 @@ $ bin/sqoop import \
 
 
 
-​	4）使用sqoop关键字筛选查询导入数据
+​	4）使用`--where`关键字筛选导入数据
 
 ```shell
 $ bin/sqoop import \
@@ -208,7 +226,7 @@ $ bin/sqoop import \
 --where "id=1"
 ```
 
-同时指定--column和--where是可以的。
+同时指定`--column`和`--where`是可以的。
 
 ```shell
 $ bin/sqoop import \
@@ -224,9 +242,9 @@ $ bin/sqoop import \
 --where "id=1"
 ```
 
-<span style="color:red;">注：不能同时指定--query和--where。</span>
+<span style="color:red;">**注：不能同时指定--query和--where。**</span>
 
-### 4.1.2 导入数据到Hive
+### 4.1.2 导入数据到Hive+
 
 ```shell
 $ bin/sqoop import \
@@ -266,7 +284,7 @@ $ bin/sqoop import \
 
 <span style="color:red;">提示：sqoop1.4.6只支持对HBase1.0.1之前的版本的自动创建HBase表。</span>
 
-解决方法：手动创建爱你HBase表
+解决方法：手动创建HBase表
 
 ```shell
 hbase> create 'hbase_company', 'info'
@@ -278,11 +296,11 @@ hbase> create 'hbase_company', 'info'
 hbase> scan 'hbase_company'
 ```
 
-
-
 ## 4.2 导出数据
 
-==在sqoop中，“导出”概念指：从大数据集群（HDFS，HIVE, HBASE）向非大数据集群（RDBMS）中传输数据，即使用`export`关键字。==
+==在sqoop中，“导出”概念指：从大数据集群（HDFS，HIVE, HBASE）向关系型数据库（RDBMS）中传输数据，即使用`export`关键字。==
+
+sqoop导出数据是将并行地从HDFS上读取数据文件，并解析成一行行的记录，然后插入到RDBMS中。
 
 ### 4.2.1 HIVE/HDFS 到 RDBMS
 
@@ -360,15 +378,15 @@ https://sqoop.apache.org/docs/1.4.7/SqoopUserGuide.html
 
 ### 5.2.1 公用参数：数据库连接
 
-| **序号** | **参数**            | **说明**               |
-| -------- | ------------------- | ---------------------- |
-| 1        | –connect            | 连接关系型数据库的URL  |
-| 2        | –connection-manager | 指定要使用的连接管理类 |
-| 3        | –driver             | Hadoop根目录           |
-| 4        | –help               | 打印帮助信息           |
-| 5        | –password           | 连接数据库的密码       |
-| 6        | –username           | 连接数据库的用户名     |
-| 7        | –verbose            | 在控制台打印出详细信息 |
+| **序号** | **参数**             | **说明**               |
+| -------- | -------------------- | ---------------------- |
+| 1        | --connect <jdbc-uri> | 连接关系型数据库的URL  |
+| 2        | –connection-manager  | 指定要使用的连接管理类 |
+| 3        | –driver              | Hadoop根目录           |
+| 4        | –help                | 打印帮助信息           |
+| 5        | –password            | 连接数据库的密码       |
+| 6        | –username            | 连接数据库的用户名     |
+| 7        | –verbose             | 在控制台打印出详细信息 |
 
 ### 5.2.2 公用参数：import
 
@@ -410,3 +428,105 @@ https://sqoop.apache.org/docs/1.4.7/SqoopUserGuide.html
 
 
 目前，Sqoop不支持增量迁移导入/导出数据，这也许是Sqoop的一大缺点。
+
+
+
+
+
+# sqoop使用
+
+sqoop查看帮助信息：
+
+```shell
+sqoop help [tool名]
+例如：
+sqoop help import
+```
+
+或者
+
+```shell
+sqoop tool名 --help
+例如：
+sqoop import --help
+```
+
+
+
+sqoop的工具有两种使用方式：
+
+```shell
+#方式一
+sqoop [tool名]
+
+#方式二
+sqoop-[tool名]
+```
+
+使用方式：
+
+```shell
+sqoop tool名 [tool参数]
+```
+
+## 指定Hadoop安装目录
+
+如果机器上安装了多个版本的Hadoop，则可以手动指定环境变量来告诉sqoop使用哪个Hadoop集群
+
+```shell
+$ HADOOP_COMMON_HOME=/path/to/some/hadoop \
+  HADOOP_MAPRED_HOME=/path/to/some/hadoop-mapreduce \
+  sqoop import --arguments...
+```
+
+或者
+
+```shell
+$ export HADOOP_COMMON_HOME=/some/path/to/hadoop
+$ export HADOOP_MAPRED_HOME=/some/path/to/hadoop-mapreduce
+$ sqoop import --arguments...
+```
+
+如果这些变量没有设置，则会使用$HADOOP_HOME。
+
+sqoop会从`$HADOOP_HOME/conf/`目录中读取Hadop的配置文件，而不是从$HADOOP_CONF_DIR。
+
+
+
+## 通用参数和特殊参数
+
+| **序号** | **参数**                       | **说明**                         |
+| -------- | ------------------------------ | -------------------------------- |
+| 1        | --connect <jdbc-uri>           | 连接关系型数据库的JDBC连接字符串 |
+| 2        | --connect-manager <class-name> | 指定要使用的连接管理类           |
+| 3        | --driver <class-name>          | 指定JDBC driver类                |
+| 4        | --hadoop-mapred-home <dir>     | 覆盖$HADOOP_MAPRED_HOME          |
+| 5        | –help                          | 打印帮助信息                     |
+| 6        | --password-file                | 指定认证密码文件的路径           |
+| 7        | -P                             | 从控制台（console）读取密码      |
+| 8        | --password <password>          | 指定连接数据库的密码             |
+| 9        | --username <username>          | 指定连接数据库的用户名           |
+| 10       | –verbose                       | 在控制台打印出详细信息           |
+| 11       | --hadoop-home <dir>            | ==弃用了。==覆盖$HADOOP_HOME     |
+
+
+
+Hadoop命令行的通用参数
+
+这些参数必须位于sqoop工具和sqoop工具参数之间，参数位置如下所示：
+
+```shell
+sqoop import -conf xxx -Dxx=yy --connect x --user=x [其他sqoop工具参数]
+```
+
+
+
+| **序号** | **参数**                                     | **说明**                                        |
+| -------- | -------------------------------------------- | ----------------------------------------------- |
+| 1        | -conf <configuration file>                   | 指定应用的配置文件                              |
+| 2        | -D <property=value>                          | 设置某些属性的值                                |
+| 3        | -fs <local \|namenode:port>                  | 指定namenode                                    |
+| 4        | -jt <local \|jobtracker:port>                | 指定job tracker                                 |
+| 5        | -files <comma separated list of files>       | 指定需要copy到mapreduce集群的文件，以逗号分隔。 |
+| 6        | -libjars <comma separated list of jars>      | 指定放到classpath中jar包，以逗号分隔            |
+| 7        | -archives <comma separated list of archives> | ==TODO==                                        |
