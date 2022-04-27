@@ -34,7 +34,8 @@ GET /gb/_mapping/tweet
 
 TODO
 
-
+## ES查看数据量大小
+curl -X GET localhost:9200/_cat/indices?v
 
 ## ES为什么能近实时？
 
