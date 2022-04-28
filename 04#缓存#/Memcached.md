@@ -1,6 +1,6 @@
 # 1. 介绍
 
-# 安装memcached
+# 2. 安装memcached
 
 ```shell
 
@@ -8,7 +8,7 @@
 
 
 
-# 2. 启动memcached
+# 3. 启停memcached
 
 ```shell
 memcached -u root -p 11211 -m 2048 -c 2048 -d
@@ -42,9 +42,11 @@ memcached -u root -p 11211 -m 2048 -c 2048 -d
 
 
 
-3. 
+# 4. memcached配置解析
 
-# 4. memcached常用命令
+TODO
+
+# 5. memcached常用命令
 
 ```shell
 增: add 往内存增加一行新记录
@@ -199,6 +201,6 @@ stats sizes
 
 
 
-# 参考文献
+# 6. 参考文献
 
 [Memcached 统计命令详解及应用](https://blog.csdn.net/securitit/article/details/109356239)
