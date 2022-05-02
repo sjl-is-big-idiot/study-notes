@@ -1697,37 +1697,310 @@ Examples:
 
 ### 1） 查看keys个数
 
-keys *      // 查看所有keys
+redis查看返回当前数据库的 key 的数量
 
-keys prefix_*     // 查看前缀为"prefix_"的所有keys
+```shell
+r-bp1q30e0wcnmiobzus.redis.rds.aliyuncs.com:6379> dbsize
+(integer) 636148
+```
+
+`info keyspace` 可以看到所有库key的数量
+
+```shell
+r-bp1q30e0wcnmiobzus.redis.rds.aliyuncs.com:6379> info keyspace
+# Keyspace
+db0:keys=636148,expires=0,avg_ttl=0
+db1:keys=18843,expires=15999,avg_ttl=2606813236
+r-bp1q30e0wcnmiobzus.redis.rds.aliyuncs.com:6379> 
+```
+
+***注：对于redis集群而言，info中keyspace显示的key的数量与dbsize显示的数量不同？***
+***因为redis是一个集群，存在很多节点，keyspace显示的是一个节点（也就是redis集群的一个分片）的所有key的数量，而dbsize显示的是所有节点在当前db（如db0）的key的数量。通常，一个分片的key数量*分片 约= 整个redis集群的所有key数量。***
+
+```shell
+keys *      # 查询所有key （最好别使用，太影响性能了）
+keys zhao*  # 查询以 zhao 开头的所有key 
+keys *zhao  # 查询以 zhao 结尾的所有key
+```
+
+***数据量很小的时候可以使用，生产环境极不推荐。会引起阻塞，严重的话会引起应用程序出现雪崩。***
 
 
 
 ### 2） 清空数据库
 
-flushdb   // 清除当前数据库的所有keys
+```shell
+flushdb   # 清除当前数据库的所有keys
 
-flushall    // 清除所有数据库的所有keys
+flushall    # 清除所有数据库的所有keys
+```
 
 
 
-查看redis内存使用
 
+
+
+
+### 查看redis内存使用
+
+```shell
 info 
 
 或
 
 info memory
+```
 
 
 
-redis查看返回当前数据库的 key 的数量
+[Redis中info命令详解](https://blog.csdn.net/f_hello_world/article/details/103833691)
 
-dbsize
+#### info
+
+info命令从Server，Clients，Memory，Persistence，Stats，Replication，CPU，Cluster，Keyspace这9个维度告知使用者自己当前状态。
+
+##### server
+
+对于redis所在服务器的基础环境进行描述
+
+| 参数              | 描述                                                         |
+| ----------------- | ------------------------------------------------------------ |
+| redis_version     | redis的版本。demo：5.0.4                                     |
+| redis_git_sha1    | Git SHA1                                                     |
+| redis_git_dirty   | Git dirty flag                                               |
+| redis_build_id    | build id redis生成唯一id                                     |
+| redis_mode        | redis部署模式(standalone、Sentinel、Cluster)默认：standalone |
+| os                | 当前服务器的操作系统。demo：Linux 4.9.184-linuxkit x86_64    |
+| arch_bits         | 当前操作系统是32位还是64位                                   |
+| multiplexing_api  | redis使用的事件处理机制模式默认为epoll                       |
+| atomicvar_api     | Redis使用的Atomicvar API                                     |
+| gcc_version       | 编译redis的gcc编译器的版本号。demo：8.2.1                    |
+| process_id        | 该服务在系统的进程id                                         |
+| run_id            | redis服务器的随机id，此处作为(哨兵和集群)中的唯一标示        |
+| tcp_port          | 使用tcp端口默认6379                                          |
+| uptime_in_seconds | redis存活时间按秒计算                                        |
+| uptime_in_days    | redis存活时间按天计算                                        |
+| hz                | redis内部调度频率。（进行关闭timeout的客户端，删除过期key等等）频率，程序规定serverCron每秒运行次数。默认为10 |
+| configured_hz     | todo                                                         |
+| lru_clock         | 自增的时钟，用于LRU算法管理，该时钟为(1000/设置的值:执行一次定时任务serverCron)更新一次。默认10则100ms更新一次 |
+| executable        | 执行启动文件在服务器路径信息                                 |
+| config_file       | 配置文件在服务器路径信息                                     |
+
+##### **Clients**
+
+**对于客户端连接的一些信息**
+
+| 参数                            | 描述                                                         |
+| ------------------------------- | ------------------------------------------------------------ |
+| connected_clients               | 当前所有客户端连接redis的连接数（不包括通过从属服务器连接的客户端） |
+| client_recent_max_input_buffer  | 当前连接的客户端中最大输入                                   |
+| client_recent_max_output_buffer | 当前连接的客户端中最大输出                                   |
+| blocked_clients                 | 因执行一些命令(BLPOP、BRPOP、BRPOPLPUSH)而导致阻塞的客户端数 |
 
 
 
-info keyspace
+##### redis内存有关参数
+
+在参数中存在一些技术点提前描述下：
+
+redis中分配器(在编译的时候选择，可以是 libc 、 jemalloc 或者 tcmalloc 默认使用jemalloc)，使用内存分配器可以更好的管理和重复利用内存，分配内存一般采用固定范围的内存块进程分配。例如jemalloc分配器将内存分为：Small class(存放小对象区域)、Large class(存放大对象区域)、Huge class(存放巨大对象区域)。如下图所示是jemalloc分配器详细情况
+
+ 那么当redis需要存储对象为10kb对象时，内存分配将将该对象分配到12kb的Large区域中，那么还存在2kb的内存空间无法使用，那么这2kb的内存空间就变为了内存碎片了
+
+
+
+| 参数                      | 描述                                                         |
+| ------------------------- | ------------------------------------------------------------ |
+| used_memory               | 由Redis分配器分配的内存总量，包括使用的虚拟内存（即swap），以字节(byte)单位显示数据 |
+| used_memory_human         | 与used_memory作用一样只不过显示单位为G                       |
+| used_memory_rss           | 从操作系统角度返回redis使用内存数，与linux中top，ps命令返回数据一致。除了分配器分配的内存之外，used_memory_rss还包括进程运行本身需要的内存、内存碎片等，但是不包括虚拟内存。以字节(byte)单位显示数据 |
+| used_memory_rss_human     | 与used_memory_rss作用一样只不过显示单位为G                   |
+| used_memory_peak          | redis的内存消耗峰值(redis内存使用的最大值)，以字节(byte)单位显示数据 |
+| used_memory_peak_human    | 与used_memory_peak_human作用一样只不过显示单位为G            |
+| used_memory_peak_perc     | (used_memory/used_memory_peak)*100%                          |
+| used_memory_overhead      | redis维护整个内存数据集可用内部机制所需要的内存开销。包括维护内部数据结构，所有客户端输出缓冲区，AOF重写缓冲区，查询缓冲区，AOF写入缓冲区和主从复制的backlog。以字节(byte)单位显示数据 |
+| used_memory_startup       | redis消耗的初始内存值，以字节(byte)单位显示数据              |
+| used_memory_dataset       | redis中数据集所占内存数据大小(used_memory-used_memory_overhead)，以字节(byte)单位显示数据 |
+| used_memory_dataset_perc  | (used_memory_dataset/(used_memory—used_memory_startup))*100%</br>used_memory_dataset在净内存（used_memory-used_memory_startup）使用量中所占的百分比 |
+| allocator_allocated       | redis中分配器分配内存数，以字节(byte)单位显示数据            |
+| allocator_active          | redis中分配器活跃内存数，以字节(byte)单位显示数据            |
+| allocator_resident        | redis中分配器常驻内存数，以字节(byte)单位显示数据            |
+| total_system_memory       | 系统内存总数，以字节(byte)单位显示数据                       |
+| total_system_memory_human | 与total_system_memory作用一致只不过显示单位为G               |
+| used_memory_lua           | lua引擎使用内存量，以字节(byte)单位显示数据                  |
+| used_memory_lua_human     | 与used_memory_lua作用一致只不过显示单位为G                   |
+| used_memory_scripts       |                                                              |
+| used_memory_scripts_human |                                                              |
+| number_of_cached_scripts  |                                                              |
+| maxmemory                 | redis中可分配的最大内存数，默认为0不限制                     |
+| maxmemory_human           | 与maxmemory作用一致只不过显示单位为G                         |
+| maxmemory_policy          | 达到redis最大内存数maxmemory后的处理策略，默认为noeviction即后续所有申请都会引发异常 |
+| allocator_frag_ratio      | 分配器碎片率                                                 |
+| allocator_frag_bytes      | 分配器内存碎片大小，以字节(byte)单位显示数据                 |
+| allocator_rss_ratio       | 分配器常驻内存比例                                           |
+| allocator_rss_bytes       | 分配器常驻内存大小，以字节(byte)单位显示数据                 |
+| rss_overhead_ratio        | 常驻内存开销比例                                             |
+| rss_overhead_bytes        | 常驻内存开销大小，以字节(byte)单位显示数据                   |
+| mem_fragmentation_ratio   | redis中内存碎片率 此值为 (used_memory_rss/used_memory)*100%  |
+| mem_fragmentation_bytes   | redis中内存碎片大小，以字节(byte)单位显示数据                |
+| mem_not_counted_for_evict | 被驱逐的内存大小                                             |
+| mem_replication_backlog   | 从服务其中backlog内存大小                                    |
+| mem_clients_slaves        |                                                              |
+| mem_clients_normal        |                                                              |
+| mem_aof_buffer            | redis使用aof持久化方式中aof_buffer缓冲区大小，以字节(byte)单位显示数据 |
+| mem_allocator             | 内存分配器(在编译的时候选择，可以是 libc 、 jemalloc 或者 tcmalloc 默认使用jemalloc) |
+| active_defrag_running     | 内存整理是否处于活动状态 0否 1是                             |
+| lazyfree_pending_objects  | 等待释放对象数，此值只会在使用ASYNC选项并调用UNLINK或FLUSHDB和FLUSHALL时存在 |
+
+
+
+##### 	Persistence
+
+显示RDB和AOF相关信息，
+
+
+| 参数                         | 描述                                                         |
+| ---------------------------- | ------------------------------------------------------------ |
+| loading                      | 当前redis服务是否在加载数据文件                              |
+| loading_start_time           | 加载数据文件开始时间 格式时间戳 需要正在loading中时才会显示  |
+| loading_total_bytes          | 加载文件总大小 需要正在loading中时才会显示                   |
+| loading_loaded_bytes         | 已经加载的数据大小，以字节(byte)单位显示数据 需要正在loading中时才会显示 |
+| loading_loaded_perc          | 已经加载的数据占比 需要正在loading中时才会显示               |
+| loading_eta_seconds          | 预计剩余数据加载完成需要秒数 需要正在loading中时才会显示     |
+| rdb_changes_since_last_save  | 上一次rdb后发生变化的key数量                                 |
+| rdb_bgsave_in_progress       | 当前服务是否在进行rdb标志位 0否 1是                          |
+| rdb_last_save_time           | rdb最后一次执行的时间 格式时间戳                             |
+| rdb_last_bgsave_status       | rdb最后一次执行状态                                          |
+| rdb_last_bgsave_time_sec     | rdb最后一次执行时间 单位秒                                   |
+| rdb_current_bgsave_time_sec  | 正在执行的rdb持续时间 单位秒 不存在值为-1                    |
+| rdb_last_cow_size            | 最后一次执行rdb操作期间copy-on-write分配的字节大小，以字节(byte)单位显示数据 |
+| aof_enabled                  | aof持久化开启标准为 0未开启，1开启                           |
+| aof_rewrite_in_progress      | aof文件重写是否正在进行标准为 0否 1是                        |
+| aof_rewrite_scheduled        | 表示一旦进行中的RDB保存操作完成，就会安排进行AOF重写操作的标志 0否 1是，该值由redis服务设定。当出现RDB动作的同时也出现了自动aof重写操作，为了避免对磁盘造成压力，将改值改为1，将此次的aof重写动作推辞到rdb完成之后的下一次serverCron里才会触发。 |
+| aof_last_rewrite_time_sec    | 最后一次aof重写执行时间 单位秒 不存在值为-1                  |
+| aof_current_rewrite_time_sec | 正在执行aof重写持续时间 单位秒 不存在值为-1                  |
+| aof_last_bgrewrite_status    | 最后一次aof重写是否成功                                      |
+| aof_last_write_status        | 最后一次写入aof文件是否成功                                  |
+| aof_last_cow_size            | 最后一次执行aof重写操作期间copy-on-write分配的字节大小       |
+| aof_current_size             | 当前aof文件大小 需要开启aof持久化才会显示                    |
+| aof_base_size                | 上次启动或重写的aof大小 需要开启aof持久化才会显示            |
+| aof_pending_rewrite          | 指示AOF重写操作是否会在当前RDB保存操作完成后立即执行 0否 1是 需要开启aof持久化才会显示 |
+| aof_buffer_length            | 当前aof_buffer缓冲区数据大小，以字节(byte)单位显示数据 需要开启aof持久化才会显示 |
+| aof_rewrite_buffer_length    | 当前aof_rewrite_buffer缓冲区数据大小，以字节(byte)单位显示数据 需要开启aof持久化才会显示 |
+| aof_pending_bio_fsync        | 在后台等待执行fsync（刷新内存缓冲区数据到磁盘）动作的任务数 需要开启aof持久化才会显示 |
+| aof_delayed_fsync            | 延迟fsync计数器 此值用于aof写入磁盘策略为everysec，每执行一次aof同步使若出现一次阻塞(整个aof文件写入同步时间为2s，若因为数据太多超过2s则会阻塞主进程)则该值相对于加一需要开启aof持久化才会显示 |
+
+
+
+
+##### Stats
+
+系统中一些常规数据统计
+
+| 参数                           | 描述                                                         |
+| ------------------------------ | ------------------------------------------------------------ |
+| total_connections_received     | 服务器启动以来接收到的连接总数(包含历史连接数) 服务器重启该值置空。 |
+| total_commands_processed       | 服务器启动以来接收的命令总数  服务器重启该值置空。           |
+| instantaneous_ops_per_sec      | redis服务吞吐量即每秒处理命令数                              |
+| total_net_input_bytes          | redis服务接受输入总数据量，以字节(byte)单位显示数据          |
+| total_net_output_bytes         | redis服务输出总数据量，以字节(byte)单位显示数据              |
+| instantaneous_input_kbps       | 输入带宽，redis服务每秒读字节数                              |
+| instantaneous_output_kbps      | 输出带宽，redis服务每秒写字节数                              |
+| rejected_connections           | redis服务拒绝连接数                                          |
+| sync_full                      | 与从服务器之间完全同步(SYNC)的次数                           |
+| sync_partial_ok                | 从服务器接受PSYNC(部分同步)请求次数                          |
+| sync_partial_err               | 从服务器未接受PSYNC(部分同步)请求次数，一旦从服务器无法进行部分同步时，强制会进行全量同步则sync_partial_err+1则sync_full+1 |
+| expired_keys                   | redis服务启动以来中失效的key总数                             |
+| expired_stale_perc             | 过期key占总key比率                                           |
+| expired_time_cap_reached_count | 过期计数                                                     |
+| evicted_keys                   | redis服务运行以来由于maxmemory限制而导致被驱逐(参考Redis中数据淘汰机制与缓存失效策略)的key的数量 |
+| keyspace_hits                  | 缓存命中成功数 在redis服务中能成功查找到key的次数            |
+| keyspace_misses                | 缓存命中失败数 在redis服务中不能成功查找到key的次数          |
+| pubsub_channels                | redis提供mq功能中正在使用中的channel数                       |
+| pubsub_patterns                | redis提供mq功能中正在使用的pattern数                         |
+| latest_fork_usec               | 最后一次fork子进程所花费时间 单位微秒 该值不能过大           |
+| migrate_cached_sockets         |                                                              |
+| slave_expires_tracked_keys     | 从服务器中到期key数量                                        |
+| active_defrag_hits             | 主动垃圾碎片整理命中次数 该值与ActiveDefrag机制中源码stat_active_defrag_hits相同，用于计算内存碎片率，当碎片率达到指定值范围开启自动整理功能 |
+| active_defrag_misses           | 主动垃圾碎片整理未命中                                       |
+| active_defrag_key_hits         | 主动垃圾碎片整理key命中次数                                  |
+| active_defrag_key_misses       | 主动垃圾碎片整理key未命中次数                                |
+|                                |                                                              |
+
+
+
+
+
+##### Replication
+
+主从复制信息统计
+
+
+| 参数                            | 描述                                                         |
+| ------------------------------- | ------------------------------------------------------------ |
+| role                            | 当前实例的角色 master 或slave 单点默认为master               |
+| connected_slaves                | 当前连接slave的个数                                          |
+| master_replid                   | 主实例启动随机产生id                                         |
+| master_replid2                  | 主实例启动随机产生id2                                        |
+| master_repl_offset              | 主从同步偏移量                                               |
+| second_repl_offset              | 主从同步偏移量2                                              |
+| repl_backlog_active             | 复制积压缓冲区是否开启                                       |
+| repl_backlog_size               | 复制积压缓冲区数据大小，以字节(byte)单位显示数据             |
+| repl_backlog_first_byte_offset  | 复制缓冲区里偏移量的大小                                     |
+| repl_backlog_histlen            | 此值等于 master_repl_offset - repl_backlog_first_byte_offset,该值不会超过repl_backlog_size的大小 |
+| master_host                     | 主节点的Host名称或IP地址 如果该实例是从节点才会显示          |
+| master_port                     | 主节点监听的TCP端口 如果该实例是从节点才会显示               |
+| master_link_status              | 连接状态（up或者down）如果该实例是从节点才会显示             |
+| master_last_io_seconds_ago      | 自上次与主节点交互以来，经过的秒数 如果该实例是从节点才会显示 |
+| master_sync_in_progress         | 主节点正在与从节点是否正在同步 如果该实例是从节点才会显示    |
+| master_sync_left_bytes          | 同步完成前剩余的字节数 如果Sync操作正在进行                  |
+| master_sync_last_io_seconds_ago | 在SYNC操作期间自上次传输IO以来的秒数 如果Sync操作正在进行    |
+| master_link_down_since_seconds  | 自连接断开以来，经过的秒数 如果主从节点之间断开              |
+|                                 |                                                              |
+
+
+
+
+
+##### CPU
+
+当前服务器CPU信息统计
+
+| 参数                   | 描述                                   |
+| ---------------------- | -------------------------------------- |
+| used_cpu_sys           | redis主进程在核心态所占用的CPU资源     |
+| used_cpu_user          | redis主进程在用户态所占用的CPU资源     |
+| used_cpu_sys_children  | redis中后台进程在核心态所占用的CPU资源 |
+| used_cpu_user_children | redis中后台进程在用户态所占用的CPU资源 |
+|                        |                                        |
+
+
+
+
+
+##### Cluster
+
+当前所属集群统计
+
+| 参数            | 描述                 |
+| --------------- | -------------------- |
+| cluster_enabled | 实例是否启用集群模式 |
+
+
+
+##### Keyspace
+
+提供有关每个数据库的主字典的统计，统计信息是key的总数和过期的key的总数。
+
+| 参数                           | 描述                                                         |
+| ------------------------------ | ------------------------------------------------------------ |
+| db0:keys=4,expires=0,avg_ttl=0 | 数据库0目前现有4个key，过期key总数为0 估计算设置生存时间键的平均寿命单位毫秒数 |
+
+
+
+# redis-benchmark
+
+
 
 
 
@@ -1769,3 +2042,8 @@ save vs bgsave
 11、rdb的缺点
 虽然Redis在fork时使用了写时拷贝技术,但是如果数据庞大时还是比较消耗性能；
 在备份周期在一定间隔时间做一次备份，所以如果Redis意外down掉的话，就会丢失最后一次快照后的所有修改。
+
+
+
+
+
