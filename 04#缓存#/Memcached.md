@@ -92,29 +92,30 @@ get key
 返回key的值
 ```
 
-| Command                                  | Description                                                  | Example                    |
-| ---------------------------------------- | ------------------------------------------------------------ | -------------------------- |
-| get                                      | Reads a value                                                | get mykey                  |
-| set                                      | Set a key unconditionally                                    | set mykey 0 60 5           |
-| add                                      | Add a new key                                                | add newkey 0 60 5          |
-| replace                                  | Overwrite existing key                                       | replace key 0 60 5         |
-| append                                   | Append data to existing key                                  | append key 0 60 15         |
-| prepend                                  | Prepend data to existing key                                 | prepend key 0 60 15        |
-| incr                                     | Increments numerical key value by given number               | incr mykey 2               |
-| decr                                     | Decrements numerical key value by given number               | decr mykey 5               |
-| delete                                   | Deletes an existing key                                      | delete mykey               |
-| flush_all                                | 在指定time秒后，清除缓存中的键值对，直接flush_all则是立即清除 | flush_all [time] [noreply] |
-| Invalidate all items in n seconds        | flush_all 900                                                |                            |
-| stats                                    | Prints general statistics                                    | stats                      |
-| Prints memory statistics                 | stats slabs                                                  |                            |
-| Prints memory statistics                 | stats malloc                                                 |                            |
-| Print higher level allocation statistics | stats items                                                  |                            |
-|                                          | stats detail                                                 |                            |
-|                                          | stats sizes                                                  |                            |
-| Resets statistics                        | stats reset                                                  |                            |
-| version                                  | Prints server version.                                       | version                    |
-| verbosity                                | Increases log level                                          | verbosity                  |
-| quit                                     | Terminate telnet session                                     | quit                       |
+| Command                           | Description                                                  | Example                    |
+| --------------------------------- | ------------------------------------------------------------ | -------------------------- |
+| get                               | 返回Key对应的Value值                                         | get mykey                  |
+| set                               | 无条件地设置一个Key值，没有就增加，有就覆盖，操作成功提示STORED | set mykey 0 60 5           |
+| add                               | 添加一个Key值，没有则添加成功并提示STORED，有则失败并提示NOT_STORED | add newkey 0 60 5          |
+| replace                           | 按照相应的Key值替换数据，如果Key值不存在则会操作失败         | replace key 0 60 5         |
+| append                            | Append data to existing key                                  | append key 0 60 15         |
+| prepend                           | Prepend data to existing key                                 | prepend key 0 60 15        |
+| incr                              | Increments numerical key value by given number               | incr mykey 2               |
+| decr                              | Decrements numerical key value by given number               | decr mykey 5               |
+| delete                            | Deletes an existing key                                      | delete mykey               |
+| flush_all                         | 在指定time秒后，清除缓存中的键值对，直接flush_all则是立即清除。flush_all删除后通过stats查看会看到item数量并没有减少。因为flush_all 实际上没有立即释放项目所占用的内存 而是在随后陆续有新的项目被储存时执行（这是由memcached的懒惰检测和删除机制决定的） | flush_all [time] [noreply] |
+| Invalidate all items in n seconds | flush_all 900                                                |                            |
+| stats                             | 返回MemCache通用统计信息（下面有详细解读）                   | stats                      |
+| stats items                       | 返回各个slab中item的数目和最老的item的年龄（最后一次访问距离现在的秒数） |                            |
+| stats slabs                       | 返回MemCache运行期间创建的每个slab的信息（下面有详细解读）   |                            |
+| stats cachedump slab_id limit_num | 显示某个slab中的前limit_num个key列表                         |                            |
+| stats detail [on 、off、dump]     | 设置或者显示详细操作记录                                     |                            |
+| stats malloc                      | 输出内存统计信息                                             | stats malloc               |
+|                                   | stats sizes输出两列，第一列是item的大小，第二列是item的个数。 | stats sizes                |
+| stats reset                       | 重新统计数据，重新开始统计                                   | stats reset                |
+| version                           | 返回当前MemCache版本号                                       | version                    |
+| verbosity                         | Increases log level                                          | verbosity                  |
+| quit                              | 关闭连接                                                     | quit                       |
 
 
 
