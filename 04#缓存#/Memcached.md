@@ -46,6 +46,8 @@ yum install memcached
 
 # 4. memcached原理
 
+***注：memcached服务端并没有分布式的实现，memcached的服务端之前是不互相通信的，要实现memcached的分布式，需要在客户端通过算法来实现，将什么样的key分配给memcached1，什么样的key分配给memcached2，一次类推。***
+
 本节下面内容参考自[Memcached深入分析及内存调优](https://www.ktanx.com/blog/p/2248)，这篇文章讲得很仔细。
 
 `memcached`内存分配如下图所示：
@@ -55,6 +57,8 @@ yum install memcached
 > `Memcached`在分配内存时是以`Page`为单位的，默认情况下一个`Page`是1M，内部是一个个`chunk`，当`chunk`的大小等于Page大小时也就是`Memcached`所能存储的最大数据大小了，可以在启动时通过-l来指定它，最大可以支持128M。
 >
 > `Memcached`并不是将所有不同大小的数据都存放在一起的，而是将内存空间划分为一个个的`slab`，每个`slab`只负责一定范围内的数据。上图中，slab1只负责1 - 96bytes的数据，slab2负责9 - 120bytes的数据。
+>
+> **在没有slab之前，当我们存储了一个key在memecached里面，则会临时去申请一片内存，这样会造成操作系统有大量的内存碎片，加重了操作系统内存管理器的负担。而有了slab之后，相当月memcached预先申请好了内存，然后在memcached内存对申请内存分为多个slab，每个slab分为多个page，每个page含有多个chunk，即由memcached使用的始终是申请的这些内存，避免造成大量的内存碎片。**【我的一点浅见】
 >
 > 在存储数据时，如果这个`item`对应的`slab`还没有创建则申请一个`page`的内存，将这个`page`按照所在`slab`中`chunk`的大小进行分割，然后将`item`存入。
 >
@@ -308,7 +312,7 @@ stats sizes
 
 [Memcached深入分析及内存调优](https://www.ktanx.com/blog/p/2248)
 
-[Memcached入门教程](http://c.biancheng.net/view/6574.html)
+**推荐** [Memcached入门教程](http://c.biancheng.net/view/6574.html)
 
 [Memcached 统计命令详解及应用](https://blog.csdn.net/securitit/article/details/109356239)
 
