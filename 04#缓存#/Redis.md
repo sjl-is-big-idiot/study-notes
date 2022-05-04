@@ -1717,6 +1717,12 @@ Examples:
   (Note: when using --eval the comma separates KEYS[] from ARGV[] items)
 ```
 
+查看redis服务端版本
+
+```shell
+redis-server --version
+```
+
 
 
 
