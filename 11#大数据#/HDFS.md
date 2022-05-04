@@ -2640,3 +2640,41 @@ hdfs dfsadmin -help
 distcp
 # 其他
 ```
+
+
+
+#### balance
+
+**对hdfs重新平衡（`rebalance`）的理解？**
+
+> 集群中DN的使用率 < `under-capacity`
+>
+> 集群中DN的使用率 > `over-capacity`
+>
+> `uder-capacity` = 集群平均dfs使用率 - `threshold`
+>
+> `over-capacity` = 集群平均dfs使用 + `threshold`
+
+**什么时候平衡？**
+
+按需执行，
+
+```shell
+hadoop dfsadmin balance <start|stop|get>
+```
+
+**怎么重新平衡？**
+
+1. NN在接收到rebalance server发出的重新平衡请求后，会创建一个balance线程
+
+2. 这个线程不断迭代地执行平衡
+   1. 每次迭代中，它扫描整个数据节点列表，并调度块移动task，两次迭代之间会休息一个心跳间隔时间
+   2. 扫描DN 列表过程中，找出`under-capacity`节点，将`over-capacity`节点的块或其他节点的块移动到`under-capacity`节点
+   3. 扫描DN 列表过程中，找出`over-capacity`节点，将其中的块移动到其他节点
+   4. 调度任务放入源DN的队列中，队列的默认task为4个
+   5. 调度任务被发送给DN来执行，每次心跳最多发送两个任务
+
+
+
+
+
