@@ -341,6 +341,8 @@ cat /etc/passwd
 passwd
 # 修改其他用户的密码
 passwd <username>
+#
+echo 'xxx' |passwd testuser
 ```
 #### 删除用户
 

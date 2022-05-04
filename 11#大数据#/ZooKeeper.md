@@ -1,14 +1,12 @@
-## ZooKeeper
-
 [ZooKeeper官网](https://zookeeper.apache.org/)
 
-### ZooKeeper的概念和基础
+# ZooKeeper的概念和基础
 
-### ZooKeeper的使命
+## ZooKeeper的使命
 
-### 分布式协作的难点
+## 分布式协作的难点
 
-### ZooKeeper的架构
+## ZooKeeper的架构
 
 ![image-20210428232803032](ZooKeeper.assets/image-20210428232803032.png)
 
@@ -16,15 +14,15 @@
 
 
 
-### ZooKeeper的原理
+## ZooKeeper的原理
 
-### 使用ZooKeeper进行开发
+## 使用ZooKeeper进行开发
 
-### ZooKeeper的管理
+## ZooKeeper的管理
 
 
 
-### bilibili 视频
+# bilibili 视频
 
 https://www.bilibili.com/video/BV1PW411r7iP?p=7&spm_id_from=pageDriver
 
@@ -112,7 +110,6 @@ Mode: standalone
 [root@agent apache-zookeeper-3.5.9-bin]# bin/zkServer.sh stop
 ```
 
-<<<<<<< HEAD
 ZK bin下脚本使用解读
 
 ```shell
@@ -179,12 +176,7 @@ ZooKeeper -server host:port cmd args
 Command not found: Command not found help
 ```
 
-
-
-=======
->>>>>>> 3777eaa39c5bdf7bdd5ad246caaca1cf3fe248ab
 配置参数解读
-
 ```yml
 tickTime=2000 # zk中的时间以tickTime为单位，1个tickTime现在为2000ms
 initLimit=10 # 即10个tickTime，表示在启动zk时，leader和follower，observer之间的状态同步的最长时间为10*2tickTime（请求和响应）
@@ -301,7 +293,6 @@ ephemeralOwner：如果是临时节点，则是znode拥有者的session id，如
 
 ![image-20210530235203974](ZooKeeper.assets/image-20210530235203974.png)
 
-<<<<<<< HEAD
 好奇的是，zk中如何保证leader和follower之前数据一致的？
 
 
@@ -353,4 +344,11 @@ zk事件类型：
 - `ChildrenWatchRemoved `子节点监听移除
 =======
 好奇的是，zk中如何保证leader和follower之前数据一致的？
->>>>>>> 3777eaa39c5bdf7bdd5ad246caaca1cf3fe248ab
+# ZK常用命令
+
+查看zk版本
+
+```shell
+echo stat|nc localhost 2181
+```
+

@@ -12,6 +12,7 @@
 
 sqoop其实是一系列相关工具的集合，这些工具有：
 
+```shell
   codegen            Generate code to interact with database records
   create-hive-table  Import a table definition into Hive
   eval               Evaluate a SQL statement and display the results
@@ -22,8 +23,7 @@ sqoop其实是一系列相关工具的集合，这些工具有：
   list-databases     List available databases on a server
   list-tables        List available tables in a database
   version            Display version information
-
-
+```
 
 
 
@@ -35,7 +35,12 @@ sqoop其实是一系列相关工具的集合，这些工具有：
 
 sqoop可以指定导出/导入哪些行，哪些列，数据文件的分隔符，转义符是什么，数据文件格式是什么等。
 
+**Sqoop导入底层工作原理**
+将数据从关系型数据库导入到Hadoop中
+  Step1：Sqoop与数据库Server通信，获取数据库表的元数据信息
+  Step2：Sqoop启动一个`Map-Only`的MR作业，利用元数据信息并行将数据写入Hadoop
 
+  Sqoop在import时，需要指定split-by参数。Sqoop根据不同的split-by参数值来进行切分,然后将切分出来的区域分配到不同map中。每个map中再处理数据库中获取的一行一行的值，写入到HDFS中。同时split-by根据不同的参数类型有不同的切分方法，如比较简单的int型，Sqoop会取最大和最小split-by字段值，然后根据传入的num-mappers来确定划分几个区域。 比如select max(split_by),min(split-by) from得到的max(split-by)和min(split-by)分别为1000和1，而num-mappers为2的话，则会分成两个区域(1,500)和(501-100),同时也会分成2个sql给2个map去进行导入操作，分别为select XXX from table where split-by>=1 and split-by<500和select XXX from table where split-by>=501 and split-by<=1000。最后每个map各自获取各自SQL中的数据进行导入工作。
 
 # 3. Sqoop安装
 
@@ -530,3 +535,117 @@ sqoop import -conf xxx -Dxx=yy --connect x --user=x [其他sqoop工具参数]
 | 5        | -files <comma separated list of files>       | 指定需要copy到mapreduce集群的文件，以逗号分隔。 |
 | 6        | -libjars <comma separated list of jars>      | 指定放到classpath中jar包，以逗号分隔            |
 | 7        | -archives <comma separated list of archives> | ==TODO==                                        |
+
+## 通过option file传递参数
+
+option file的用法如下：
+
+```
+$ sqoop import --connect jdbc:mysql://localhost/db --username foo --table TEST
+
+$ sqoop --options-file /users/homer/work/import.txt --table TEST
+```
+
+ `/users/homer/work/import.txt`内容如下：
+
+```
+import
+--connect
+jdbc:mysql://localhost/db
+--username
+foo
+```
+
+sqoop会忽略文本中的空格，除非是双引号中的空格。在此文本中，注释以`#`开头，且需要另起一行。
+
+
+
+## sqoop-import
+
+`sqoop-import`，从RDBMS中导出某个表到HDFS，表中的每行就是HDFS中的一行记录。记录可以存储为文本格式、 Avro、SequenceFiles、parquet等格式。
+
+```
+$ sqoop import (generic-args) (import-args)
+```
+
+**Table 1. Common arguments**
+
+| Argument                             | Description                                                  |
+| ------------------------------------ | ------------------------------------------------------------ |
+| `--connect <jdbc-uri>`               | Specify JDBC connect string                                  |
+| `--connection-manager <class-name>`  | Specify connection manager class to use                      |
+| `--driver <class-name>`              | Manually specify JDBC driver class to use                    |
+| `--hadoop-mapred-home <dir>`         | Override $HADOOP_MAPRED_HOME                                 |
+| `--help`                             | Print usage instructions                                     |
+| `--password-file`                    | Set path for a file containing the authentication password   |
+| `-P`                                 | Read password from console                                   |
+| `--password <password>`              | Set authentication password                                  |
+| `--username <username>`              | Set authentication username                                  |
+| `--verbose`                          | Print more information while working                         |
+| `--connection-param-file <filename>` | Optional properties file that provides connection parameters |
+| `--relaxed-isolation`                | 设置mapper连接数据库之后的事务隔离级别为read uncommitted。   |
+
+
+
+sqoop-import用法：
+
+```shell
+$ sqoop import --connect jdbc:mysql://database.example.com/employees
+```
+
+*注：连接字符串中的主机名不能用localhost，因为sqoop会转化为map任务，每个map都会去连接自己的localhost。*
+
+通过`--password-file`参数指定连接数据库的密码，避免暴露密码。
+
+*注：密码文件中的空格等字符也会被认为是密码的一部分。*
+
+```shell
+$ echo -n "mypassword" > ${user.home}/testmysql
+
+
+$ sqoop import --connect jdbc:mysql://database.example.com/employees \
+    --username venkatesh --password-file ${user.home}/testmysql
+```
+
+通过`-P`以交互式的方式输入密码。
+
+通过`--password`方式输入数据库密码
+
+jdbc driver的jar包需要放在$SQOOP_HOME/lib目录下。
+
+```
+$ sqoop import --driver com.microsoft.jdbc.sqlserver.SQLServerDriver \
+    --connect <connect-string> ...
+```
+
+
+
+`sqoop-import-all-tables`
+
+`sqoop-import-mainframe`
+
+`sqoop-export`
+
+`validation`
+
+`sqoop-job`
+
+`sqoop-metastore`
+
+`sqoop-merge`
+
+`sqoop-codegen`
+
+`sqoop-create-hive-table`
+
+ `sqoop-eval`
+
+`sqoop-list-databases`
+
+`sqoop-list-tables`
+
+`sqoop-help`
+
+`sqoop-version`
+
+`Sqoop-HCatalog`

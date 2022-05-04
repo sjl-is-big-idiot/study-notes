@@ -34,8 +34,22 @@ GET /gb/_mapping/tweet
 
 TODO
 
-## ES查看数据量大小
+查看ES数据量大小
+
+```shell
 curl -X GET localhost:9200/_cat/indices?v
+```
+
+查看ES版本
+
+```shell
+curl http://10.1.33.131:9200/
+#或者
+cd 安装目录
+ls lib/ | grep -P 'elasticsearch-\d\.\d\.\d\.jar'
+```
+
+
 
 ## ES为什么能近实时？
 
@@ -194,3 +208,14 @@ PUT /my_index/_settings
 这个选项可以针对索引单独设置，并且可以动态进行修改。如果你决定使用异步 translog 的话，你需要 *保证* 在发生crash时，丢失掉 `sync_interval` 时间段的数据也无所谓。请在决定前知晓这个特性。
 
 如果你不确定这个行为的后果，最好是使用默认的参数（ `"index.translog.durability": "request"` ）来避免数据丢失。
+
+
+
+# 安装ElasticSearch
+
+# ElasticSearch原理
+
+# ElasticSearch配置解析
+
+# 参考文献
+
