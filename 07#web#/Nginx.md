@@ -1,3 +1,5 @@
+# Nginx原理
+
 ### 1. nginx是什么？特点是什么？
 
 nginx，即 engine x，是一个web服务器和方向代理服务器，用于HTTP、HTTPS、SMTP、POP3和IMAP协议。
@@ -546,3 +548,23 @@ nginx使用的是方案二。
    - 来自同一局域网的客户端（相同的外网ip）会被转发到同一个后端服务器，可能会导致负载失衡
    - 不适用于CDN网络，不适用于前端还有代理的情况。
 2. sticky不是通过ip来判断客户端，而是通过cookie来判断，在cookie中会保存名为'route'的cookie键值对，通过此键值对来判断，route的值与后端服务器对应，nginx通过判断cookie中route的值来将请求分发给对应的后端服务器。
+
+
+
+# Nginx配置解析
+
+TODO
+
+# Nginx常用命令
+
+查看nginx版本
+
+```shell
+./nginx -v
+
+./nginx -V
+```
+
+**-v** 显示 nginx 的版本。
+
+**-V** 显示 nginx 的版本，编译器版本和配置参数。 
