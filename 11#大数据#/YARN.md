@@ -1,6 +1,4 @@
-## YARN
-
-### 前言
+# 前言
 
 YARN的发展阶段
 
@@ -123,21 +121,21 @@ YARN的工作流程大约如下：
 
 可以认为是，将调度和资源管理从第1版中的MapReduce中分离出来了，成为了YARN。
 
-### 安装
+# 安装
 
 分为单机部署、伪分布式部署、和分布式部署。
 
-### 核心组件和概念
+# 核心组件和概念
 
 YARN的工作流程图如下：
 
 
 
-#### ResourceManager
+## ResourceManager
 
 ResourceManager，主要职责是调度，即它在竞争的应用程序之间分配系统中的可用资源，但不关注每个应用程序的状态管理（有AppolicationMaster负责）。为了适应不同的策略，RM有一个可插拔的调度器来应用不同的算法，Hadoop 2.x中支持3中调度器：`FIFO`、`Capacity`、`Fair`。
 
-#### NodeManager
+## NodeManager
 
 管理Hadoop集群中独立的计算节点，负责管理和监控节点和Container。职责包括：
 
@@ -150,11 +148,11 @@ ResourceManager，主要职责是调度，即它在竞争的应用程序之间�
 
 ![在这里插入图片描述](YARN.assets/20210424182541251.png)
 
-#### ApplicationMaster
+## ApplicationMaster
 
 ApplicationMaster，一个应用会启动一个ApplicationMaster（通常称之为Container0），它的职责是与ResourceManager协商资源（Container），并好NodeManager协同工作来执行和监控任务。
 
-#### Contianer
+## Contianer
 
 Contianer，是对资源的抽象，是单个节点上如RAM、CPU核和磁盘等物理资源的集合。单个节点上可以有多个Container。可以修改Container的内存、CPU大小。每个节点可以看做由多个Container构成。
 
@@ -169,15 +167,64 @@ Container代表了集群中单个节点上的一组资源（内存，CPU），�
 4. 其他资源，如`disk/network I/O`、GPU等
 ```
 
-### Scheduler
+## Scheduler
 
 Scheduler，可插拔的调度器组件，支持FIFO（先入先出），Capacity和Fair。
 
 1. FIFO调度器，即”先来先服务“，不考虑作业的优先级和范围。适合低负载集群，不适合大型的共享集群。
-2. Capacity调度器，容量调度，配置一个或多个队列，保证每个队列的最小资源使用值。通过ACL（访问控制列表）用来控制哪些用户可以向各个队列提交作业。多余的容量会优先分配给那些最饥饿的（最满的）队列。在每个队列内部使用层次化的FIFO来调度多个应用程序。
-3. Fair调度器，公平调度，将资源公平的分配给应用，使得所有应用在平均情况下随着时间得到相等份额的资源。
 
-### YARN架构
+2. Capacity调度器，容量调度，配置一个或多个队列，保证每个队列的最小资源使用值。通过ACL（访问控制列表）用来控制哪些用户可以向各个队列提交作业。多余的容量会优先分配给那些最饥饿的（最满的）队列。在每个队列内部使用层次化的FIFO来调度多个应用程序。
+
+3. Fair调度器，公平调度，将资源公平的分配给应用，使得所有应用在平均情况下随着时间得到相等份额的资源。[什么是公平调度器（Fair Scheduler）？](https://blog.csdn.net/miachen520/article/details/116559553)
+
+   ![img](YARN.assets/20210509085755197.png)
+
+   ![img](YARN.assets/20210509085826980.png)
+
+**FIFO、Capacity、Fair调度器对比**
+
+[Hadoop的三种调度器](https://www.cnblogs.com/zhipeng-wang/p/14480138.html)
+
+
+
+
+
+- FIFO：在FIFO 调度器中，只根据应用入队的先后顺序来分配资源。就像上厕所排队一样。
+
+  ![img](YARN.assets/1651153-20200331141247941-750726635.png)
+
+  ​																			图片来自互联网
+
+  - 优点：简单
+  - 缺点：大的应用可能会占用所有集群资源，小应用就会被大应用阻塞。
+
+- Capacity：各自使用自己的队列，队列有资源配置限制。就像男女厕所排队一样，男厕位置很空，女厕爆满，但是无法利用男厕的资源。
+
+  ![img](YARN.assets/1651153-20200331141910222-1137004991.png)
+
+  ​																			图片来自互联网
+
+  - 优点：实现了资源的隔离，避免不同队列中的应用相互影响。
+  - 缺点：queue1没有应用，queue2应用超多资源已经跑满了，但是queue2中排队的应用是不能够使用queue1中的空闲资源的。资源存在浪费的情况。
+
+- Fair：弹性队列，可占用一部分其他队列的资源。
+
+  ![img](YARN.assets/1651153-20200331141347663-1699272976.png)
+
+  ​															图片来自互联网
+
+  - 优点：
+    - Fair Scheduler队列内部支持多种调度策略，包括FIFO、Fair（队列中的N个作业，每个获得该队列1 / N的资源）、DRF（Dominant Resource Fairness）（多种资源类型e.g. CPU，内存 的公平资源分配策略）
+    - 支持资源抢占，可以有效地利用集群中的资源，
+    - air Scheduler支持资源抢占。当队列中有新的应用提交时，系统调度器理应为它回收资源，但是考虑到共享的资源正在进行计算，所以调度器采用先等待再强制回收的策略，即等待一段时间后如果仍没有获得资源，那么从使用共享资源的队列中杀死一部分任务，通过yarn.scheduler.fair.preemption设置为true，开启抢占功能。
+    - Fair Scheduler可以为每个队列单独设置调度策略（FIFO Fair DRF）
+  - 缺点：相对来说比capacity复杂
+
+
+
+
+
+## YARN架构
 
 Hadoop 1和Hadoop2架构对比
 
@@ -187,7 +234,7 @@ YARN的架构图如下：
 
 ![在这里插入图片描述](YARN.assets/20210424182541262.png)
 
-### 工作流程
+## 工作流程
 
 工作流程在上面也提到过多次，大致如下图所示：
 
@@ -217,7 +264,7 @@ YARN作业的运行图，如下所示：
 
 ![img](YARN.assets/1598493-20190318004612164-202277806.png)
 
-### 参考资料
+# 参考资料
 
 [1] 《Hadoop-YARN权威指南》
 
