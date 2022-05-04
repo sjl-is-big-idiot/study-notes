@@ -1,10 +1,16 @@
 # 1. 介绍
 
-// TODO
+[PostgreSQL官方文档](https://www.postgresql.org/docs/)
+
+[PostgreSql简介](https://blog.csdn.net/qq_40223688/article/details/89451616)
+
+PostgreSQL是一个功能强大的开源对象关系型数据库系统，他使用和扩展了SQL语言，并结合了许多安全存储和扩展最复杂数据工作负载的功能。PostgreSQL的起源可以追溯到1986年，作为加州大学伯克利分校POSTGRES项目的一部分，并且在核心平台上进行了30多年的积极开发。
+
+PostgreSql提供了许多功能，旨在帮助开发人员构建应用程序，管理员保护数据完整性并且构建容错环境，并帮助你管理数据，无论数据集的大小。除了免费和开源之外，Postgre SQL还具有高度的可扩展性。例如，你可以定义自己的数据类型，构建自定义SQL函数，甚至可以编写来自不同编程语言的代码，而不需要重新编译数据库。
+
+
 
 #					2. 安装						#
-#################################################
-
 ## 2.1 离线安装pg
 https://blog.csdn.net/u010177412/article/details/82150207
 
@@ -46,14 +52,6 @@ make && make install
 /usr/pgsql-13/bin/pg_ctl -D /home/pgsql-13/data -l logfile stop  #停止
 /usr/pgsql-13/bin/pg_ctl -D /home/pgsql-13/data -l logfile reload  #重启
 ```
-
-
-
-
-
-
-
-
 
 # 3. pg常用命令
 
@@ -385,10 +383,6 @@ delete from tableName;
 
 truncate table tableName;
 ```
-
-
-
-
 
 ## 索引
 
