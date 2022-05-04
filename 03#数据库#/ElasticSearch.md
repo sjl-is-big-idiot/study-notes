@@ -2,6 +2,16 @@
 
 [Elasticsearch: 权威指南](https://www.elastic.co/guide/cn/elasticsearch/guide/current/running-elasticsearch.html)
 
+# 1. 介绍
+
+TODO
+
+# 安装ElasticSearch
+
+TODO
+
+# ElasticSearch原理
+
 ## ES常见概念
 
 有一个megacorp索引（名词）
@@ -29,27 +39,6 @@ GET /gb/_mapping/tweet
 
 
 ![a2cc7cd98d1001e903a21540c749f5ea55e797b4](ElasticSearch.assets/a2cc7cd98d1001e903a21540c749f5ea55e797b4.jpeg)
-
-## ES常用操作
-
-TODO
-
-查看ES数据量大小
-
-```shell
-curl -X GET localhost:9200/_cat/indices?v
-```
-
-查看ES版本
-
-```shell
-curl http://10.1.33.131:9200/
-#或者
-cd 安装目录
-ls lib/ | grep -P 'elasticsearch-\d\.\d\.\d\.jar'
-```
-
-
 
 ## ES为什么能近实时？
 
@@ -211,11 +200,87 @@ PUT /my_index/_settings
 
 
 
-# 安装ElasticSearch
-
-# ElasticSearch原理
-
 # ElasticSearch配置解析
+
+# ES常用操作
+
+TODO
+
+查看ES版本
+
+```shell
+curl http://10.1.33.131:9200/
+#或者
+cd 安装目录
+ls lib/ | grep -P 'elasticsearch-\d\.\d\.\d\.jar'
+```
+
+查看ES数据量大小
+
+```shell
+curl -X GET localhost:9200/_cat/indices?v
+```
+
+统计总数据条数，`GET /索引名/_count`
+
+```shell
+GET /page-access/_count
+{
+
+}
+
+#或  通配符
+GET /logstash-*/_count
+{
+
+}
+
+#或  多个
+GET /page-access,logstash-*/_count
+{
+
+}
+
+url中前面的部分就是匹配需统计的索引
+
+返回内容：
+{
+  "count" : 3478311,
+  "_shards" : {
+    "total" : 50,
+    "successful" : 50,
+    "skipped" : 0,
+    "failed" : 0
+  }
+}
+其中count就是制定索引的总数据条数
+```
+
+统计总存储空间占用
+
+```shell
+GET /_cat/shards?v
+
+返回内容
+index               shard prirep state         docs   store ip           node
+logstash-2019.08.05 0     p      STARTED      54587  13.1mb 10.0.197.198 node1
+logstash-2019.08.05 0     r      UNASSIGNED                              
+logstash-2019.08.31 0     p      STARTED       6048 934.8kb 10.0.197.198 node1
+logstash-2019.08.31 0     r      UNASSIGNED                              
+page-access         0     p      STARTED       4653   1.1mb 10.0.197.198 node1
+page-access         0     r    
+
+其中store列就是占用的存储空间
+```
+
+查看book索引的_settings配置：
+
+```csharp
+GET book/_settings
+```
+
+
+[ElasticSearch统计总数据量](https://blog.csdn.net/whq12789/article/details/101062968)
 
 # 参考文献
 

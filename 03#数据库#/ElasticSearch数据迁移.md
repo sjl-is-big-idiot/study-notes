@@ -16,13 +16,17 @@
 
 ### 3.3.1 安装elasticdump
 
-elasticdump依赖于nodejs，因此我们要先安装nodejs
+`elasticdump`依赖于`nodejs`，因此我们要先安装`nodejs`
 
-安装nodejs
+安装`nodejs`，`npm`是`nodejs`的包管理器
 
 ```shell
-
+yum install -y npm
 ```
+
+![image-20220504223909623](ElasticSearch数据迁移.assets/image-20220504223909623.png)
+
+`npm`依赖 `brotli`、`libuv`、`nodejs`、`nodejs-libs`、`openssl11`、`openssl11-libs`
 
 安装elasticdump
 
