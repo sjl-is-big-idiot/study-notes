@@ -1,3 +1,9 @@
+## 如何查看jar包中的源代码
+
+[jar文件查看源代码](https://blog.csdn.net/weixin_45519736/article/details/106237077)
+
+使用`jd-gui`可以实现。下载地址：https://github.com/java-decompiler/jd-gui/releases
+
 ## Java原生日志模块
 
 [java.util.logging](https://docs.oracle.com/en/java/javase/15/docs/api/java.logging/java/util/logging/package-summary.html)
