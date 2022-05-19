@@ -424,3 +424,55 @@ certutil -hashfile 文件路径 SHA1
 certutil -hashfile 文件路径 SHA256
 ```
 
+### 卸载数据盘
+
+#### linux系统
+
+假设数据盘设备名为`/dev/vdb`，挂载路径为`/data1`。
+
+```shell
+umount /dev/vdb
+#或
+umount /data1
+```
+
+*注：某些情况下，会无法`umount`磁盘，通过查阅如下文章得到了解决方案*
+
+[umount 提示:device is busy 的处理方法(In some cases useful info about processes that use )](https://blog.csdn.net/qq_35995514/article/details/106114292)
+
+**问题原因：**
+
+> 某些进程仍然在使用此 数据盘设备/挂载路径。
+
+**解决方案：**
+
+> a、 通过`-f`强制卸载
+>
+> ```shell
+> umount /data1 -f
+> ```
+>
+> b、如果a方式仍然不行，则使用此方式。
+>
+> ```shell
+> #1 查看哪些进程占用了此数据盘设备
+> fuser -m /data1
+> /data1:        21746c
+> ```
+>
+> 其中21746是进程号，通过如下命令查看具体是什么进程
+>
+> ```shell
+> ps -aux |grep 21746
+> ```
+>
+> 将进程`kill`之后再次卸载
+>
+> ```shell
+> kill -9 21746
+> ```
+>
+> ```shell
+> umount /data1
+> ```
+
