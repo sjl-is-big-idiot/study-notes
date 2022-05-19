@@ -273,11 +273,84 @@ page-access         0     r
 其中store列就是占用的存储空间
 ```
 
-查看book索引的_settings配置：
+查看book索引的settings配置：
 
 ```csharp
-GET book/_settings
+curl -XGET http://ip:端口/book/_settings?pretty
 ```
+
+查看book索引的mapping
+
+```shell
+curl -XGET http://ip:端口/book/_mapping?pretty
+```
+
+关闭某index
+
+```shell
+curl -XPOST http://ip:端口/book/_close
+```
+
+- 索引关闭后， 对集群的相关开销基本降低为 0
+- 但是无法被读取和搜索
+- 当需要的时候， 可以重新打开，索引恢复正常
+
+开启某index
+
+```shell
+curl -XPOST http://ip:端口/book/_open
+```
+
+查看所有template
+
+```shell
+curl -XGET 10.225.74.16:9200/_template/
+```
+
+
+
+查看book索引的template
+
+```shell
+curl -XGET 10.225.74.16:9200/_template/book
+```
+
+
+
+删除单个:
+
+```
+DELETE /index
+curl -XDELETE 'http://192.169.1.666:9200/index'
+```
+
+删除多个索引：
+
+```shell
+DELETE /index_one,index_two
+curl -XDELETE 'http://192.169.1.666:9200/index_one,index_two'
+
+DELETE /index_*
+curl -XDELETE 'http://192.169.1.666:9200/index_*
+```
+
+删除 全部 索引(**强烈不建议**)：
+
+```shell
+DELETE /_all
+curl -XDELETE 'http://192.169.1.666:9200/_all
+
+DELETE /*
+curl -XDELETE 'http://192.169.1.666:9200/*'
+```
+
+删除全部索引操作非常危险，禁止删除全部索引的措施
+
+[elasticsearch](https://so.csdn.net/so/search?q=elasticsearch&spm=1001.2101.3001.7020).yml 做如下配置：
+`action.destructive_requires_name: true`
+
+这个设置使删除只限于特定名称指向的数据, 而不允许通过指定 _all 或通配符来删除指定索引库
+
 
 
 [ElasticSearch统计总数据量](https://blog.csdn.net/whq12789/article/details/101062968)
