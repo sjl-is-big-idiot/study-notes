@@ -1,3 +1,5 @@
+
+
 安装mysql客户端
 yum install mysql  -y
 
@@ -30,7 +32,9 @@ mysql>select version();
 
 
 
-## 1.查看所有数据库容量大小
+## 数据库
+
+### 1.查看所有数据库容量大小
 
 select
 table_schema as '数据库',
@@ -41,7 +45,7 @@ from information_schema.tables
 group by table_schema
 order by sum(data_length) desc, sum(index_length) desc;
 
-## 2.查看所有数据库各表容量大小
+### 2.查看所有数据库各表容量大小
 
 select
 table_schema as '数据库',
@@ -52,7 +56,7 @@ truncate(index_length/1024/1024, 2) as '索引容量(MB)'
 from information_schema.tables
 order by data_length desc, index_length desc;
 
-## 3.查看指定数据库容量大小
+### 3.查看指定数据库容量大小
 
 例：查看mysql库容量大小
 
@@ -64,7 +68,7 @@ sum(truncate(index_length/1024/1024, 2)) as '索引容量(MB)'
 from information_schema.tables
 where table_schema='mysql';
 
-## 4.查看指定数据库各表容量大小
+### 4.查看指定数据库各表容量大小
 
 例：查看mysql库各表容量大小
 
@@ -78,51 +82,65 @@ from information_schema.tables
 where table_schema='mysql'
 order by data_length desc, index_length desc;
 
-5. ## 查看编码
+## 表
 
-show variables like 'character%';
-	2.修改数据库的编码格式
-
-	方法一：命令为：set character% = utf8；
-	
-	例如：set character_set_client =utf8;
+TODO
 
 
-6. ## mysql查看主从同步状态的方法
-	
-	-- 查看主库运行状态
-	mysql> show master status\G
-	-- 查看从库运行状态
-	mysql> show slave status\G
-	
-	-- 负责把主库bin日志(Master_Log)内容投递到从库的中继日志上(Relay_Log)
-	Slave_IO_Running: Yes
-	-- 负责把中继日志上的语句在从库上执行一遍
-	Slave_SQL_Running: Yes
-	-- Yes：表示正常， No：表示异常
-	
-7. ## mysql修改用户密码
 
-   UPDATE mysql.user SET password=PASSWORD("Dicosp@ss123!") WHERE user='root';
+## 用户
 
-   select Host,User,Password from mysql.user;
+### 查看mysql用户信息
 
-8. ## mysql创建新用户
+```sql
+SELECT User, Host, Password FROM mysql.user;
+```
 
-create user kzt_zt identified by 'Syk^ziuOOcsLCaw9';
-GRANT ALL PRIVILEGES ON *.* TO 'kzt_zt'@'%' IDENTIFIED BY 'Syk^ziuOOcsLCaw9' WITH GRANT OPTION;
+### mysql修改用户密码
 
-GRANT ALL PRIVILEGES ON *.* TO 'kzt_zt'@'localhost' IDENTIFIED BY 'Syk^ziuOOcsLCaw9' WITH GRANT OPTION;
+```sql
+--查看当前的mysql用户信息
+select Host,User,Password from mysql.user;
 
+UPDATE mysql.user SET password=PASSWORD("yourpassword") WHERE user='root';
 flush privileges;
 
+--查看当前的mysql用户信息
+select Host,User,Password from mysql.user;
+```
 
 
-## MySQL开启联邦引擎
+
+### mysql创建新用户
+
+```sql
+create user kzt_zt identified by 'yourpassword';
+GRANT ALL PRIVILEGES ON *.* TO 'kzt_zt'@'%' IDENTIFIED BY 'yourpassword' WITH GRANT OPTION;
+GRANT ALL PRIVILEGES ON *.* TO 'kzt_zt'@'localhost' IDENTIFIED BY 'yourpassword' WITH GRANT OPTION;
+flush privileges;
+```
+
+
+
+## 索引
+
+查看某表的索引
+
+```sql
+SHOW INDEX FROM 表名;
+```
+
+
+
+## 引擎
+
+### 联邦引擎
 
 登录mysql查看是否开启了联邦引擎
 
+```sql
 show engines;
+```
 
 ![img](MySQL安装和基础命令.assets/993337-20180704084123390-1139277077.png)
 
@@ -132,6 +150,7 @@ show engines;
 
 在服务器A上有MySQL数据库test_a,在服务器B上有MySQL数据库test_b。现在需要将test_a库中的user表数据映射到数据库test_b中。此时需要在数据库test_b中建立表user，注意ENGINE和CONNECTION。
 
+```sql
 CREATE TABLE user (
   id int(11) NOT NULL,
   name varchar(30) NOT NULL,
@@ -140,6 +159,7 @@ CREATE TABLE user (
 ) ENGINE=FEDERATED 
 CONNECTION='mysql://test:123456@192.168.1.5:3306/test_a/user'
 DEFAULT CHARSET=utf8;
+```
 
 上面链接中test是链接数据库用户名称；123456是密码；192.168.1.5是数据库服务器ip；3306是数据库服务器端口；test_a是数据库名称；user是数据库表名称。
 
@@ -159,9 +179,30 @@ CONNECTION='mysql://username:password@hostname/database/tablename'
 
 [MySQL开启federated引擎实现数据库表映射](https://www.cnblogs.com/shuilangyizu/p/9261567.html)
 
+## 主从同步
+
+### mysql查看主从同步状态的方法
+
+查看主库运行状态
+
+```sql
+show master status\G
+```
 
 
-## 字符集
+查看从库运行状态
+
+```sql
+show slave status\G
+```
+
+> -- 负责把主库bin日志(Master_Log)内容投递到从库的中继日志上(Relay_Log)
+> Slave_IO_Running: Yes
+> -- 负责把中继日志上的语句在从库上执行一遍
+> Slave_SQL_Running: Yes
+> -- Yes：表示正常， No：表示异常
+
+## 编码和字符集
 
 [mysql怎么查看表的字符集](https://m.php.cn/article/460632.html)
 
@@ -170,8 +211,20 @@ CONNECTION='mysql://username:password@hostname/database/tablename'
 **查看MYSQL数据库服务器和数据库字符集**
 
 ```sql
-方法一：show variables like ``'%character%'``;
-方法二：show variables like ``'collation%'``;
+方法一：show variables like '%character%';
+方法二：show variables like 'collation%';
+```
+
+修改数据库的编码格式
+
+方法一：
+
+```sql
+--命令为：
+set character% = utf8；
+
+--例如：
+set character_set_client =utf8;
 ```
 
 **查看MYSQL所支持的字符集**
@@ -220,10 +273,6 @@ select @@session.sql_mode;
 select @@global.sql_mode;
 ```
 
-
-
-
-
 修改session级别的`sql_mode`
 
 ```sql
@@ -258,6 +307,83 @@ sql-mode = "xx_mode"
 
 # mysql问题
 
+### mysql忘记root用户密码，无法登录了
+
+这种情形是十分有可能遇到的，比如做mysql物理备份数据恢复后，目标端的mysql.user表中的数据也是源端mysql的数据，即造成root用户的密码改动了，可能会出现无法登录的情况
+
+**解决方案：**
+
+> 让mysql跳过密码认证即可，有两种实现方式：
+>
+> 方式一：[mysql实现不用密码登录的实例方法](https://www.jb51.net/article/194448.htm)
+>
+> a、停止mysql服务
+>
+> ```shell
+> /etc/init.d/mysqld stop
+> #或
+> systemctl stop mysqld
+> ```
+>
+> b、跳过密码验证
+>
+> ```shell
+> /usr/bin/mysqld_safe --skip-grant-tables
+> ```
+>
+> 或
+>
+> ```shell
+> mysqld_safe --skip-grant-tables
+> ```
+>
+> 跳过权限表启动mysql。
+>
+> c、登录mysql服务端，修改root用户密码，并刷新权限
+>
+> ```sql
+> --登录mysql
+> mysql
+> 
+> --修改root用户密码
+> UPDATE mysql.user SET password=PASSWORD("yourpassword") WHERE user='root';
+> flush privileges;
+> ```
+>
+> d、重启mysql
+>
+> 方式二：[MySQL设置免密登录](https://blog.51cto.com/u_12902538/3726893)
+>
+> a、修改/etc/my.cnf中[mysqld]部分内容
+>
+> ```shell
+> vim /etc/my.cnf
+> 
+> 在[mysqld]最后添加：skip-grant-tables
+> ```
+>
+> b、重启MySQL
+> c、直接mysql进入mysql服务端，修改root用户密码，并刷新权限
+>
+> ```sql
+> --登录mysql
+> mysql
+> 
+> --修改root用户密码
+> UPDATE mysql.user SET password=PASSWORD("yourpassword") WHERE user='root';
+> flush privileges;
+> ```
+>
+> d、退出，删掉/etc/my.cnf的skip-grant-tables
+>
+> ```shell
+> vim /etc/my.cnf
+> 
+> 删掉skip-grant-tables
+> ```
+>
+> e、重启mysql
+
 ## mysql报错：ORDER BY clause is not in GROUP BY clause and contains nonaggregated column
 
 https://blog.csdn.net/zx1293406/article/details/103401803
@@ -266,3 +392,6 @@ https://blog.csdn.net/zx1293406/article/details/103401803
 
 `sql_mode`设置为`only_full_group_by`，导致出现此报错
 
+**解决方案：**
+
+> 修改sql_mode=空。不用重启mysql
