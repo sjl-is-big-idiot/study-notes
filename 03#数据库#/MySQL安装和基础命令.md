@@ -122,12 +122,51 @@ flush privileges;
 
 
 
-## 索引
+## 索引和主键
 
 查看某表的索引
 
 ```sql
 SHOW INDEX FROM 表名;
+```
+
+查看某表的键
+
+```sql
+show keys from 表名;
+--或者
+show full columns from 表名;
+```
+
+
+
+查看某表的主键
+
+```sql
+SELECT t.TABLE_NAME,
+       t.CONSTRAINT_TYPE,
+       c.COLUMN_NAME,
+       c.ORDINAL_POSITION
+FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS t,
+     INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS c
+WHERE t.TABLE_NAME = c.TABLE_NAME
+  AND t.CONSTRAINT_TYPE = 'PRIMARY KEY'
+  AND t.TABLE_NAME='[$Table_Name]'
+  AND t.TABLE_SCHEMA='[$DB_Name]';
+```
+
+## 存储过程
+
+查看存储过程状态
+
+```shell
+SHOW PROCEDURE STATUS LIKE '存储过程名' \G
+```
+
+查看存储过程创建语句
+
+```sql
+SHOW CREATE PROCEDURE <存储过程名>;
 ```
 
 
@@ -144,9 +183,9 @@ show engines;
 
 ![img](MySQL安装和基础命令.assets/993337-20180704084123390-1139277077.png)
 
-在mysql安装目录下的my.cnf配置文件中的[mysqld]部分下添加federated。
+在mysql安装目录下的`my.cnf`配置文件中的`[mysqld]`部分下添加`federated`。
 
-如何利用联邦引擎建立与远程mysql库表的映射。
+**如何利用联邦引擎建立与远程mysql库表的映射**
 
 在服务器A上有MySQL数据库test_a,在服务器B上有MySQL数据库test_b。现在需要将test_a库中的user表数据映射到数据库test_b中。此时需要在数据库test_b中建立表user，注意ENGINE和CONNECTION。
 
@@ -178,6 +217,18 @@ CONNECTION='mysql://username:password@hostname/database/tablename'
 此时，修改test_b中的user表后，就可以在test_a中的user表中看到相关改动；同理，修改test_a中的user表后，就可以在test_b中的user表中看到相关改动。
 
 [MySQL开启federated引擎实现数据库表映射](https://www.cnblogs.com/shuilangyizu/p/9261567.html)
+
+
+
+**查看mysql中有哪些联邦表**
+
+```sql
+SELECT TABLE_SCHEMA, TABLE_NAME, engine FROM INFORMATION_SCHEMA.TABLES WHERE engine='FEDERATED';
+```
+
+
+
+
 
 ## 主从同步
 
@@ -259,21 +310,62 @@ show full columns from 表名;
 
 ## 参数配置
 
-### 查看和修改sql_mode
+#### general_log
 
-查看session级别的`sql_mode`
+[mysql general log使用介绍](https://blog.csdn.net/lanyang123456/article/details/110727425)
+
+general log 是MySQL 日志的一种，它会记录MySQL执行的每条SQL，非常详细。
+
+但对MySQL性能有影响，为了性能考虑，一般general log不会开启，除非排查问题。
+
+开启general log有两种方式。
+
+**查看当前`general_log`的值**
+
+```sql
+show variables like 'general%';
+```
+
+**临时修改`general_log`**
+
+```sql
+-- 开启后，执行的所有sql，都会记录到general_log_file文件中。
+set global general_log=on;
+-- 关闭
+set global general_log=off;
+```
+
+这种方式对`general_log`的修改，重启mysql服务后，会失效。
+
+**永久修改`general_log`**
+
+`/etc/my.cnf`配置文件中，增加配置：
+
+```sql
+[mysqld]
+general_log = 1
+general_log_file = /tmp/general.log
+```
+
+重启mysql后生效。
+
+*注：开启general log一般就是为了排查问题，如果不再使用，记得及时关闭，以免影响性能。*
+
+### sql_mode
+
+**查看session级别的`sql_mode`**
 
 ```sql
 select @@session.sql_mode;
 ```
 
-查看全局级别的`sql_mode`
+**查看全局级别的`sql_mode`**
 
 ```sql
 select @@global.sql_mode;
 ```
 
-修改session级别的`sql_mode`
+**修改session级别的`sql_mode`**
 
 ```sql
 set @@session.sql_mode='xx_mode'
@@ -283,7 +375,7 @@ set session sql_mode='xx_mode'
 
 session均可省略，默认session，仅对当前会话有效
 
-修改全局级别的`sql_mode`
+**修改全局级别的`sql_mode`**
 
 ```sql
 set global sql_mode='xx_mode';
