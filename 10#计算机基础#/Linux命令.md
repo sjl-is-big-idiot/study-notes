@@ -476,3 +476,142 @@ umount /data1
 > umount /data1
 > ```
 
+
+
+### 分区
+
+#### 创建lvm分区
+
+文件系统格式为`ext4`
+
+```shell
+#############查看是否存在挂载点/data###################
+ls /data
+############创建逻辑卷、格式化、开机自动挂载############
+pvcreate /dev/vdb
+vgcreate vg_data /dev/vdb
+lvcreate -l 100%VG -n lv_data vg_data
+mkfs.ext4 /dev/vg_data/lv_data
+echo "/dev/vg_data/lv_data /data ext4 defaults 0 0" >> /etc/fstab
+###########挂载###################################
+mount -a
+##########重启验证#################################
+```
+
+文件系统格式为`xfs`
+
+```shell
+#############查看是否存在挂载点/data###################
+ls /data
+############创建逻辑卷、格式化、开机自动挂载############
+pvcreate /dev/vdb
+vgcreate vg_data /dev/vdb
+lvcreate -l 100%VG -n lv_data vg_data
+mkfs.ext4 /dev/vg_data/lv_data
+echo "/dev/vg_data/lv_data /data ext4 defaults 0 0" >> /etc/fstab
+###########挂载###################################
+mount -a
+##########重启验证#################################
+```
+
+
+
+#### 扩容lvm分区
+
+参考自：[Centos 7 利用LVM实现动态扩容](https://blog.csdn.net/u012439646/article/details/73380197)
+
+1、查看卷组使用情况
+
+```shell
+vgdisplay
+```
+
+
+
+![img](Linux命令.assets/20170617144947785)
+
+​																		图片来源于互联网
+
+2、查看当前逻辑卷的空间状态
+
+```shell
+lvdisplay
+```
+
+![img](Linux命令.assets/20170617145100866)
+
+​																		图片来源于互联网
+
+3、查看磁盘挂载信息
+
+```shell
+fdisk -l
+```
+
+![img](Linux命令.assets/20170617145155116)
+
+​																		图片来源于互联网
+
+4、格式化分区操作
+
+```shell
+fdisk /dev/vdc
+```
+
+![img](Linux命令.assets/20170617145249023)
+
+​																		图片来源于互联网
+
+5、把新加的磁盘设置为LVM模式
+
+![img](Linux命令.assets/20170617145335805)
+
+​																		图片来源于互联网
+
+确认分区
+
+![img](Linux命令.assets/20170617145419494)
+
+​																		图片来源于互联网
+
+
+
+6、将新加的分区 `/dev/vdc1`创建为物理卷
+
+```shell
+pvcreate /dev/vdc1
+```
+
+7、给卷组`vg_data`扩容，将物理卷 `/dev/vdc1` 扩展至`vg_data`卷组
+
+```shell
+vgextend vg_data /dev/vdc1
+```
+
+8、此时卷组`vg_data`有?G空余空间，将空余空间都扩容至`/dev/mapper/vg_data-lv_data`
+
+```shell
+lvextend -l +100%FREE /dev/mapper/vg_data-lv_data
+```
+
+9、此时20G磁盘虽已扩展至 /home，但并没写入文件系统；进入 /etc/fstab 确认 /home 文件系统--->ext4
+
+![img](Linux命令.assets/20170617145846744)
+
+​																		图片来源于互联网
+
+10、写入`ext4`文件系统，使扩容生效
+
+```shell
+resize2fs /dev/mapper/vg_data-lv_data
+```
+
+11、如果是xfs文件系统，则使用如下命令，刷新文件系统使扩容生效：
+
+```shell
+xfs_growfs /dev/mapper/vg_data-lv_data
+```
+
+![img](Linux命令.assets/20170617150039221)
+
+​																		图片来源于互联网
