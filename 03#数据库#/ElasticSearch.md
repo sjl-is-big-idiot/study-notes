@@ -8,7 +8,30 @@ TODO
 
 # 安装ElasticSearch
 
-TODO
+安装
+
+```shell
+groupadd elasticsearch
+useradd -g elasticsearch elasticsearch
+
+tar -zxvf elasticsearch-5.6.4.tar.gz -C /opt/module/
+
+chown -R elasticsearch:elasticsearch /opt/module/elasticsearch-5.6.4
+vim /opt/module/elasticsearch-5.6.4/config/elasticsearch.yml 
+su elasticsearch -c "/opt/module/elasticsearch-5.6.4/bin/elasticsearch -d"
+```
+
+查看es进程
+
+```shell
+[root@iZbp1gu0pp5slavsj11kfoZ elasticsearch-5.6.4]# ps -ef |grep elastic
+elastic+  1738     1 79 19:22 ?        00:00:07 /opt/module/jdk1.8.0_291/bin/java -Xms2g -Xmx2g -XX:+UseConcMarkSweepGC -XX:CMSInitiatingOccupancyFraction=75 -XX:+UseCMSInitiatingOccupancyOnly -XX:+AlwaysPreTouch -server -Xss1m -Djava.awt.headless=true -Dfile.encoding=UTF-8 -Djna.nosys=true -Djdk.io.permissionsUseCanonicalPath=true -Dio.netty.noUnsafe=true -Dio.netty.noKeySetOptimization=true -Dio.netty.recycler.maxCapacityPerThread=0 -Dlog4j.shutdownHookEnabled=false -Dlog4j2.disable.jmx=true -Dlog4j.skipJansi=true -XX:+HeapDumpOnOutOfMemoryError -Des.path.home=/opt/module/elasticsearch-5.6.4 -cp /opt/module/elasticsearch-5.6.4/lib/* org.elasticsearch.bootstrap.Elasticsearch -d
+root      1774  1572  0 19:22 pts/0    00:00:00 grep --color=auto elastic
+```
+
+
+
+
 
 # ElasticSearch原理
 
