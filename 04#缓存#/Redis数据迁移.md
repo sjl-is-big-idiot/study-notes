@@ -42,6 +42,12 @@ https://github.com/alibaba/redis-shake/releases
 
 ## 3.2 redis-shake迁移Redis集群
 
+- 源：阿里云，Redis 5.0 企业版 16G集群性能增强版（8节点）
+
+- 目：腾讯云，Redis 5.0集群架构 16G=8分片/2GB/1 副本
+
+<font style="color:red;">注意：目前(2022-06-18），redis-shake只支持全量迁移不支持增量。</font>
+
 `redis-shake`使用文档(https://github.com/alibaba/RedisShake/wiki/第一次使用，如何进行配置？)
 
  进入`redis-shake`的bin目录，修改配置
@@ -109,6 +115,12 @@ target.password_raw =
 TODO
 
 ## 3.3 redis-shake迁移Redis单机/主从
+
+- 源：腾讯云cvm上自建redis，Redis server v=3.2.1 
+
+- 目：腾讯云cvm上自建redis， Redis server v=3.2.1
+
+<font style="color:red;">注意：之前测试过几次全量迁移没有问题，进入到增量迁移阶段之后，跑一段时间增量（10min或几小时）之后，就会报错，增量会自己停掉。</font>
 
 `redis-shake`使用文档(https://github.com/alibaba/RedisShake/wiki/第一次使用，如何进行配置？)
 
