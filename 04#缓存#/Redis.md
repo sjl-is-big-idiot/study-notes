@@ -1541,9 +1541,140 @@ Redis可以使用主从同步，从从同步。第一次同步时，主节点做
 
 
 
+# Redis部署
+
+## 单机模式部署
+
+从官网下载https://download.redis.io/releases/ ，如redis-3.2.1.tar.gz
+
+```shell
+mkdir /opt/software /opt/module
+mv redis-3.2.1.tar.gz /opt/software/
+
+tar -xzvf /opt/software/redis-3.2.1.tar.gz -C /opt/module
+cd /opt/module/redis-3.2.1
+make
+
+cd src && make intall
+```
+
+
+
+## redis主从模式部署
+
+从官网下载https://download.redis.io/releases/ ，如redis-3.2.1.tar.gz
+
+```shell
+tar -xzvf redis-3.2.1.tar.gz
+cd redis-3.2.1
+make
+
+cd src && make intall
+```
+
+mkdir 6379 6479 6579
+
+每个目录下有两个配置文件redis.conf sentinel.conf
+
+
+
+启动redis server
+
+
+
+cd xx
+
+./src/redis-server  /opt/module/redis-3.2.1/6379/redis.conf
+
+./src/redis-server  /opt/module/redis-3.2.1/6479/redis.conf
+
+./src/redis-server /opt/module/redis-3.2.1/6579/redis.conf
+
+
+
+
+
+关闭redis：
+
+```shell
+redis-cli  shutdown
+```
+
+配置redis登录密码
+
+```
+requirepass 密码
+1
+```
+
+配置redis以守护进程方式启动
+
+```
+daemonize no 修改为 daemonize yes
+1
+```
+
+配置问看修改后重启redis服务生效
+
+/usr/local/redis/bin/redis-cli  shutdown
+/usr/local/redis/bin/redis-server  /usr/local/redis/conf/redis.conf
+
+TODO
+
+## redis主从+sentinel集群部署
+
+TODO
+
+
+
+```
+sentinel monitor mymaster 127.0.0.1 6379 2
+sentinel down-after-milliseconds mymaster 60000
+sentinel failover-timeout mymaster 180000
+sentinel parallel-syncs mymaster 1
+```
+
+./src/redis-sentinel 6379/sentinel.conf
+
+./src/redis-sentinel 6479/sentinel.conf
+
+./src/redis-sentinel 6579/sentinel.conf
+
+
+
+### Testing the failover
+
+```
+redis-cli -p 6379 DEBUG sleep 30
+```
+
+
+
+## redis cluster集群部署
+
+TODO
+
+
+
+
+
+
+
 # Redis常用命令
 
 [Redis常用命令](https://blog.csdn.net/ithomer/article/details/9213185/)
+
+查看连接数
+
+```shell
+redis查看连接数
+redis-cli -h ip -p 6379
+config get maxclients
+info clients
+client list
+```
+
+
 
 ## 1）连接操作命令
 
@@ -1735,6 +1866,12 @@ info命令从Server，Clients，Memory，Persistence，Stats，Replication，CPU
 
 ### server
 
+查看redis服务端信息
+
+```redis
+info server
+```
+
 对于redis所在服务器的基础环境进行描述
 
 | 参数              | 描述                                                         |
@@ -1761,6 +1898,12 @@ info命令从Server，Clients，Memory，Persistence，Stats，Replication，CPU
 | config_file       | 配置文件在服务器路径信息                                     |
 
 ### **Clients**
+
+```shell
+info clients
+```
+
+
 
 **对于客户端连接的一些信息**
 
