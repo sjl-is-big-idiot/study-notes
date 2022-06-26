@@ -11,6 +11,9 @@ PostgreSql提供了许多功能，旨在帮助开发人员构建应用程序，�
 
 
 #					2. 安装						#
+
+安装pg客户端
+
 ## 2.1 离线安装pg
 https://blog.csdn.net/u010177412/article/details/82150207
 
