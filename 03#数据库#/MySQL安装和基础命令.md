@@ -98,6 +98,186 @@ TODO
 
 
 
+
+
+## 索引和主键
+
+查看某表的索引
+
+```sql
+SHOW INDEX FROM 表名;
+```
+
+查看某表的键
+
+```sql
+show keys from 表名;
+--或者
+show full columns from 表名;
+```
+
+
+
+查看某表的主键
+
+```sql
+SELECT t.TABLE_NAME,
+       t.CONSTRAINT_TYPE,
+       c.COLUMN_NAME,
+       c.ORDINAL_POSITION
+FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS t,
+     INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS c
+WHERE t.TABLE_NAME = c.TABLE_NAME
+  AND t.CONSTRAINT_TYPE = 'PRIMARY KEY'
+  AND t.TABLE_NAME='[$Table_Name]'
+  AND t.TABLE_SCHEMA='[$DB_Name]';
+```
+
+## 存储过程
+
+查看当前MySQL有哪些procedure
+
+```sql
+SHOW PROCEDURE STATUS LIKE '%';
+--或
+show procedure status;
+```
+
+查看指定库下有哪些procedure
+
+```sql
+show procedure status where db='db_name';
+```
+
+
+
+查看存储过程状态
+
+```shell
+SHOW PROCEDURE STATUS LIKE '存储过程名' \G
+```
+
+查看存储过程创建语句
+
+```sql
+SHOW CREATE PROCEDURE <存储过程名>;
+
+```
+
+查看存储过程详情
+
+```sql
+select `name` from mysql.proc where db = 'xx' and `type` = 'PROCEDURE'
+```
+
+
+
+## 事件
+
+如何查看Mysql event事件是否启用
+
+```sql
+show variables like 'event_scheduler';
+--或
+select @@event_scheduler;
+```
+
+本次会话开启event
+
+```sql
+set global event_scheduler=on;
+--或
+set global event_scheduler=1;
+```
+
+
+
+ 查看调度器线程
+
+```sql
+show processlist;
+```
+
+查看当前所在库的事件
+
+```sql
+show events;
+```
+
+ 查看所有事件
+
+```sql
+select * from mysql.event;
+```
+
+```sql
+show create event 数据库名.事件名;
+```
+
+修改事件
+
+TODO
+
+启用/禁用单个事件
+
+```sql
+-- 修改事件status为disable
+alter event EVENT_RegionTrafficIndex on completion preserve enable;
+-- 修改事件status为disable
+alter event EVENT_RegionTrafficIndex on completion preserve disable;
+```
+
+> 
+
+## 函数
+
+```sql
+方法一：
+--存储过程
+select `name` from mysql.proc where db = 'your_db_name' and `type` = 'PROCEDURE'   
+--函数
+select `name` from mysql.proc where db = 'your_db_name' and `type` = 'FUNCTION'   
+
+方法二：
+--存储过程
+show procedure status; 
+--函数
+show function status;     
+
+查看存储过程或函数的创建代码
+
+show create procedure 存储过程名字;
+show create function 函数名字;
+
+查看视图
+--视图
+SELECT * from information_schema.VIEWS  
+--表
+SELECT * from information_schema.TABLES
+```
+
+## 触发器
+
+[mysql触发器trigger详解](https://blog.csdn.net/little__SuperMan/article/details/123519033)
+
+1、SHOW TRIGGERS语句查看触发器信息
+
+```sql
+SHOW TRIGGERS
+```
+
+2、在information_schema.triggers表中查看指定触发器信息
+
+```sql
+SELECT * FROM information_schema.triggers WHERE TRIGGER_NAME='trig1'; 
+```
+
+3、删除指定触发器
+
+```sql
+drop trigger  trig1;
+```
+
 ## 用户
 
 ### 查看mysql用户信息
@@ -138,53 +318,6 @@ flush privileges;
 
 
 
-## 索引和主键
-
-查看某表的索引
-
-```sql
-SHOW INDEX FROM 表名;
-```
-
-查看某表的键
-
-```sql
-show keys from 表名;
---或者
-show full columns from 表名;
-```
-
-
-
-查看某表的主键
-
-```sql
-SELECT t.TABLE_NAME,
-       t.CONSTRAINT_TYPE,
-       c.COLUMN_NAME,
-       c.ORDINAL_POSITION
-FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS t,
-     INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS c
-WHERE t.TABLE_NAME = c.TABLE_NAME
-  AND t.CONSTRAINT_TYPE = 'PRIMARY KEY'
-  AND t.TABLE_NAME='[$Table_Name]'
-  AND t.TABLE_SCHEMA='[$DB_Name]';
-```
-
-## 存储过程
-
-查看存储过程状态
-
-```shell
-SHOW PROCEDURE STATUS LIKE '存储过程名' \G
-```
-
-查看存储过程创建语句
-
-```sql
-SHOW CREATE PROCEDURE <存储过程名>;
-```
-
 ## 权限
 
 参考自：https://blog.csdn.net/weixin_42109012/article/details/102684153
@@ -201,11 +334,23 @@ SHOW CREATE PROCEDURE <存储过程名>;
 **MySQL查看用户权限**
 
 ```sql
+show grants for 'tengxunmi'@'%';
+```
+
+
+
+或者
+
+```sql
 SELECT * FROM mysql.user WHERE user='root'\G
 ```
 
 \g 相当于’;’
 \G使每个字段打印到单独的行，也有’;'的作用
+
+```sql
+SELECT * FROM mysql.user WHERE user='ops' AND host='10.88.70.%'\G
+```
 
 **用户信息：授权对象，连接用户名，用户密码**
 
