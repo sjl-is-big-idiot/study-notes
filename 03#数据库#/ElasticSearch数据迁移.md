@@ -76,6 +76,8 @@ npm install --registry=https://registry.npm.taobao.org elasticdump
 
 ### 3.3.2 使用elaticdump进行数据迁移
 
+**构造测试数据**
+
 安装elasticdump的机器需要同时与源端es、目标端es网络打通。
 
 a、从网上下载es测试的json文件，下载地址：[es测试数据.json](https://gitee.com/xlh_blog/common_content/blob/master/es%E6%B5%8B%E8%AF%95%E6%95%B0%E6%8D%AE.json#) ，重命名为test-data-for-es.json。将测试数据放在服务器的`/root`目录下。
