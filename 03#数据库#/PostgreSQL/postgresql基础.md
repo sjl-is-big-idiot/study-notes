@@ -107,7 +107,7 @@ delete from [表名];    // 删空整个表
 
 ## 函数
 
-#查看有哪些函数
+查看有哪些函数
 
 ```sql
 SELECT
@@ -319,7 +319,7 @@ alter schema emap owner to root;
 查看某数据库下有哪些表
 
 ```sql
-\d;
+\d
 -- 或者
 select tablename from pg_tables where schemaname='public'；
 ```
