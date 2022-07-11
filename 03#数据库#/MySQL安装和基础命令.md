@@ -32,13 +32,73 @@ exit;
 
 ## 查看mysql版本
 
+方式一
+
+```shell
 mysql --help
+```
 
+方式二
+
+```shell
 mysql -h1.1.1.1 -uroot -p
+```
 
+方式三
+
+```sql
 mysql> status;
+```
 
+方式四
+
+```sql
 mysql>select version();
+```
+
+[***查看mysql端口\*号、\*连接数\*、变量的命令**](https://blog.csdn.net/qq_40615403/article/details/91451369)
+
+1.查看mysql的端口号：
+
+```sql
+show global variables like 'port';
+```
+
+ 2.查看mysql的连接数：
+
+```sql
+show processlist; 
+```
+
+3.查看mysql全部的连接数：
+
+```sql
+show full processlist; 
+```
+
+4.查看最大的连接数：
+
+```sql
+show variables like '%max_connections%'; 
+```
+
+5.修改最大连接数：
+
+```sql
+set global max_connections =151;
+```
+
+6.查看mysql中的所有变量：
+
+```sql
+show varables;
+```
+
+7.查看mysql中的变量也可进行模糊查询：
+
+```sql
+show variables like 'default%'; 
+```
 
 
 
@@ -161,13 +221,18 @@ SHOW PROCEDURE STATUS LIKE '存储过程名' \G
 
 ```sql
 SHOW CREATE PROCEDURE <存储过程名>;
-
 ```
 
 查看存储过程详情
 
 ```sql
 select `name` from mysql.proc where db = 'xx' and `type` = 'PROCEDURE'
+```
+
+删除存储过程
+
+```sql
+drop procedure <存储过程名>;
 ```
 
 
