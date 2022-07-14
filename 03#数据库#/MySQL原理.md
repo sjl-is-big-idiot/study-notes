@@ -1641,6 +1641,7 @@ left join btable on atable.aid=btable.bid;//最好在bid上建索引
 
 
 
+
 ### ② 数据库表结构的优化：使得数据库结构符合三大范式与BCNF
 
 ### ③ 系统配置的优化
@@ -1768,8 +1769,8 @@ CREATE DATABASE IF NOT EXISTS test_db_char
 -- 删除数据库
 DROP DATABASE IF EXISTS table_name;
 -- 创建一张表
-CREATE table `table1` CHARACTER SET utf-8 (
-	id INT(4) NOT NULL AUTO_INCREMENT;
+CREATE table `table1` CHARACTER SET utf8 (
+	id INT(4) NOT NULL AUTO_INCREMENT,
     name VARCHAR(256) NOT NULL,
     PRIMARY KEY (id)
 );
