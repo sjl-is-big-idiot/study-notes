@@ -1658,7 +1658,36 @@ TODO
 
 
 
+### 哨兵模式连接redis需要密码，如何能在访问redis sentinel的时候可以免密登录呢？
 
+从[为redis-sentinel设置访问密码](https://blog.csdn.net/weixin_43646150/article/details/117297322)可以总结出：
+
+> 要为redis-sentinel配置密码认证，只需要给redis-sentinel监听的redis都设置上密码即可（requirepass配置项，redis主从密码应保持一致）
+>
+> 要让redis-sentinel配置免密登录，只需要让redis是免密登录的即可（redis主从应都保持免密登录）。
+
+
+
+[Redis 哨兵模式设置密码](https://blog.csdn.net/qq_18629653/article/details/111321143)
+
+> 带密码认证的rendis和redis-sentinel的部分配置示例如下所示：
+>
+> 两台机器一台master，一台slave，两个sentinel
+> master修改
+>
+> 1. redis.conf
+> requirepass 123456        #添加密码
+> 2. sentinel.conf
+> sentinel auth-pass mymaster 123456     #连接master密码
+> slave修改
+> 1. redis.conf
+> masterauth 123456    #连接master密码
+> slaveof 10.100.134.109 6379  #slaveof表示该机器是slave，后边ip为master地址和端口
+> 2. sentinel.conf
+> sentinel auth-pass mymaster 123456     #连接master密码
+> 启动redis
+> bin/redis-server conf/redis.conf
+> bin/redis-sentinel conf/sentinel.conf
 
 # Redis常用命令
 
