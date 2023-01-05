@@ -1,3 +1,9 @@
+# 1
+
+
+
+
+
 
 
 声明，初始化，赋值的区别
@@ -2764,3 +2770,74 @@ print(ts) # 1568172006.0
 dt = datetime.datetime.strptime(date_string, format)
 ts = dt.timestamp()
 ```
+
+
+
+# 2. python虚拟环境
+
+pip3 freeze > requirements.txt
+
+pip3 install -r requirements.txt
+
+
+
+## 2.1 创建虚拟环境
+
+```python
+python3 -m venv <虚拟环境名>
+#例子
+python3 -m venv myvenv
+```
+
+## 2.2 激活虚拟环境
+
+```python
+source ./myvenv/bin/activate
+```
+
+## 2.3 退出虚拟环境
+
+```python3
+deactivate
+```
+
+
+
+# python自定义异常类
+
+
+
+python函数内部获取该函数的函数名，`func.__name__`，如`myfunc.__name__`
+
+
+
+python install 下载安装第三方包time out
+
+```python
+#解决方法是使用国内的镜像源来下载
+pip3 install -i http2://pypi.tuna.tsinghua.edu.cn/simple <包名>
+```
+
+
+
+
+
+# python3连接hive（通过pyhive）
+
+安装linux系统依赖
+
+```shell
+yum install -y python3-devel python-devel gcc-c++ libsasl2-dev
+yum install -y cyrus-sasl cyrus-sasl-devel cyrus-sasl-lib cyrus-sasl-gssapi cyrus-sasl-plain
+```
+
+安装python3依赖
+
+```python
+pip3 install -i http2://pypi.tuna.tsinghua.edu.cn/simple pyhive
+pip3 install -i http2://pypi.tuna.tsinghua.edu.cn/simple thrift
+pip3 install -i http2://pypi.tuna.tsinghua.edu.cn/simple sasl
+pip3 install -i http2://pypi.tuna.tsinghua.edu.cn/simple thrift_sasl
+
+```
+

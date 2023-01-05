@@ -1,6 +1,6 @@
 ![这里写图片描述](https://img-blog.csdn.net/20170726111231331?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvc2luYXRfMTY3MTI2NzE=/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/SouthEast)![redis思维导图](Redis.assets/redis思维导图.png)
 
-# Redis原理
+# 1. Redis原理
 
 [Redis 设计与实现（第一版）](https://redisbook.readthedocs.io/en/latest/index.html)
 
@@ -1565,8 +1565,11 @@ cd src && make intall
 从官网下载https://download.redis.io/releases/ ，如redis-3.2.1.tar.gz
 
 ```shell
-tar -xzvf redis-3.2.1.tar.gz
-cd redis-3.2.1
+mkdir /opt/software /opt/module
+mv redis-3.2.1.tar.gz /opt/software/
+
+tar -xzvf /opt/software/redis-3.2.1.tar.gz -C /opt/module
+cd /opt/module/redis-3.2.1
 make
 
 cd src && make intall
@@ -1656,7 +1659,81 @@ TODO
 
 
 
+### redis设置密码认证
 
+[Redis学习---Redis的免密操作](http://t.zoukankan.com/ftl1012-p-9427087.html)
+
+#### 临时设置密码
+
+redis重启之后密码就会失效
+
+1. 登录redis
+
+   ```shell
+   $ redis-cli -p 6379
+   127.0.0.1:6379>
+   ```
+
+2. 查看当前是否设置了密码
+
+   ```shell
+   127.0.0.1:6379> config get requirepass
+      1) "requirepass"
+      2) ""
+   ```
+
+3. 为以上显示说明没有密码，那么现在来设置密码
+
+   ```shell
+   127.0.0.1:6379> config set requirepass abcdefg
+    OK
+   ```
+
+4. 再次查看当前redis就提示需要密码
+
+   ```shell
+   127.0.0.1:6379> config get requirepass
+   (error) NOAUTH Authentication required.
+   ```
+
+5. 验证是否需要密码才能登录redis
+
+   ```shell
+   127.0.0.1:6379> auth abcdefg
+   ok
+   ```
+
+   
+
+#### 永久设置密码
+
+需要永久配置密码的话就去redis.conf的配置文件中找到requirepass这个参数
+
+1. 修改redis.conf配置文件
+
+   ```shell
+   sudo vi /etc/redis/redis.conf    -->添加密码信息保存即可
+   # requirepass foobared
+   requirepass 123   指定密码123
+   ```
+
+2. 重启redis
+
+   ```shell
+   /etc/init.d/redis-server stop
+   /etc/init.d/redis-server start
+   ```
+
+3. 重启后登录
+
+   ```shell
+   redis -cli -p 6379
+   127.0.0.1:6379>
+   127.0.0.1:6379>auth 123
+   ok
+   ```
+
+   
 
 ### 哨兵模式连接redis需要密码，如何能在访问redis sentinel的时候可以免密登录呢？
 

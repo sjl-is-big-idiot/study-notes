@@ -3135,8 +3135,8 @@ TODO
 
    （1）查看下面这条语句的执行计划，并没有生成MR任务。
 
-       ```sql
-   hive (default)> explain select * from emp; Explain
+```sql
+hive (default)> explain select * from emp; Explain
    STAGE DEPENDENCIES:
      Stage-0 is a root stage
    
@@ -3154,7 +3154,7 @@ TODO
    _col6, _col7
                Statistics: Num rows: 1 Data size: 7020 Basic stats: COMPLETE Column stats: NONE
                ListSink
-       ```
+```
 
    有生成MR任务的
 
@@ -3216,10 +3216,10 @@ TODO
 
    （2）查看详细执行计划
 
-       ```sql
+```sql
    hive (default)> explain extended select * from emp;
    hive (default)> explain extended select deptno, avg(sal) avg_sal from emp group by deptno;
-       ```
+```
 
    
 
