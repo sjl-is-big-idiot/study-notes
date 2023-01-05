@@ -1,3 +1,15 @@
+## Java中 == 和 equals的区别
+
+> ​	== 比较的是堆内存地址是否一致
+> ​	equals 比较的是内容是否一致
+
+Java中 Int 和 Integer的区别
+
+> 结论
+> int和任意Integer都是同一地址；                       
+> Integer只在127范围内才是同地址，超出就false；            
+> Integer()与Integer无论什么数范围 都不同地址。
+
 ## 如何查看jar包中的源代码
 
 [jar文件查看源代码](https://blog.csdn.net/weixin_45519736/article/details/106237077)
