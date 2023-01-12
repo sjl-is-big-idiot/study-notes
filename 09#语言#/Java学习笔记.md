@@ -1,3 +1,19 @@
+## Java中进程的名字就是执行类的名字
+
+![image-20230110221344305](Java学习笔记.assets/image-20230110221344305.png)
+
+```java
+public class Hello{
+  public static void main( String[] args ) {
+	while (true) {
+		System.out.println("Hello world");
+	}
+  }
+}
+```
+
+
+
 ## Java中JVM的内存地址
 
 如下图所示，JVM中分为栈、堆和方法区（元空间）。
