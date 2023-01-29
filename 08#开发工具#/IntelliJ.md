@@ -40,3 +40,31 @@ x.sout	println
 
 
 
+# 问题
+
+## IDEA 的Plugins 连不上、打不开
+
+参考文档：https://blog.csdn.net/loulanyue_/article/details/105779350
+
+File > Settings > Plugins
+
+![image-20230129155023867](IntelliJ.assets/image-20230129155023867.png)
+
+![image-20230129155123712](IntelliJ.assets/image-20230129155123712.png)
+
+解决方法：参考https://blog.csdn.net/loulanyue_/article/details/105779350。
+
+三种方式：
+
+- 配置HTTP Proxy
+- **Setting—>update—>Check Now**
+- 离线下载插件，本地安装插件
+
+![image-20230129160603267](IntelliJ.assets/image-20230129160603267.png)
+
+![image-20230129160321475](IntelliJ.assets/image-20230129160321475.png)
+
+![image-20230129160104579](IntelliJ.assets/image-20230129160104579.png)
+
+
+
