@@ -1,4 +1,4 @@
-# 尚硅谷最新版Hive教程（基于hive3.x丨hive3.1.2）
+尚硅谷最新版Hive教程（基于hive3.x丨hive3.1.2）
 
 ## 1. Hive基本概念
 

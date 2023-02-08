@@ -20,9 +20,9 @@
 
 ## ZooKeeper的管理
 
+# 学习
 
-
-# bilibili 视频
+**bilibili 视频**
 
 https://www.bilibili.com/video/BV1PW411r7iP?p=7&spm_id_from=pageDriver
 

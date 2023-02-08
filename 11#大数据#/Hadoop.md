@@ -1,4 +1,4 @@
-# 尚硅谷Hadoop2.x课程
+**尚硅谷Hadoop2.x课程**
 
 ## 1. 大数据概论
 
@@ -1874,7 +1874,7 @@ TODO
 
 
 
-# 尚硅谷Hadoop2.x-HDFS课程
+**尚硅谷Hadoop2.x-HDFS课程**
 
 ## 1. HDFS概述
 
