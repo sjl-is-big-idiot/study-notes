@@ -2,6 +2,10 @@ Hadoop官网对kerberos的介绍 [Hadoop in Secure Mode](https://hadoop.apache.o
 
 文档来源：[【尚硅谷】2021新版电商数仓V4.0丨大数据数据仓库项目实战](https://www.bilibili.com/video/BV1rL411E7uz?p=167)
 
+官方文档：http://web.mit.edu/kerberos/
+
+​					https://www.kerberos.org/software/tutorial.html
+
 # 1. Kerberos部署
 
 ==HDFS中，启动HDFS进程的用户是谁，谁就是HDFS的超级用户（superuser）。==
@@ -19,7 +23,7 @@ Hadoop官网对kerberos的介绍 [Hadoop in Secure Mode](https://hadoop.apache.o
 
 ### 1.1.1 什么是Kerberos
 
-Kerberos是一种计算机网络认证协议，用来在非安全网络中，对个人通信以安全的手段进行==身份认证==。这个词又指麻省理工学院为这个协议开发的一套计算机软件。软件设计上采用客户端/服务器结构，并且能够进行相互认证，即客户端和服务端均可对对方进行身份认证，可以用于防止窃听、防止重放攻击、保护数据完整性等场合，是一种应用==对称密钥==体制进行密钥管理的系统。
+Kerberos是一种计算机网络认证协议，用来在非安全网络中，对个人通信以安全的手段进行==身份认证==。这个词又指麻省理工学院（MIT）为这个协议开发的一套计算机软件。软件设计上采用客户端/服务器结构，并且能够进行相互认证，即客户端和服务端均可对对方进行身份认证，可以用于防止窃听、防止重放攻击、保护数据完整性等场合，是一种应用==对称密钥==机制进行密钥管理的系统。
 
 ### 1.1.2 Kerberos术语
 

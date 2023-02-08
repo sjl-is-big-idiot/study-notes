@@ -4,394 +4,6 @@
 
 <font color="red">***注意：Spark3.0、Spark3.1是由Scala2.12预编译，但是Spark 3.2+是采用Scala 2.13预编译。***</font>
 
-# 2. 安装spark
-
-## 2.1 Windows10 安装Spark本地开发环境
-
-参考文档：
-
-[Spark在Win10下的环境搭建](https://blog.csdn.net/songhaifengshuaige/article/details/79480491)
-
-[【Spark笔记】Windows10 本地搭建单机版Spark开发环境](https://www.shuzhiduo.com/A/n2d92KLYzD/)
-
-### 2.1.1 **版本说明**
-
-- JDK 1.8
-- Scala 2.12.x，具体版本为2.12.17
-- Hadoop 3.2.x
-- IntelliJ IDEA 2019.3.3 (Ultimate Edition)
-- Spark 3.0.2
-
-Spark版本和Hadoop的版本关系并没有明确的限制，但是Spark官方已经预编译好了几个版本的spark包，我们可以直接下载使用，如果预编译好的spark包中没有合适，则需要自己来通过spark的源码进行编译了。
-
-![image-20230128152245379](Spark.assets/image-20230128152245379.png)
-
-Spark 3.0.2的官方下载地址：https://archive.apache.org/dist/spark/spark-3.0.2/
-
-当下载spark-3.0.2时发现，有如下几种spark包：
-
-- SparkR_3.0.2.tar.gz：[SparkR](http://www.iteblog.com/archives/tag/sparkr)是一个R语言包，它提供了轻量级的方式使得可以在R语言中使用Apache [Spark](http://www.iteblog.com/archives/tag/spark)。包括SparkR 的交互式命令行窗口。
-- pyspark-3.0.2.tar.gz：PySpark简单来说就是[Spark](https://so.csdn.net/so/search?q=Spark&spm=1001.2101.3001.7020)提供的Python编程API，包括交互式的PySpark shell和非交互式的Python程序。参考：https://blog.csdn.net/qq_40856560/article/details/116027896
-- spark-3.0.2-bin-hadoop2.7-hive1.2.tgz： 预编译好的支持Hadoop 2.7.x，Hive 1.2.x的spark 3.0.2的包
-- spark-3.0.2-bin-hadoop2.7.tgz：  预编译好的支持Hadoop 2.7.x 的spark 3.0.2的包
-- spark-3.0.2-bin-hadoop3.2.tgz： 预编译好的支持Hadoop 3.2.x 的spark 3.0.2的包
-- spark-3.0.2-bin-without-hadoop.tgz：  spark中没有关联Hadoop的包，当运行此版本的spark时，需要用户手动将spark和hadoop关联上，参考：https://blog.csdn.net/yoshubom/article/details/104598483
-- spark-3.0.2.tgz：  spark源码包，可以根据需要自己编译出指定Hadoop版本，Hive版本的spark包
-
-
-
-### 2.1.2 **环境准备**
-
-#### 2.1.2.1 JDK 安装和配置
-
-##### 2.1.2.1.1 JDK下载
-
-JDK下载地址：https://www.oracle.com/java/technologies/downloads/
-
-目前最新的稳定版为JDK 17
-
-![image-20230118174038282](Spark.assets/image-20230118174038282.png)
-
-但是，我们要下载JDK8。单击页面中的`Java archive`
-
-![image-20230118174153711](Spark.assets/image-20230118174153711.png)
-
-单击Java SE 8，进入JDK 8 下载页面。
-
-![image-20230118174211002](Spark.assets/image-20230118174211002.png)
-
-单击下载[jdk-8u271-windows-x64.exe](https://www.oracle.com/java/technologies/javase/javase8u211-later-archive-downloads.html#license-lightbox)
-
-![image-20230118174536960](Spark.assets/image-20230118174536960.png)
-
-
-
-##### 2.1.2.1.2 JDK安装
-
-双击`jdk-8u271-windows-x64.exe`进行JDK8的安装。
-
-##### 2.1.2.1.3 JDK配置
-
-在系统环境变量中添加`JAVA_HOME`，并将`JAVA_HOME`添加到系统环境变量的Path中。
-
-增加 `JAVA_HOME`：D:\services\Java\jdk1.8.0_261
-
-在`Path`中新增：%JAVA_HOME%\bin和%JAVA_HOME%\jre\bin
-
-`CLASSPATH`中新增：%JAVA_HOME%/lib/dt.jar;%JAVA_HOME%/lib/tools.jar
-
-验证JDK是否安装正确了
-
-![image-20230118175427528](Spark.assets/image-20230118175427528.png)
-
-说明JDK已经安装好了。
-
-#### 2.1.2.2 Scala 安装和配置
-
-[Scala官网](https://www.scala-lang.org/)
-
-##### 2.1.2.2.1 Scala下载
-
-Scala下载地址：https://www.scala-lang.org/download/all.html
-
-![image-20230118162630649](Spark.assets/image-20230118162630649.png)
-
-下载scala-2.12.17.zip，，然后在手动配置系统环境变量即可。当然也可以下载scala 2.12.17.msi，然后根据提示进行安装
-
-![image-20230118171611781](Spark.assets/image-20230118171611781.png)
-
-![image-20230118171534372](Spark.assets/image-20230118171534372.png)
-
-##### 2.1.2.2.2 Scala安装
-
-解压`scala-2.12.17.zip`到`D:\services\scala-2.12.17`
-
-##### 2.1.2.2.3 Scala配置
-
-在系统环境变量中添加`SCALA_HOME`，并将`SCALA_HOME`添加到系统环境变量的Path中。
-
-**我的电脑 > 属性 > 高级系统配置 > 环境变量**
-
-进入**高级系统设置**
-
-![image-20230118160120400](Spark.assets/image-20230118160120400.png)
-
-进入**环境变量**
-
-![image-20230118160244021](Spark.assets/image-20230118160244021.png)
-
-新建`SCALA_HOME`环境变量
-
-![image-20230118160326294](Spark.assets/image-20230118160326294.png)
-
-![image-20230118172013866](Spark.assets/image-20230118172013866.png)
-
-将 `SCALA_HOME` 添加到系统环境变量Path中
-
-![image-20230118160419853](Spark.assets/image-20230118160419853.png)
-
-![image-20230118172125080](Spark.assets/image-20230118172125080.png)
-
-![image-20230118160825198](Spark.assets/image-20230118160825198.png)
-
-![image-20230118160957612](Spark.assets/image-20230118160957612.png)
-
-验证下scala是否安装和配置正确了
-
-![image-20230118172614227](Spark.assets/image-20230118172614227.png)
-
-上图说明scala安装好了。
-
-#### 2.1.2.3 Hadoop 安装和配置
-
-##### 2.1.2.3.1 Hadoop下载
-
-浏览器打开https://hadoop.apache.org/releases.html 页面，点击图中的连接（https://archive.apache.org/dist/hadoop/common），跳转到历史版本的hadoop的下载页面。
-
-![image-20230128163307457](Spark.assets/image-20230128163307457.png)
-
-找到hadoop-3.2.2，点击进入。
-
-![image-20230128163405675](Spark.assets/image-20230128163405675.png)
-
-可以看到，有好几种hadoop的tar包。
-
-![image-20230128163619509](Spark.assets/image-20230128163619509.png)
-
-
-
-- hadoop-3.2.2-rat.txt：
-- hadoop-3.2.2-site.tar.gz：
-- hadoop-3.2.2-src.tar.gz： 
-- hadoop-3.2.2.tar.gz：
-
-这里选择下载hadoop-3.2.2.tar.gz，但是从官网下载十分慢，所以在华为云镜像网站进行下载，网址如下：https://repo.huaweicloud.com/apache/hadoop/core/hadoop-3.2.2/
-
-![image-20230128164926289](Spark.assets/image-20230128164926289.png)
-
-下载完毕。
-
-![image-20230128170106000](Spark.assets/image-20230128170106000.png)
-
-
-
-##### 2.1.2.3.2 Hadoop安装
-
-解压Hadoop安装包，解压到`D:\services\`
-
-![image-20230128170554976](Spark.assets/image-20230128170554976.png)
-
-
-
-##### 2.1.2.3.3 Hadoop配置
-
-在系统环境变量中添加`HADOOP_HOME`，并将`HADOOP_HOME`添加到系统环境变量的Path中。
-
-**我的电脑 > 属性 > 高级系统配置 > 环境变量**
-
-进入**高级系统设置**
-
-![image-20230118160120400](Spark.assets/image-20230118160120400.png)
-
-进入**环境变量**
-
-![image-20230118160244021](Spark.assets/image-20230118160244021.png)
-
-新建`HADOOP_HOME`环境变量
-
-![image-20230118160326294](Spark.assets/image-20230118160326294.png)
-
-
-
-![image-20230128172202780](Spark.assets/image-20230128172202780.png)
-
-将 `HADOOP_HOME` 添加到系统环境变量Path中
-
-![image-20230118160419853](Spark.assets/image-20230118160419853.png)
-
-
-
-![image-20230128172317752](Spark.assets/image-20230128172317752.png)
-
-![image-20230118160825198](Spark.assets/image-20230118160825198.png)
-
-![image-20230118160957612](Spark.assets/image-20230118160957612.png)
-
-验证Hadoop的环境变量是否配置好了。
-
-![image-20230128174017896](Spark.assets/image-20230128174017896.png)
-
-执行`hadoop version`命令是正常的。
-
-#### 2.1.2.4 Spark 安装和配置
-
-##### 2.1.2.4.1 Spark下载
-
-[Spark官方网站下载地址](https://spark.apache.org/downloads.html)
-
-![image-20230118154016780](Spark.assets/image-20230118154016780.png)
-
-*<font color="red">注意：Spark 3是由Scala 2.12构建的，Spark 3.2+是由Scala 2.13构建的，在安装Spark时需要安装对应版本的Scala。</font>*
-
-由于当前Spark最新的稳定版为`spark-3.3.1-bin-hadoop3.tgz`，因此我们需要找到之前版本的spark。
-
-![image-20230118154221456](Spark.assets/image-20230118154221456.png)
-
-单击`archived releases`中的网址，如下所示：
-
-![image-20230118154306725](Spark.assets/image-20230118154306725.png)
-
-找到`spark-3.0.2`的目录，进去之后单击下载`spark-3.0.2-bin-hadoop3.2.tgz`。
-
-![image-20230118154839649](Spark.assets/image-20230118154839649.png)
-
-##### 2.1.2.4.2 Spark安装
-
-解压spark安装包，解压到`D:\services\spark-3.0.2-bin-hadoop3.2`
-
-![image-20230118155343855](Spark.assets/image-20230118155343855.png)
-
-##### 2.1.2.4.3 Spark配置
-
-在系统环境变量中添加`SPARK_HOME`，并将`SPARK_HOME`添加到系统环境变量的Path中。
-
-**我的电脑 > 属性 > 高级系统配置 > 环境变量**
-
-进入**高级系统设置**
-
-![image-20230118160120400](Spark.assets/image-20230118160120400.png)
-
-进入**环境变量**
-
-![image-20230118160244021](Spark.assets/image-20230118160244021.png)
-
-新建`SPARK_HOME`环境变量
-
-![image-20230118160326294](Spark.assets/image-20230118160326294.png)
-
-
-
-![image-20230118160355760](Spark.assets/image-20230118160355760.png)
-
-将 `SPARK_HOME` 添加到系统环境变量Path中
-
-![image-20230118160419853](Spark.assets/image-20230118160419853.png)
-
-
-
-![image-20230118160529498](Spark.assets/image-20230118160529498.png)
-
-![image-20230118160825198](Spark.assets/image-20230118160825198.png)
-
-![image-20230118160957612](Spark.assets/image-20230118160957612.png)
-
-验证Spark的环境变量是否配置好了。
-
-![image-20230128171847033](Spark.assets/image-20230128171847033.png)
-
-如果出现如上图的提示HADOOP_HOME没有配置，说明`HADOOP_HOME`的环境变量配置有问题，需要正确配置`HADOOP_HOME`。
-
-正确配置好`HADOOP_HOME`之后，执行`spark-shell`命令。
-
-![image-20230128174253841](Spark.assets/image-20230128174253841.png)
-
-虽然最终进入到了spark shell中，但是中间报了一个错误，提示找不到`D:\services\hadoop-3.2.2\bin\winutils.exe`文件，通过查看发现确实不存在该文件，此时我们需要从https://github.com/srccodes/hadoop-common-2.2.0-bin/tree/master/bin此处下载`winutils.exe`文件，并保存到本地`D:\services\hadoop-3.2.2\bin\`目录下。然后再次运行`spark-shell`，结果如下：
-
-![image-20230128175426534](Spark.assets/image-20230128175426534.png)
-
-`spark-shell`启动正常了。
-
-浏览器访问 http://127.0.0.1:4041/jobs 可以打开spark web ui。如下图所示：
-
-![image-20230128180603406](Spark.assets/image-20230128180603406.png)
-
-
-
-
-
-#### 2.1.2.5 Idea Scala插件安装
-
-##### 2.1.2.5.1 常用插件
-
-- Big Data Tools
-
-  Big Data Tools插件的作用
-
-  - Zeppelin笔记本中的探索性分析、可视化和原型制作工作。
-  - 直接从IDE运行和监视Spark或Flink作业。
-  - 使用Amazon EMR集群。
-  - 查看大数据二进制文件，如CSV、Parquet、ORC和Avro。
-  - 使用Kafka制作和消费消息。
-  - 预览Hive Metastore数据库。
-  - 了解Hadoop环境。
-
-  参考文档：https://blog.csdn.net/xianpanjia4616/article/details/124938248
-
-  ![image-20230129161527124](Spark.assets/image-20230129161527124.png)
-
-- Scala
-
-  添加对Scala语言的支持。IntelliJ IDEA社区版免费提供以下功能：
-
-  编码帮助（突出显示、完成、格式化、重构等）
-
-  导航、搜索、关于类型和隐式的信息
-
-  与sbt和其他构建工具集成
-
-  测试框架支持（ScalaTest、Specs2、uTest）
-
-  Scala调试器、工作表和Ammonite脚本
-
-  ![image-20230129162010952](Spark.assets/image-20230129162010952.png)
-
-- Maven Helper
-
-  分析和排除冲突依赖关系的简单方法
-  为包含当前文件的模块或根模块运行/调试maven目标的操作
-  在当前maven模块路径上打开终端的操作
-  运行/调试当前测试文件的操作。
-
-  ![image-20230129162325405](Spark.assets/image-20230129162325405.png)
-
-- 2
-
-- 
-
-##### 2.1.2.5.2 在IDEA中如何创建scala.class文件
-
-参考：https://blog.csdn.net/u010416101/article/details/127505064
-
-添加本地的scala 地址
-`Project Structure --> Global Libraries -> 添加`
-
-加入后, 你可以发现IDEA已经能加载scala Library了.
-
-# 3. spark常用命令
-
-
-
-spark自带的示例
-
-```shell
-# For Scala and Java, use run-example:
-./bin/run-example SparkPi
-
-# For Python examples, use spark-submit directly:
-./bin/spark-submit examples/src/main/python/pi.py
-
-# For R examples, use spark-submit directly:
-./bin/spark-submit examples/src/main/r/dataframe.R
-```
-
-
-
-# 4. spark配置
-
-# 5. spark常见问题
-
-# 6
-
 ***注意，在Spark 2.0之前，Spark的主要编程接口是弹性分布式数据集（RDD）。在Spark 2.0之后，RDD被Dataset所取代，Dataset与RDD相似，但在后台进行了更丰富的优化。RDD接口仍然受支持，但DataSet比RDD性能更好。***
 
 https://spark.apache.org/docs/3.0.2/rdd-programming-guide.html
@@ -402,7 +14,7 @@ https://spark.apache.org/docs/3.0.2/sql-programming-guide.html
 
 注意，默认情况下Spark的security是关闭的。这意味着容易受到攻击。参考：https://spark.apache.org/docs/3.0.2/security.html
 
-## 交互式命令行
+## 1.1 交互式命令行
 
 Spark提供了交互式命令行以便用户可以学习Spark的API。目前（2023.01.29）Spark提供了2种交互式命令行：
 
@@ -511,7 +123,7 @@ Row(value=u'# Apache Spark')
 
 
 
-## 应用程序调用Spark API
+## 1.2 应用程序调用Spark API
 
 Scala + Maven，Scala + SBT 自己去研究
 
@@ -552,11 +164,11 @@ pom.xml中的部分依赖如下：
 
 ![image-20230131154338987](Spark.assets/image-20230131154338987.png)
 
-报错提示找不到主类SimpleApp。解决方案：主类写为全路径"org.spark.sjl.SimpleApp"。
+报错提示找不到主类SimpleApp。解决方案：**主类写为全路径**"org.spark.sjl.SimpleApp"。
 
 
 
-## RDD编程
+## 1.3 RDD编程
 
 ### 概述
 
@@ -1160,7 +772,7 @@ org.apache.spark.launcher包提供了使用简单Java API将spark作业作为子
 
 
 
-## Spark SQL, DataFrame和Dataset
+## 1.4 Spark SQL, DataFrame和Dataset
 
 Spark SQL是Spark中用来处理结构化数据的模块。使用SQL语句或DataSet的API都可以与Spark SQL交互。
 
@@ -1192,27 +804,27 @@ DataFrame
 
 
 
-## Structured Streaming
+## 1.5 Structured Streaming
 
-## Spark Streaming (DStreams)
-
-TODO
-
-## Mlib (Machine Learning)
+## 1.6 Spark Streaming (DStreams)
 
 TODO
 
-## GraphX (Graph Processing)
+## 1.7 Mlib (Machine Learning)
 
 TODO
 
-## SparkR (R on Spark)
+## 1.8 GraphX (Graph Processing)
+
+TODO
+
+## 1.9 SparkR (R on Spark)
 
 TODO
 
 
 
-## 集群模式（Cluster Mode）
+## 1.10 集群模式（Cluster Mode）
 
 Spark应用程序其实就是运行在集群中的一系列独立的进程，这些进程由Driver进程中的SparkContext对象来协调。
 
@@ -1753,7 +1365,7 @@ https://blog.csdn.net/u013603364/article/details/124207781
 
 
 
-## Spark配置项
+## 1.11 Spark配置项
 
 参考：https://spark.apache.org/docs/3.0.2/configuration.html
 
@@ -2045,7 +1657,7 @@ Spark使用log4j来记录日志，通过`$SPARK_HOME/conf/log4j.properties`配�
 
 TODO
 
-## Spark调优
+## 1.12 Spark调优
 
 参考：https://spark.apache.org/docs/3.0.2/tuning.html
 
@@ -2279,17 +1891,15 @@ b）在其它节点启动计算任务，并移动需要的数据。
 
 Spark通常做的是等待一段时间，希望繁忙的CPU能够释放出来。一旦超时，它就开始将数据从远处移动到空闲CPU所在节点。
 
-## Spark监控
+## 1.13 Spark监控
 
 参考：https://spark.apache.org/docs/3.0.2/monitoring.html
 
 TODO
 
-## 作业调度
+## 1.14 作业调度
 
 参考：https://spark.apache.org/docs/3.0.2/job-scheduling.html
-
-TODO
 
 ### 跨应用程序的调度
 
@@ -2477,7 +2087,7 @@ SET spark.sql.thriftserver.scheduler.pool=accounting;
 
 
 
-## Spark相关的硬件资源配置
+## 1.15 Spark相关的硬件资源配置
 
 参考：https://spark.apache.org/docs/3.0.2/hardware-provisioning.html
 
@@ -2513,8 +2123,421 @@ SET spark.sql.thriftserver.scheduler.pool=accounting;
 
   一般8-16个cpu核心，具体还要看工作负载，CPU越多可以有更高的并发度。
 
-## Spark迁移
+
+
+# 2. 安装spark
+
+## 2.1 Windows10 安装Spark本地开发环境
+
+参考文档：
+
+[Spark在Win10下的环境搭建](https://blog.csdn.net/songhaifengshuaige/article/details/79480491)
+
+[【Spark笔记】Windows10 本地搭建单机版Spark开发环境](https://www.shuzhiduo.com/A/n2d92KLYzD/)
+
+### 2.1.1 **版本说明**
+
+- JDK 1.8
+- Scala 2.12.x，具体版本为2.12.17
+- Hadoop 3.2.x
+- IntelliJ IDEA 2019.3.3 (Ultimate Edition)
+- Spark 3.0.2
+
+Spark版本和Hadoop的版本关系并没有明确的限制，但是Spark官方已经预编译好了几个版本的spark包，我们可以直接下载使用，如果预编译好的spark包中没有合适，则需要自己来通过spark的源码进行编译了。
+
+![image-20230128152245379](Spark.assets/image-20230128152245379.png)
+
+Spark 3.0.2的官方下载地址：https://archive.apache.org/dist/spark/spark-3.0.2/
+
+当下载spark-3.0.2时发现，有如下几种spark包：
+
+- SparkR_3.0.2.tar.gz：[SparkR](http://www.iteblog.com/archives/tag/sparkr)是一个R语言包，它提供了轻量级的方式使得可以在R语言中使用Apache [Spark](http://www.iteblog.com/archives/tag/spark)。包括SparkR 的交互式命令行窗口。
+- pyspark-3.0.2.tar.gz：PySpark简单来说就是[Spark](https://so.csdn.net/so/search?q=Spark&spm=1001.2101.3001.7020)提供的Python编程API，包括交互式的PySpark shell和非交互式的Python程序。参考：https://blog.csdn.net/qq_40856560/article/details/116027896
+- spark-3.0.2-bin-hadoop2.7-hive1.2.tgz： 预编译好的支持Hadoop 2.7.x，Hive 1.2.x的spark 3.0.2的包
+- spark-3.0.2-bin-hadoop2.7.tgz：  预编译好的支持Hadoop 2.7.x 的spark 3.0.2的包
+- spark-3.0.2-bin-hadoop3.2.tgz： 预编译好的支持Hadoop 3.2.x 的spark 3.0.2的包
+- spark-3.0.2-bin-without-hadoop.tgz：  spark中没有关联Hadoop的包，当运行此版本的spark时，需要用户手动将spark和hadoop关联上，参考：https://blog.csdn.net/yoshubom/article/details/104598483
+- spark-3.0.2.tgz：  spark源码包，可以根据需要自己编译出指定Hadoop版本，Hive版本的spark包
+
+
+
+### 2.1.2 **环境准备**
+
+#### 2.1.2.1 JDK 安装和配置
+
+##### 2.1.2.1.1 JDK下载
+
+JDK下载地址：https://www.oracle.com/java/technologies/downloads/
+
+目前最新的稳定版为JDK 17
+
+![image-20230118174038282](Spark.assets/image-20230118174038282.png)
+
+但是，我们要下载JDK8。单击页面中的`Java archive`
+
+![image-20230118174153711](Spark.assets/image-20230118174153711.png)
+
+单击Java SE 8，进入JDK 8 下载页面。
+
+![image-20230118174211002](Spark.assets/image-20230118174211002.png)
+
+单击下载[jdk-8u271-windows-x64.exe](https://www.oracle.com/java/technologies/javase/javase8u211-later-archive-downloads.html#license-lightbox)
+
+![image-20230118174536960](Spark.assets/image-20230118174536960.png)
+
+
+
+##### 2.1.2.1.2 JDK安装
+
+双击`jdk-8u271-windows-x64.exe`进行JDK8的安装。
+
+##### 2.1.2.1.3 JDK配置
+
+在系统环境变量中添加`JAVA_HOME`，并将`JAVA_HOME`添加到系统环境变量的Path中。
+
+增加 `JAVA_HOME`：D:\services\Java\jdk1.8.0_261
+
+在`Path`中新增：%JAVA_HOME%\bin和%JAVA_HOME%\jre\bin
+
+`CLASSPATH`中新增：%JAVA_HOME%/lib/dt.jar;%JAVA_HOME%/lib/tools.jar
+
+验证JDK是否安装正确了
+
+![image-20230118175427528](Spark.assets/image-20230118175427528.png)
+
+说明JDK已经安装好了。
+
+#### 2.1.2.2 Scala 安装和配置
+
+[Scala官网](https://www.scala-lang.org/)
+
+##### 2.1.2.2.1 Scala下载
+
+Scala下载地址：https://www.scala-lang.org/download/all.html
+
+![image-20230118162630649](Spark.assets/image-20230118162630649.png)
+
+下载scala-2.12.17.zip，，然后在手动配置系统环境变量即可。当然也可以下载scala 2.12.17.msi，然后根据提示进行安装
+
+![image-20230118171611781](Spark.assets/image-20230118171611781.png)
+
+![image-20230118171534372](Spark.assets/image-20230118171534372.png)
+
+##### 2.1.2.2.2 Scala安装
+
+解压`scala-2.12.17.zip`到`D:\services\scala-2.12.17`
+
+##### 2.1.2.2.3 Scala配置
+
+在系统环境变量中添加`SCALA_HOME`，并将`SCALA_HOME`添加到系统环境变量的Path中。
+
+**我的电脑 > 属性 > 高级系统配置 > 环境变量**
+
+进入**高级系统设置**
+
+![image-20230118160120400](Spark.assets/image-20230118160120400.png)
+
+进入**环境变量**
+
+![image-20230118160244021](Spark.assets/image-20230118160244021.png)
+
+新建`SCALA_HOME`环境变量
+
+![image-20230118160326294](Spark.assets/image-20230118160326294.png)
+
+![image-20230118172013866](Spark.assets/image-20230118172013866.png)
+
+将 `SCALA_HOME` 添加到系统环境变量Path中
+
+![image-20230118160419853](Spark.assets/image-20230118160419853.png)
+
+![image-20230118172125080](Spark.assets/image-20230118172125080.png)
+
+![image-20230118160825198](Spark.assets/image-20230118160825198.png)
+
+![image-20230118160957612](Spark.assets/image-20230118160957612.png)
+
+验证下scala是否安装和配置正确了
+
+![image-20230118172614227](Spark.assets/image-20230118172614227.png)
+
+上图说明scala安装好了。
+
+#### 2.1.2.3 Hadoop 安装和配置
+
+##### 2.1.2.3.1 Hadoop下载
+
+浏览器打开https://hadoop.apache.org/releases.html 页面，点击图中的连接（https://archive.apache.org/dist/hadoop/common），跳转到历史版本的hadoop的下载页面。
+
+![image-20230128163307457](Spark.assets/image-20230128163307457.png)
+
+找到hadoop-3.2.2，点击进入。
+
+![image-20230128163405675](Spark.assets/image-20230128163405675.png)
+
+可以看到，有好几种hadoop的tar包。
+
+![image-20230128163619509](Spark.assets/image-20230128163619509.png)
+
+
+
+- hadoop-3.2.2-rat.txt：
+- hadoop-3.2.2-site.tar.gz：
+- hadoop-3.2.2-src.tar.gz： 
+- hadoop-3.2.2.tar.gz：
+
+这里选择下载hadoop-3.2.2.tar.gz，但是从官网下载十分慢，所以在华为云镜像网站进行下载，网址如下：https://repo.huaweicloud.com/apache/hadoop/core/hadoop-3.2.2/
+
+![image-20230128164926289](Spark.assets/image-20230128164926289.png)
+
+下载完毕。
+
+![image-20230128170106000](Spark.assets/image-20230128170106000.png)
+
+
+
+##### 2.1.2.3.2 Hadoop安装
+
+解压Hadoop安装包，解压到`D:\services\`
+
+![image-20230128170554976](Spark.assets/image-20230128170554976.png)
+
+
+
+##### 2.1.2.3.3 Hadoop配置
+
+在系统环境变量中添加`HADOOP_HOME`，并将`HADOOP_HOME`添加到系统环境变量的Path中。
+
+**我的电脑 > 属性 > 高级系统配置 > 环境变量**
+
+进入**高级系统设置**
+
+![image-20230118160120400](Spark.assets/image-20230118160120400.png)
+
+进入**环境变量**
+
+![image-20230118160244021](Spark.assets/image-20230118160244021.png)
+
+新建`HADOOP_HOME`环境变量
+
+![image-20230118160326294](Spark.assets/image-20230118160326294.png)
+
+
+
+![image-20230128172202780](Spark.assets/image-20230128172202780.png)
+
+将 `HADOOP_HOME` 添加到系统环境变量Path中
+
+![image-20230118160419853](Spark.assets/image-20230118160419853.png)
+
+
+
+![image-20230128172317752](Spark.assets/image-20230128172317752.png)
+
+![image-20230118160825198](Spark.assets/image-20230118160825198.png)
+
+![image-20230118160957612](Spark.assets/image-20230118160957612.png)
+
+验证Hadoop的环境变量是否配置好了。
+
+![image-20230128174017896](Spark.assets/image-20230128174017896.png)
+
+执行`hadoop version`命令是正常的。
+
+#### 2.1.2.4 Spark 安装和配置
+
+##### 2.1.2.4.1 Spark下载
+
+[Spark官方网站下载地址](https://spark.apache.org/downloads.html)
+
+![image-20230118154016780](Spark.assets/image-20230118154016780.png)
+
+*<font color="red">注意：Spark 3是由Scala 2.12构建的，Spark 3.2+是由Scala 2.13构建的，在安装Spark时需要安装对应版本的Scala。</font>*
+
+由于当前Spark最新的稳定版为`spark-3.3.1-bin-hadoop3.tgz`，因此我们需要找到之前版本的spark。
+
+![image-20230118154221456](Spark.assets/image-20230118154221456.png)
+
+单击`archived releases`中的网址，如下所示：
+
+![image-20230118154306725](Spark.assets/image-20230118154306725.png)
+
+找到`spark-3.0.2`的目录，进去之后单击下载`spark-3.0.2-bin-hadoop3.2.tgz`。
+
+![image-20230118154839649](Spark.assets/image-20230118154839649.png)
+
+##### 2.1.2.4.2 Spark安装
+
+解压spark安装包，解压到`D:\services\spark-3.0.2-bin-hadoop3.2`
+
+![image-20230118155343855](Spark.assets/image-20230118155343855.png)
+
+##### 2.1.2.4.3 Spark配置
+
+在系统环境变量中添加`SPARK_HOME`，并将`SPARK_HOME`添加到系统环境变量的Path中。
+
+**我的电脑 > 属性 > 高级系统配置 > 环境变量**
+
+进入**高级系统设置**
+
+![image-20230118160120400](Spark.assets/image-20230118160120400.png)
+
+进入**环境变量**
+
+![image-20230118160244021](Spark.assets/image-20230118160244021.png)
+
+新建`SPARK_HOME`环境变量
+
+![image-20230118160326294](Spark.assets/image-20230118160326294.png)
+
+
+
+![image-20230118160355760](Spark.assets/image-20230118160355760.png)
+
+将 `SPARK_HOME` 添加到系统环境变量Path中
+
+![image-20230118160419853](Spark.assets/image-20230118160419853.png)
+
+
+
+![image-20230118160529498](Spark.assets/image-20230118160529498.png)
+
+![image-20230118160825198](Spark.assets/image-20230118160825198.png)
+
+![image-20230118160957612](Spark.assets/image-20230118160957612.png)
+
+验证Spark的环境变量是否配置好了。
+
+![image-20230128171847033](Spark.assets/image-20230128171847033.png)
+
+如果出现如上图的提示HADOOP_HOME没有配置，说明`HADOOP_HOME`的环境变量配置有问题，需要正确配置`HADOOP_HOME`。
+
+正确配置好`HADOOP_HOME`之后，执行`spark-shell`命令。
+
+![image-20230128174253841](Spark.assets/image-20230128174253841.png)
+
+虽然最终进入到了spark shell中，但是中间报了一个错误，提示找不到`D:\services\hadoop-3.2.2\bin\winutils.exe`文件，通过查看发现确实不存在该文件，此时我们需要从https://github.com/srccodes/hadoop-common-2.2.0-bin/tree/master/bin此处下载`winutils.exe`文件，并保存到本地`D:\services\hadoop-3.2.2\bin\`目录下。然后再次运行`spark-shell`，结果如下：
+
+![image-20230128175426534](Spark.assets/image-20230128175426534.png)
+
+`spark-shell`启动正常了。
+
+浏览器访问 http://127.0.0.1:4041/jobs 可以打开spark web ui。如下图所示：
+
+![image-20230128180603406](Spark.assets/image-20230128180603406.png)
+
+
+
+
+
+#### 2.1.2.5 Idea Scala插件安装
+
+##### 2.1.2.5.1 常用插件
+
+- Big Data Tools
+
+  Big Data Tools插件的作用
+
+  - Zeppelin笔记本中的探索性分析、可视化和原型制作工作。
+  - 直接从IDE运行和监视Spark或Flink作业。
+  - 使用Amazon EMR集群。
+  - 查看大数据二进制文件，如CSV、Parquet、ORC和Avro。
+  - 使用Kafka制作和消费消息。
+  - 预览Hive Metastore数据库。
+  - 了解Hadoop环境。
+
+  参考文档：https://blog.csdn.net/xianpanjia4616/article/details/124938248
+
+  ![image-20230129161527124](Spark.assets/image-20230129161527124.png)
+
+- Scala
+
+  添加对Scala语言的支持。IntelliJ IDEA社区版免费提供以下功能：
+
+  编码帮助（突出显示、完成、格式化、重构等）
+
+  导航、搜索、关于类型和隐式的信息
+
+  与sbt和其他构建工具集成
+
+  测试框架支持（ScalaTest、Specs2、uTest）
+
+  Scala调试器、工作表和Ammonite脚本
+
+  ![image-20230129162010952](Spark.assets/image-20230129162010952.png)
+
+- Maven Helper
+
+  分析和排除冲突依赖关系的简单方法
+  为包含当前文件的模块或根模块运行/调试maven目标的操作
+  在当前maven模块路径上打开终端的操作
+  运行/调试当前测试文件的操作。
+
+  ![image-20230129162325405](Spark.assets/image-20230129162325405.png)
+
+- 2
+
+- 
+
+##### 2.1.2.5.2 在IDEA中如何创建scala.class文件
+
+参考：https://blog.csdn.net/u010416101/article/details/127505064
+
+添加本地的scala 地址
+`Project Structure --> Global Libraries -> 添加`
+
+加入后, 你可以发现IDEA已经能加载scala Library了.
+
+# 3. spark常用命令
+
+
+
+spark自带的示例
+
+```shell
+# For Scala and Java, use run-example:
+./bin/run-example SparkPi
+
+# For Python examples, use spark-submit directly:
+./bin/spark-submit examples/src/main/python/pi.py
+
+# For R examples, use spark-submit directly:
+./bin/spark-submit examples/src/main/r/dataframe.R
+```
+
+
+
+# 4. spark配置
+
+TODO
+
+# 5. Spark迁移
 
 参考：https://spark.apache.org/docs/3.0.2/migration-guide.html
 
-TODO
+## 5.1 Spark Core
+
+假设Spark Core 2.4 迁移/升级为 Spark Core 3.0
+
+- 因为某些接口有变化，对应的Spark应用程序可能需要重写代码，并编译。如 `org.apache.spark.ExecutorPlugin` 接口被替换为`org.apache.spark.api.plugin.SparkPlugin`。
+- 旧版本的某些方法可以已经弃用，或者删除了，对应的Spark应用程序可能需要重写代码，并编译。如`shuffleBytesWritten`, `shuffleWriteTime` 和 `shuffleRecordsWritten` 
+
+## 5.2 SQL, Datasets and DataFrame
+
+pass
+
+## 5.3 Structured Streaming
+
+pass
+
+## 5.4 MLlib (Machine Learning)
+
+pass
+
+## 5.5 PySpark (Python on Spark)
+
+pass
+
+## 5.6 SparkR (R on Spark)
+
+pass

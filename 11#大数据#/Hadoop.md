@@ -326,7 +326,7 @@ drwxr-xr-x. 9 atguigu atguigu 99 Jan 26  2016 hadoop
 
 ```
 
-## 4. Hadoop运行模式
+## 4. Hadoop运行模式部署
 
 Hadoop运行模式包括：本地模式、伪分布式模式、完全分布式模式。
 
