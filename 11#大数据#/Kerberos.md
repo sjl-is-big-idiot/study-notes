@@ -23,7 +23,7 @@ Hadoop官网对kerberos的介绍 [Hadoop in Secure Mode](https://hadoop.apache.o
 
 ### 1.1.1 什么是Kerberos
 
-Kerberos是一种计算机网络认证协议，用来在非安全网络中，对个人通信以安全的手段进行==身份认证==。这个词又指麻省理工学院（MIT）为这个协议开发的一套计算机软件。软件设计上采用客户端/服务器结构，并且能够进行相互认证，即客户端和服务端均可对对方进行身份认证，可以用于防止窃听、防止重放攻击、保护数据完整性等场合，是一种应用==对称密钥==机制进行密钥管理的系统。
+**Kerberos是一种计算机网络认证协议**，用来在非安全网络中，对个人通信以安全的手段进行==身份认证==。这个词又指麻省理工学院（MIT）为这个协议开发的一套计算机软件。软件设计上采用客户端/服务器结构，并且能够进行相互认证，即客户端和服务端均可对对方进行身份认证，可以用于防止窃听、防止重放攻击、保护数据完整性等场合，是一种应用==对称密钥==机制进行密钥管理的系统。
 
 ### 1.1.2 Kerberos术语
 
@@ -33,6 +33,13 @@ Kerberos是一种计算机网络认证协议，用来在非安全网络中，对
 4. `keytab`：Kerberos中的用户认证，可通过密码或者密钥文件证明省份，keytab指密钥文件。
 
 ### 1.1.3 Kerberos认证原理
+
+认证原理见：https://blog.csdn.net/weixin_38233104/article/details/122963237
+
+Kerberos认证流程，基本上分为两步。第一步，客户端向KDC请求获得他想要访问的服务的服务授予票据（可以想象成去动物园，想去买一张能够进入动物园的门票）。第二步，拿着这张服务授予票据（Ticket）去访问服务端的服务。
+大致的过程确实可以看作这两步，但其中还存在一些问题：
+**问题1. KDC怎么知道你（客户端）就是真正的客户端？凭什么给你发放服务授予票据（Ticket）呢？**
+**问题2. 服务端怎么知道你带来的服务授予票据（Ticket）就是一张真正的票据呢？**
 
 ![image-20211011220011686](Kerberos.assets/image-20211011220011686.png "Kerberos认证原理")
 
@@ -64,7 +71,7 @@ Kerberos是一种计算机网络认证协议，用来在非安全网络中，对
 
    修改`/var/kerberso/krb5kdc/kdc.conf`文件，内容如下：
 
-   ```yaml
+   ```conf
    [root@hadoop102 ~]# vim /var/kerberos/krb5kdc/kdc.conf
    修改如下内容
    
@@ -79,6 +86,7 @@ Kerberos是一种计算机网络认证协议，用来在非安全网络中，对
      dict_file = /usr/share/dict/words
      admin_keytab = /var/kerberos/krb5kdc/kadm5.keytab
      supported_enctypes = aes256-cts:normal aes128-cts:normal des3-hmac-sha1:normal arcfour-hmac:normal camellia256-cts:normal camellia128-cts:normal des-hmac-sha1:normal des-cbc-md5:normal des-cbc-crc:normal
+     }
    ```
 
    
@@ -128,7 +136,7 @@ Kerberos是一种计算机网络认证协议，用来在非安全网络中，对
    # example.com = EXAMPLE.COM
    ```
 
-   
+   其中的`admin_server`的意思是，当存在多个KDC时，`admin_server`所在主机的KDC为primary KDC。其他配置项见：http://web.mit.edu/kerberos/krb5-latest/doc/admin/conf_files/krb5_conf.html#realms
 
 ### 1.2.3 初始化KDC数据库
 
