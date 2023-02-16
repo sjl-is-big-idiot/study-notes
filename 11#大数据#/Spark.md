@@ -1365,539 +1365,7 @@ https://blog.csdn.net/u013603364/article/details/124207781
 
 
 
-## 1.11 Spark配置项
-
-参考：https://spark.apache.org/docs/3.0.2/configuration.html
-
-TODO
-
-Spark有三种类型的属性：
-
-- Spark Properties
-
-  此类属性用来控制application的行为，可以基于每个应用程序单独配置不同的属性值。
-
-- 环境变量
-
-- 日志配置
-
-### Spark Properties
-
-#### 动态加载Spark Properties
-
-Spark shell和`spark-submit`有两种动态加载Spark Properties配置的方法：
-
-- 命令行参数
-
-  通过`--conf` 来指定spark的properties。
-
-  ```scala
-  ./bin/spark-submit --name "My app" --master local[4] --conf spark.eventLog.enabled=false
-    --conf "spark.executor.extraJavaOptions=-XX:+PrintGCDetails -XX:+PrintGCTimeStamps" myApp.jar
-  ```
-
-  
-
-- `conf/spark-defaults.conf`
-
-  `spark-submit`会读取`conf/spark-defaults.conf`中的配置项，通过修改此配置中配置项的值。最终会与`SparkConf`中的配置进行合并，然后创建`SparkContext`实例对象。
-
-写死在代码中的配置项的优先级最高，代码中的配置项 > 命令行中的配置项 > 配置文件中的配置项。
-
-通过`http://<dirver>:4040`打开应用程序的Web UI，然后在"Environment"页面可以查看当前应用程序的spark properties。
-
-***注意：只有通过`spark-defaults.con`、`SparkConf`或`命令行显式指定的配置项`才会显示出来。***
-
-##### application相关配置
-
-TODO
-
-##### runtime相关配置
-
-TODO
-
-##### shuffle相关配置
-
-| Property Name                                                | Default           | Meaning                                                      | Since Version |
-| :----------------------------------------------------------- | :---------------- | :----------------------------------------------------------- | :------------ |
-| <font color="red">`spark.reducer.maxSizeInFlight`</font>     | 48m               | 参数说明：该参数用于设置`shuffle read`任务的buff缓冲区大小，该缓冲区决定一次可以拉取多少数据。</br>调优建议：如果可用内存资源足够，则可以增加参数的大小（例如96m），从而减少拉取数据的次数，这可以减少网络传输的次数并提高性能。 在实践中发现，合理调整参数后，性能会提高1％至5％。但是executor内存不足时,设置的太大,就会造成OOM导致宕机 | 1.4.0         |
-| `spark.reducer.maxReqsInFlight`                              | Int.MaxValue      | 参数建议：该参数用于设置fetch block时的连接数大小。如果集群节点数量很多，reducer在从其他节点fetch shuffle数据时可能会建立很多远程连接，严重时可能会导致该节点瘫痪。避免节点因为请求量过大而瘫痪掉，当并行度大到一定程度，N个[reduce](https://so.csdn.net/so/search?q=reduce&spm=1001.2101.3001.7020) task去同一个节点拉数据，</br>调优建议： | 2.0.0         |
-| `spark.reducer.maxBlocksInFlightPerAddress`                  | Int.MaxValue      | 参数建议：该参数用于限制每个reduce任务从给定主机端口fetch的block数量。</br>调优建议： | 2.2.1         |
-| <font color="red">`spark.shuffle.compress`</font>            | true              | 参数建议：是否压缩map的输出文件。启用后会采用spark.io.compression.codec格式进行压缩。</br>调优建议： | 0.6.0         |
-| <font color="red">`spark.shuffle.file.buffer`</font>         | 32k               | 参数建议：该参数表示每个shuffle文件输出流的内存缓冲区大小（以KiB为单位）。增加此参数大小，可以降低在创建中间shuffle文件时的，磁盘寻址和系统调用的次数，提高性能</br>调优建议：不够用的话可每次翻倍，如64k。 | 1.4.0         |
-| <font color="red">`spark.shuffle.io.maxRetries`</font>       | 3                 | 参数建议：（仅限Netty）`shuffle read`任务从`shuffle write`任务那里节点正在拉自己的数据，如果网络由于异常拉失败而失败，它将自动重试。 此参数表示可以重试的最大次数。 如果在指定的次数内进行或不成功，则可能导致作业失败。在遇到长时间GC或短暂网络连接问题时，这种重试逻辑可以提高shuffle的稳定性。</br>调优建议：对于那些包含耗时的`shuffle`的作业，建议增加最大重试次数（例如60次），以避免由于诸如JVM或网络的完整gc之类的因素而导致数据失败。 不稳定。 在实践中发现，对于大量数据（数十亿到数十亿的`shuffle`过程），调整参数可以大大提高稳定性。 | 1.2.0         |
-| <font color="red">`spark.shuffle.io.numConnectionsPerPeer`</font> | 1                 | 参数建议：（仅限Netty）在大集群中，为了减少建立连接，主机之间的连接可以被重复使用。</br>调优建议：对于节点少但磁盘多的集群，可能导致并发度不够。可以增加此参数的值。 | 1.2.1         |
-| <font color="red">`spark.shuffle.io.preferDirectBufs`</font> | true              | 参数建议：（仅限Netty）启用堆外内存，可以避免shuffle过程的频繁gc，如果堆外内存非常紧张，则可以考虑关闭这个选项</br>调优建议： | 1.2.0         |
-| <font color="red">`spark.shuffle.io.retryWait`</font>        | 5s                | 参数建议：两次fetch之间需要等待多长时间。重试导致的延迟最大为：maxRetries * retryWait</br>调优建议： | 1.2.1         |
-| `spark.shuffle.io.backLog`                                   | -1                | 参数建议：shuffle服务的accept队列的长度。</br>调优建议：对于比较大的应用程序可以考虑增大此参数，避免因为accept对量满了而drop掉某些连接。 | 1.1.1         |
-| <font color="red">`spark.shuffle.service.enabled`</font>     | false             | 参数建议：是否启用external shuffle服务。</br>调优建议：      | 1.2.0         |
-| <font color="red">`spark.shuffle.service.port`</font>        | 7337              | 参数建议：external shuffle服务运行的端口。</br>调优建议：    | 1.2.0         |
-| <font color="red">`spark.shuffle.service.index.cache.size`</font> | 100m              | 参数建议：缓存Shuffle服务的索引文件的内存大小</br>调优建议： | 2.3.0         |
-| `spark.shuffle.maxChunksBeingTransferred`                    | Long.MAX_VALUE    | 参数建议：shuffle服务允许同时传输的chunk的最大数量。</br>调优建议： | 2.3.0         |
-| <font color="red">`spark.shuffle.sort.bypassMergeThreshold`</font> | 200               | 参数建议：当ShuffleManager为SortShuffleManager时，如果shuffle read task的数量小于这个阈值（默认是200），则shuffle write过程中不会进行排序操作，而是直接按照未经优化的HashShuffleManager的方式去写数据，但是最后会将每个task产生的所有临时磁盘文件都合并成一个文件，并会创建单独的索引文件。</br>调优建议：当你使用SortShuffleManager时，如果的确不需要排序操作，那么建议将这个参数调大一些，大于shuffle read task的数量。那么此时就会自动启用bypass机制，map-side就不会进行排序了，减少了排序的性能开销。但是这种方式下，依然会产生大量的磁盘文件，因此shuffle write性能有待提高。 | 1.1.1         |
-| <font color="red">`spark.shuffle.spill.compress`</font>      | true              | 参数建议：在shuffle过程中，是否压缩溢写的文件。启用后会采用spark.io.compression.codec格式进行压缩。</br>调优建议： | 0.9.0         |
-| `spark.shuffle.accurateBlockThreshold`                       | 100 * 1024 * 1024 | 参数建议：HighlyCompressedMapStatus 中记录 shuffle blcok 准确大小的阈值，当 block 小于该值则用平均值代替。</br>调优建议： | 2.2.1         |
-| `spark.shuffle.registration.timeout`                         | 5000              | 参数建议：向external shuffle服务注册时的超时时间，单位ms。</br>调优建议： | 2.3.0         |
-| `spark.shuffle.registration.maxAttempts`                     | 3                 | 参数建议：向external shuffle服务注册失败时，最多尝试多少次。</br>调优建议： | 2.3.0         |
-
-##### spark ui相关配置
-
-TODO
-
-##### 压缩和序列化相关配置
-
-| Property Name                                                | Default                                     | Meaning                                                      | Since Version |
-| :----------------------------------------------------------- | :------------------------------------------ | :----------------------------------------------------------- | :------------ |
-| <font color="red">`spark.broadcast.compress`</font>          | true                                        | 参数说明：在传递广播变量前是否压缩它。若启用，采用spark.io.compression.codec格式进行压缩。</br>调优建议：开启 | 0.6.0         |
-| <font color="red">`spark.checkpoint.compress`</font>         | false                                       | 参数说明：是否压缩RDD的checkpoint。若启用，采用spark.io.compression.codec格式进行压缩。</br>调优建议：开启 | 2.2.0         |
-| <font color="red">`spark.io.compression.codec`</font>        | lz4                                         | 参数说明：用来压缩内部数据（如RDD partition, event log, broadcast variable和shuffle输出）的格式。默认地，Spark提供四中压缩格式：lz4`, `lzf`, `snappy`, and `zstd。</br>调优建议： | 0.8.0         |
-| <font color="red">`spark.io.compression.lz4.blockSize`</font> | 32k                                         | 参数说明：当压缩格式为LZ4时，LZ4压缩使用的block大小。</br>调优建议：更小的block size可以降低LZ4压缩时使用的shuffle memory，但会增加溢写次数。建议32k~512k。 | 1.4.0         |
-| <font color="red">`spark.io.compression.snappy.blockSize`</font> | 32k                                         | 参数说明：参数说明：当压缩格式为snappy时，snappy压缩使用的block大小。</br>调优建议：更小的block size可以降低snappy压缩时使用的shuffle memory，但会增加溢写次数。建议32k~512k。</br>调优建议： | 1.4.0         |
-| `spark.io.compression.zstd.level`                            | 1                                           | 参数说明：zstd压缩时的压缩级别。增大此参数可以提高压缩率，但会更消耗CPU和内存。</br>调优建议： | 2.3.0         |
-| `spark.io.compression.zstd.bufferSize`                       | 32k                                         | 参数说明：zstd压缩时的buffer大小。更小的buffer size可以降低zstd压缩时使用的shuffle memory，但会增加压缩时的开销。</br>调优建议： | 2.3.0         |
-| `spark.kryo.classesToRegister`                               | (none)                                      | 参数说明：如果使用Kryo序列化，可提供一个以逗号分隔的自定义类名列表，以便向Kryo注册这些类。</br>调优建议： | 1.2.0         |
-| `spark.kryo.referenceTracking`                               | true                                        | 参数说明：在使用Kryo序列化数据时是否跟踪对同一对象的引用，</br>调优建议： | 0.8.0         |
-| <font color="red">`spark.kryo.registrationRequired`</font>   | false                                       | 参数说明：在使用kryo序列化数据时，是否严格要求这些类必须向kryo注册。若为false，kryo仍可以序列化这些未注册的类，但是性能开销会很大。</br>调优建议：设置为true，然后向kryo注册需要序列化的类，可以提高序列化的性能（更短的时间，更小的字节数） | 1.1.0         |
-| `spark.kryo.registrator`                                     | (none)                                      | 参数说明：配置此参数的前提是，要以自定义的方式向kryo注册一些类（默认的注册方式是spark.kryo.classesToRegister）。此参数值必须是[`KryoRegistrator`](https://spark.apache.org/docs/3.0.2/api/scala/org/apache/spark/serializer/KryoRegistrator.html)的子类</br>调优建议： | 0.5.0         |
-| `spark.kryo.unsafe`                                          | false                                       | 参数说明：是否使用基于不安全的Kryo序列化器。使用基于不安全的IO可以大大加快速度。</br>调优建议： | 2.1.0         |
-| <font color="red">`spark.kryoserializer.buffer.max`</font>   | 64m                                         | 参数说明：kryo序列化的最大buffer大小。范围：需要序列化的任何对象 < buffer.max < 2048m。</br>调优建议：如果出现"buffer limit exceeded"的报错，需要增大此值。 | 1.4.0         |
-| `spark.kryoserializer.buffer`                                | 64k                                         | 参数说明：kryo序列化的初始buffer大小。***注意：一个worker节点的一个core会有一个buffer。***最大可增大到spark.kryoserializer.buffer.max</br>调优建议： | 1.4.0         |
-| `spark.rdd.compress`                                         | false                                       | 参数说明：是否压缩序列化的RDD partition。可以节省空间，但会消耗更多的CPU资源。启用后，使用spark.io.compression.codec格式进行压缩。</br>调优建议： | 0.6.0         |
-| <font color="red">`spark.serializer`</font>                  | org.apache.spark.serializer. JavaSerializer | 参数说明：用来序列化对象的类。序列化之后的可以通过网络传输到其他，也可以缓存。可以是任何org.apache.spark.Serializer的子类。</br>调优建议：默认的Java序列化器很慢。推荐使用org.apache.spark.serializer.KryoSerializer | 0.5.0         |
-| `spark.serializer.objectStreamReset`                         | 100                                         | 参数说明：当使用org.apache.spark.serializer.JavaSerializer进行序列化时，序列化器会缓存对象以防止写入冗余数据，但这会停止这些对象的垃圾收集。通过调用“reset”，可以从序列化器flush数据，并允许收集旧对象。要关闭此定期重置，请将其设置为-1。默认情况下，它将每100个对象reset一次序列化程序。</br>调优建议： | 1.0.0         |
-
-##### 内存管理相关配置
-
-| Property Name                                               | Default | Meaning                                                      | Since Version |
-| :---------------------------------------------------------- | :------ | :----------------------------------------------------------- | :------------ |
-| <font color="red">**`spark.memory.fraction`**</font>        | 0.6     | 参数说明：用于execution和storage的内存，默认情况下，内存大小为(heap space - 300MB)*spark.memory.fraction。300MB是预留的内存。值越低，溢写和驱逐数据（从内存中）的频率会更高。</br>调优建议： | 1.6.0         |
-| <font color="red">**`spark.memory.storageFraction`**</font> | 0.5     | 参数说明：`spark.memory.fraction`中用于storage的memory比例。此内存中的数据不会被驱逐。</br>调优建议：此值越大，则用于execution的内存越少，execution相关的数据可能会更频繁的溢写到磁盘。 | 1.6.0         |
-| <font color="red">**`spark.memory.offHeap.enabled`**</font> | false   | 参数说明：如果为true，Spark将尝试将堆外内存用于某些操作。如果启用了堆外内存使用，则spark.memory.offHeap.size必须为正。</br>调优建议： | 1.6.0         |
-| <font color="red">**`spark.memory.offHeap.size`**</font>    | 0       | 参数说明：堆外内存的大小</br>调优建议：                      | 1.6.0         |
-| `spark.storage.replication.proactive`                       | false   | 参数说明：是否启用RDD 块复制。</br>调优建议：一般不用改      | 2.2.0         |
-| `spark.cleaner.periodicGC.interval`                         | 30min   | 参数说明：控制GC触发的频率。只有垃圾回收弱引用时，context清理器会触发。</br>调优建议：一般不用改 | 1.6.0         |
-| `spark.cleaner.referenceTracking`                           | true    | 参数说明：是否启用context清理。</br>调优建议：一般不用改     | 1.0.0         |
-| `spark.cleaner.referenceTracking.blocking`                  | true    | 参数说明：控制清理器的线程是否会阻塞cleanup task。</br>调优建议：一般不用改 | 1.0.0         |
-| `spark.cleaner.referenceTracking.blocking.shuffle`          | false   | 参数说明：控制清理器线程是否会阻塞shuffle cleanup task任务</br>调优建议：一般不用改 | 1.1.1         |
-| `spark.cleaner.referenceTracking.cleanCheckpoints`          | false   | 参数说明：引用如果超出范围，是否清除checkpoint文件。</br>调优建议：一般不用改 | 1.4.0         |
-
-##### execution相关配置
-
-| Property Name                                                | Default                                                      | Meaning                                                      | Since Version |
-| :----------------------------------------------------------- | :----------------------------------------------------------- | :----------------------------------------------------------- | :------------ |
-| `spark.broadcast.blockSize`                                  | 4m                                                           | 参数说明：TorrentBroadcastFactory的块大小。值太大会降低广播变量时的并行度；值太小会影响BlockManager的性能。</br>调优建议：一般不修改。 | 0.5.0         |
-| `spark.broadcast.checksum`                                   | true                                                         | 参数说明：在广播过程中是否计算校验和。用来检测广播过程中哪些块损坏了。代价是计算和发送更多的数据</br>调优建议：一般不修改。 | 2.1.1         |
-| <font color="red">`spark.executor.cores`</font>              | 1 in YARN mode,  standalone和Mesos coarse-grained modes   是worker节点的所有core | 参数说明：executor可用的core数</br>调优建议：任务级别调整。  | 1.0.0         |
-| <font color="red">`spark.default.parallelism`</font>         | 对于reduceByKey和join等分布式shuffle操作，默认值为父RDD中的最大分区数。</br>local模式：本地机器的core数；</br>Mesos模式：8；</br>其他模式：所有executor上的总核数与2的最大值。如配置Executor的数量为5，每个Executor的CPU Core数量为2，executor上的总核数10，则默认并行度为`Max(10,2)=10`。 | 参数说明：通过join、reduceByKey和parallelize等transformation算子返回的RDD中的默认分区数。</br>调优建议： | 0.5.0         |
-| `spark.executor.heartbeatInterval`                           | 10s                                                          | 参数说明：executor向driver发送心跳的间隔时间。通过心跳，driver可以知道executor是否存活，且每次心跳会更新executor的一些指标数据。</br>调优建议：spark.executor.heartbeatInterval应显著小于spark.network.timeout | 1.1.0         |
-| `spark.files.fetchTimeout`                                   | 60s                                                          | 参数说明：从driver获取 通过`SparkContext.addFile()`添加的文件时使用的超时时间。</br>调优建议：一般不修改。 | 1.0.0         |
-| `spark.files.useFetchCache`                                  | true                                                         | 参数说明：fetch文件时是否通过本地缓存进行共享，同一个application的executor如果在同一个worker节点，那么这些executor是可以共享本地缓存中的文件，效率更高。</br>调优建议：一般不修改。 | 1.2.2         |
-| `spark.files.overwrite`                                      | false                                                        | 参数说明：当目标文件存在且其内容与源文件不匹配时，是否覆盖通过`SparkContext.addFile()`添加的文件。</br>调优建议：一般不修改。 | 1.0.0         |
-| `spark.files.maxPartitionBytes`                              | 134217728 (128 MiB)                                          | 参数说明：在读取文件时，会将文件分割为partition，一个partition的最大字节数为此值。</br>调优建议：值太大会降低并发度。一般不修改。 | 2.1.0         |
-| `spark.files.openCostInBytes`                                | 4194304 (4 MiB)                                              | 参数说明：打开文件的成本。表示同一时间可扫描的字节数。</br>调优建议：一般不修改。 | 2.1.0         |
-| `spark.hadoop.cloneConf`                                     | false                                                        | 参数说明：如果设置为true，则为每个task克隆一个新的Hadoop配置对象。应启用此选项以解决配置线程安全问题。开启会降低性能</br>调优建议：一般不修改。 | 1.0.3         |
-| `spark.hadoop.validateOutputSpecs`                           | true                                                         | 参数说明：</br>调优建议：一般不修改。                        | 1.0.1         |
-| `spark.storage.memoryMapThreshold`                           | 2m                                                           | 参数说明：从磁盘读取数据块时，Spark内存映射的数据块大小。</br>调优建议：一般不修改。 | 0.9.2         |
-| `spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version` | 1                                                            | 参数说明：</br>调优建议：一般不修改。                        |               |
-
-##### executor指标相关配置
-
-
-
-##### 网络相关配置
-
-| Property Name                                        | Default                            | Meaning                                                      | Since Version |
-| :--------------------------------------------------- | :--------------------------------- | :----------------------------------------------------------- | :------------ |
-| <font color="red">`spark.rpc.message.maxSize`</font> | 128                                | 参数说明：executor和driver间RPC通信时传递的数据量大小。如果任务数过多（上千）</br>调优建议：如果报错提示此值过小，可以增大此值。如256，512等。 | 2.0.0         |
-| `spark.blockManager.port`                            | (random)                           | 参数说明：</br>调优建议：一般不修改。                        | 1.1.0         |
-| `spark.driver.blockManager.port`                     | (value of spark.blockManager.port) | 参数说明：</br>调优建议：一般不修改。                        | 2.1.0         |
-| `spark.driver.bindAddress`                           | (value of spark.driver.host)       | 参数说明：</br>调优建议：一般不修改。                        | 2.1.0         |
-| `spark.driver.host`                                  | (local hostname)                   | 参数说明：spark standalone模式。</br>调优建议：一般不修改。  | 0.7.0         |
-| `spark.driver.port`                                  | (random)                           | 参数说明：spark standalone模式。</br>调优建议：一般不修改。  | 0.7.0         |
-| `spark.rpc.io.backLog`                               | 64                                 | 参数说明：</br>调优建议：一般不修改。                        | 3.0.0         |
-| <font color="red">`spark.network.timeout`</font>     | 120s                               | 参数说明：所有网络交互的默认超时时间。如果配置了`spark.storage.blockManagerSlaveTimeoutMs`</br>, `spark.shuffle.io.connectionTimeout`</br>, `spark.rpc.askTimeout` or `spark.rpc.lookupTimeout`</br>则对应的功能的超时时间不为spark.network.timeout。</br>调优建议：一般不修改。 | 1.3.0         |
-| `spark.network.io.preferDirectBufs`                  | true                               | 参数说明：</br>调优建议：一般不修改。                        | 3.0.0         |
-| `spark.port.maxRetries`                              | 16                                 | 参数说明：</br>调优建议：一般不修改。                        | 1.1.1         |
-| `spark.rpc.numRetries`                               | 3                                  | 参数说明：</br>调优建议：一般不修改。                        | 1.4.0         |
-| `spark.rpc.retry.wait`                               | 3s                                 | 参数说明：</br>调优建议：一般不修改。                        | 1.4.0         |
-| `spark.rpc.askTimeout`                               | `spark.network.timeout`            | 参数说明：</br>调优建议：一般不修改。                        | 1.4.0         |
-| `spark.rpc.lookupTimeout`                            | 120s                               | 参数说明：</br>调优建议：一般不修改。                        | 1.4.0         |
-| `spark.network.maxRemoteBlockSizeFetchToMem`         | 200m                               | 参数说明：</br>调优建议：一般不修改。                        | 3.0.0         |
-
-##### 调度相关配置
-
-TODO
-
-##### barrier execution mode
-
-TODO
-
-##### 动态资源调度配置
-
-| Property Name                                              | Default                                | Meaning                                                      | Since Version |
-| :--------------------------------------------------------- | :------------------------------------- | :----------------------------------------------------------- | :------------ |
-| `spark.dynamicAllocation.enabled`                          | false                                  | 参数说明：是否启用动态资源调度，会根据工作负载动态调整此application的executor的数量</br>调优建议：可以开启。 | 1.2.0         |
-| `spark.dynamicAllocation.executorIdleTimeout`              | 60s                                    | 参数说明：当spark.dynamicAllocation.enabled=true后，若executor的空闲时间超过此值，则释放此executor。</br>调优建议：一般不修改。 | 1.2.0         |
-| `spark.dynamicAllocation.cachedExecutorIdleTimeout`        | infinity                               | 参数说明：当spark.dynamicAllocation.enabled=true后，若缓存了数据的executor的空闲时间超过此值，则释放此executor。</br>调优建议：一般不修改。240s | 1.4.0         |
-| `spark.dynamicAllocation.initialExecutors`                 | `spark.dynamicAllocation.minExecutors` | 参数说明：当spark.dynamicAllocation.enabled=true后，此值表示应用程序初始的executor数量。若通过`--num-executors`指定了executor的数量，则初始的exectuor数量为max(此项配置的值, `--num-executor`的值)</br>调优建议：一般不修改。 | 1.3.0         |
-| `spark.dynamicAllocation.maxExecutors`                     | infinity                               | 参数说明：当spark.dynamicAllocation.enabled=true后，executor的数量上限</br>调优建议：根据具体修改，如10 | 1.2.0         |
-| `spark.dynamicAllocation.minExecutors`                     | 0                                      | 参数说明：当spark.dynamicAllocation.enabled=true后，executor的数量下限</br>调优建议：根据具体修改，1 | 1.2.0         |
-| `spark.dynamicAllocation.executorAllocationRatio`          | 1                                      | 参数说明：默认情况下，动态资源调度会根据task量来申请足够多的executor保证最大化并行度。但是这种情况可能存在资源浪费（因为某些executor可能不会做任何事情）。通过这个比率来控制申请的executor的数量。预计申请的executor数*此值。一般为1.0或0.5。**当此参数计算出来的executor数量与spark.dynamicAllocation.maxExecutors或spark.dynamicAllocation.minExecutors的值冲突时，以后两者为准。**</br>调优建议：一般不修改。 | 2.4.0         |
-| `spark.dynamicAllocation.schedulerBacklogTimeout`          | 1s                                     | 参数说明：当spark.dynamicAllocation.enabled=true后，如果pending的task的积压时间超过此值，则为其申请新的executor。</br>调优建议：一般不修改。 | 1.2.0         |
-| `spark.dynamicAllocation.sustainedSchedulerBacklogTimeout` | `schedulerBacklogTimeout`              | 参数说明：同schedulerBacklogTimeout，是申请了新executor之后继续申请的间隔，默认=schedulerBacklogTimeout（第二次及之后）</br>调优建议：一般不修改。 | 1.2.0         |
-| `spark.dynamicAllocation.shuffleTracking.enabled`          | `false`                                | 参数说明：（实验性质）是否启用shuffle文件跟踪，它允许动态资源调度可以不依赖external shuffle服务。此配置不会回收保存了shuffle数据的executor。</br>调优建议：一般不修改。 | 3.0.0         |
-| `spark.dynamicAllocation.shuffleTracking.timeout`          | `infinity`                             | 参数说明：当spark.dynamicAllocation.shuffleTracking.enabled=true后，控制保存shuffle数据的executor超时时间，默认使用GC垃圾回收控制释放。如果有时候GC不及时，配置此参数后，即使executor上存在shuffle数据，也会被回收。</br>调优建议：一般不修改。 | 3.0.0         |
-
-##### 线程配置
-
-TODO
-
-##### Spark SQL相关配置
-
-TODO
-
-##### Spark Streaming相关配置
-
-TODO
-
-##### SparkR相关配置
-
-TODO
-
-##### GraphX相关配置
-
-TODO
-
-##### 部署相关配置
-
-TODO
-
-##### 集群管理器相关配置
-
-TODO
-
-### 环境变量
-
-Spark的环境变量定义在`$SPARK_HOME/conf/spark-env.sh`脚本中（windows系统则在`$SPARK_HOME/conf/spark-env.cmd`）。
-
-默认情下，当Spark安装好之后，`$SPARK_HOME/conf/spark-env.sh`文件并不存在，可以通过复制`$SPARK_HOME/conf/spark-env.sh.template`文件来创建`$SPARK_HOME/conf/spark-env.sh`。需要确保`$SPARK_HOME/conf/spark-env.sh`文件是可执行的。
-
-| Environment Variable    | Meaning                                                      |
-| :---------------------- | :----------------------------------------------------------- |
-| `JAVA_HOME`             | Location where Java is installed (if it's not on your default `PATH`). |
-| `PYSPARK_PYTHON`        | Python binary executable to use for PySpark in both driver and workers (default is `python2.7` if available, otherwise `python`). Property `spark.pyspark.python` take precedence if it is set |
-| `PYSPARK_DRIVER_PYTHON` | Python binary executable to use for PySpark in driver only (default is `PYSPARK_PYTHON`). Property `spark.pyspark.driver.python` take precedence if it is set |
-| `SPARKR_DRIVER_R`       | R binary executable to use for SparkR shell (default is `R`). Property `spark.r.shell.command` take precedence if it is set |
-| `SPARK_LOCAL_IP`        | IP address of the machine to bind to.                        |
-| `SPARK_PUBLIC_DNS`      | Hostname your Spark program will advertise to other machines. |
-
-
-
-<font color="red">***注意：当以Spark on YARN的集群模式运行时，环境变量需要在`$SPARK_HOME/conf/spark-defaults.xml`文件中通过`spark.yarn.appMasterEnv.[EnvironmentVariableName]`的形式来设置。这是因为在`spark-env.sh`中设置的环境变量并不能在YARN的Application Master（AM）进程中生效。***</font>
-
-### 配置日志格式
-
-Spark使用log4j来记录日志，通过`$SPARK_HOME/conf/log4j.properties`配置文件可以决定Spark如何记录日志。
-
-### 覆盖配置目录
-
-修改`SPARK_CONF_DIR`环境变量的值，就可以让Spark读取该目录下的配置文件（`spark-defaults.conf`, `spark-env.sh`, `log4j.properties`等），而不从默认的`SPARK_HOME/conf`目录下读取配置。
-
-### 继承Hadoop集群的配置
-
-要让Spark能够从HDFS中读取和写入数据，那么要保证在Spark的classpath中存在如下两个配置文件：
-
-- core-site.xml
-- hdfs-site.xml
-
-要使这些文件对Spark可见，请将`$spark_HOME/CONF/Spark-env.sh`中的`HADOOP_CONF_DIR`设置为`$HADOOP_HOME/etc/hadoop/conf`。
-
-### 自定义Hadoop/Hive的配置
-
-不同的application可能需要不同的Hadoop/Hive的client端配置。在Spark on YARN模式下，这个时候不能通过修改Spark的classpath中的`hdfs-site.xml`, `core-site.xml`, `yarn-site.xml`, `hive-site.xml`文件来适配所有application。修改了这些配置，也可能会影响cluster端的配置参数。
-
-更好的做法是:
-
-- 使用`spark.hadoop.*`这种spark hadoop属性的方式在应用程序中指定需要设置的参数
-
-  下面的代码表示设置了一个hadoop属性`abc.def=xyz`
-
-  ```scala
-  val conf = new SparkConf().set("spark.hadoop.abc.def", "xyz")
-  ```
-
-  
-
-- 使用`spark.hive.*`
-
-  下面的代码表示设置了一个hive属性`abc=xyz`
-
-  ```scala
-  val conf = new SparkConf().set("spark.hadoop.abc", "xyz")
-  ```
-
-这类`spark.hadoop.*`和`spark.hive.*`属性也可以在`$spark_HOME/conf/spark-defaults.conf`中设置。
-
-还可以在`spark-submit`的命令行显式地指定这里参数：
-
-```shell
-./bin/spark-submit \ 
-  --name "My app" \ 
-  --master local[4] \  
-  --conf spark.eventLog.enabled=false \ 
-  --conf "spark.executor.extraJavaOptions=-XX:+PrintGCDetails -XX:+PrintGCTimeStamps" \ 
-  --conf spark.hadoop.abc.def=xyz \
-  --conf spark.hive.abc=xyz
-  myApp.jar
-```
-
-
-
-### 自定义资源调度配置
-
-TODO
-
-## 1.12 Spark调优
-
-参考：https://spark.apache.org/docs/3.0.2/tuning.html
-
-Spark程序受到：CPU、网络带宽、内存的资源限制。
-
-- 数据序列化
-
-  选择合理的序列化格式，可以减少内存的使用，也可以减少网络传输中的数据量大小，提高应用程序执行效率。
-
-  ```scala
-  val conf = new SparkConf()
-               .setMaster("local[2]")
-               .setAppName("CountingSheep")
-  val sc = new SparkContext(conf)
-  ```
-
-  
-
-- 内存调优
-
-### 数据序列化
-
-分布式应用中，序列化扮演这很重要的角色。如果序列化很慢，或者序列化之后占用大量的字节，这会严重降低计算的效率。
-
-Spark提供了两个序列化的库：
-
-- Java serialization
-
-  默认情况下，Spark使用Java的`ObjectOutputStream`框架对对象进行序列化，兼容任何实现`Java.io.Serializable`的类。还可以通过扩展`java.io.Externalizable`来控制序列化的性能。Java序列化是灵活的，但通常非常慢。
-
-- Kryo serialization
-
-  Spark还可以使用Kryo库（版本4）更快地序列化对象。Kryo比Java序列化快得多，也更紧凑（通常高达10倍），但它不支持所有的Serializable类型，需要您预先注册程序中使用的类以获得最佳性能。
-
-
-
-切换序列化类为Kryo。
-
-```scala
-val conf = new SparkConf().setMaster(...).setAppName(...)
-conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-```
-
-这样，在worker节点shuffle序列化时和RDD序列化到磁盘时，都使用Kryo来序列化。
-
-之所以不把Kryo设置为默认的序列化器，是因为需要在手动注册需要kryo来序列化 的类。如下所示：
-
-```scala
-val conf = new SparkConf().setMaster(...).setAppName(...)
-conf.registerKryoClasses(Array(classOf[MyClass1], classOf[MyClass2]))
-val sc = new SparkContext(conf)
-```
-
-
-
-### 内存调优
-
-在内存调优中，主要考虑三个因素：
-
-- 对象使用的内存量
-- 访问这些对象的成本
-- 垃圾回收的开销
-
-默认情况下，Java对象访问速度很快，但很容易比字段中的“原始”数据多消耗2-5倍的空间。这有几个原因：
-
-- 每个不同的Java对象都有一个“对象头”，大约16个字节，包含指向其类的指针等信息。对于一个数据很少的对象（比如一个Int字段），这可能比数据大。
-- Java字符串在原始字符串数据上有大约40个字节的开销（因为它们将其存储在一个Chars数组中，并保留额外的数据，例如长度），并且由于字符串内部使用UTF-16编码，因此将每个字符存储为两个字节。因此，10个字符的字符串可以很容易地消耗60个字节。
-- 常见的集合类，如HashMap和LinkedList，使用链接数据结构，其中每个条目都有一个“包装器”对象（例如Map.entry）。该对象不仅有一个标头，而且还有指向列表中下一个对象的指针（通常每个8个字节）。
-- 基本类型的集合通常将它们存储为“装箱”对象，对应的包装器对象，例如java.lang.Integer。
-
-#### Spark的内存管理
-
-Spark中的内存使用可以分为两类：执行内存（execution memory）和存储内存（storage memory）。
-
-- execution memory
-
-  指的是在shuffle、join、sort、aggregation等计算过程中使用的内存。
-
-- storage memory
-
-  指的是在集群中，缓存和传递内部数据所用的内存。
-
-在Spark中，执行和存储共享一个统一的区域（M）。当不使用执行内存时，存储可以获取所有可用内存，反之亦然。R是应用程序中storage memory的最小值，当storage memory使用的内存小于R时，会减少execution memory使用的内存，以增加storage memory使用的内存。
-
-有几个好处：
-
-1、不使用缓存的应用程序可以使用整个execution memory，从而避免不必要的磁盘溢写。
-
-2、使用缓存的应用程序可以保留最小的storage memory（R），使其数据块不会被逐出。
-
-3、这种方法为各种工作负载提供了合理的开箱即用性能，而不需用户具有内存分配的专门知识。
-
-- `spark.memory.fraction默认值0.6。`表示M占JVM内存的比例，即execution memory和storage memory的总大小。剩下的0.4的内存用于用户的数据结构、Spark内部元数据等。
-- `spark.memory.storageFraction`默认0.5。表示R占M的比例。表示用于存储的内存至少为0.5M。
-
-#### 如何确定对象的内存使用情况
-
-确定DataSet所需内存消耗量的最佳方法是创建RDD，将其放入缓存，然后查看web UI中的“storage”页面。该页面将告诉您RDD占用了多少内存。
-要估计特定对象的内存消耗，请使用SizeEstimator的estimate 方法。这对于尝试不同的数据布局以减少内存使用，以及确定广播变量将在每个executor堆上占用的空间量非常有用。
-
-#### 优化数据结构
-
-减少内存消耗的方法：
-
-避免使用增加内存消耗的JAVA特性，如基于指针的数据结构和包装对象。
-
-- 使用合适的数据结构和基础类型。如fastutil提供了比较方便的结合类，而且兼容Java标准库。标准Java或标准Scala集合类可能消耗内存更大。
-- 尽可能避免包含大量小对象和指针的嵌套结构
-- key使用数字类型的id，或者枚举类，而不是String类型
-- 如果内存小于32GB，可以通过设置JVM参数`-XX:+UseCompressedOops`来减少指针所占的字节（8字节减少为4字节）。可以在spark-env.sh中添加此选项
-
-#### 序列化RDD存储
-
-对象太大而无法进行有效存储，可以将RDD序列化之后存储，这样可以减少存储时占用的内存。
-
-使用这种方式，Spark会将RDD的每个partition存储为一个大的字节数组。以序列化的形式存储的有点是占用的内存空间更小，缺点是访问时需要先反序列化，因此访问较慢。建议使用Kryo序列化。
-
-#### 如何调整Spark的缓存大小
-
-TODO
-
-#### 如何调整Java垃圾收集器
-
-如果GC过于频繁，可以尝试使用序列化RDD之后再缓存。
-
-GC调优的第一步是收集垃圾收集频率和GC花费时间的统计信息。这可以通过向Java选项添加`-verbose:gc -XX:+PrintGCDetails -XX:+PPrintGCTimeStamps`来完成。请注意，这些日志将位于集群的工作节点（位于其工作目录中的stdout文件中），而不是驱动程序中。
-
-为了进一步优化垃圾收集，我们首先需要了解JVM内存管理的一些基本信息：
-
-- Java堆空间分为两个区域：Young和Old。年轻代保存短期的对象，而老年代保存长期的对象。
-- 年轻代又划分为3个区域：Eden、Survivor1、Survivor2。
-- GC流程：
-  - 当Eden满了，在Eden中运行一次minor GC，Eden和Survivor1中存活的对象copy到Survivor2中
-  - Survivor2变为Survivor1，Survivor1变为Survivor2
-  - 当对象足够老，或者Survivor2满了，将其中的对象移动到Old
-  - 当Old满了，执行Full GC。
-
-Spark中GC调优的目标是确保Old中只存储长期的RDD，短期存活的对象存储在Young中。
-
-- 通过收集GC统计信息来检查GC是否过多。如果在任务完成之前多次调用Full GC，则意味着没有足够的内存用于执行任务。
-
-- 如果minor GC次数很多，而major GC次数很少，则可以增加Eden的内存大小。
-
-- 在打印的GC统计信息中，如果OldGen快要满了，可以降低`spark.memory.fraction`比例来降低用于spark中execution memory和storage memory的内存量。另外，还可以降低YoungGen的内存比例。
-
-- 使用`G1GC` 垃圾回收器。`-XX:+UserG1GC`。可以提高性能。如果executor的堆内存比较大，可以使用`-XX:G1HeapRegionSize`增加G1区域的内存大小。
-
-- 举个例子，如果Task是从HDFS读取数据，那么可以按如下来估算Eden的内存大小。
-
-  一个executor运行4个task，
-
-  一个task读取一个block的数据
-
-  一个block解压之后是原来的3倍大小
-
-  HDFS的block sieze 为128MB
-
-  那么可以设置Eden大小为：4 * 3 * 128MB。
-
-- 监视GC的频率和时间如何随新设置而变化。
-
-GC调优的效果要看具体的应用程序和具体分配的内存量，也是任务级别的调优了。
-
-### 其他调优
-
-#### 并行度
-
-在编写Spark应用程序是，可以指定应用程序的并发度，如`SparkContext.textFile()`的第二个参数，也可以设置`spark.default.paralelism`来修改spark应用程序的默认并发度。建议是每个CPU核心处理2-3个Task。
-
-#### 列出Input Path的并行度
-
-当作业输入包含大量目录时，您可能还需要增加目录列表的并行性，否则该过程可能会花费很长时间，尤其是在针对S3这样的对象存储时。如果您的工作在RDD上使用Hadoop输入格式（例如，通过`SparkContext.sequenceFile`），则并行度通过`spark.Hadoop.mapreduce.input.fileinputformat.list-status.num-threads`（当前默认值为1）控制。
-
-对于具有基于文件的数据源的Spark SQL，可以调整`Spark.SQL.sources.parallelPartitionDiscovery.threshold`和`Spark.SQL.sesources.parallel PartitionDiscovery.parallelism`以提高列表并行性。
-
-参考：Spark SQL调优 https://spark.apache.org/docs/3.0.2/sql-performance-tuning.html
-
-#### reduce task的内存使用
-
-有时候会出现某个task OutOfMemoryError的情况，比如`groupByKey`的reduce task涉及的数据量太大了。Spark的Shuffle操作（`sortByKey`, `groupByKey`,`reduceByKey`, `join`等）会在每个reduce task中构建一个`Hashtable`来进行分组。
-
-解决方法：
-
-提高并行度，使得每个reduce task的输入数据量变小。
-
-#### 广播大变量
-
-如果task需要使用driver程序中的大的对象，那么可以将此对象转换为广播变量。（通常大于20KB的对象，可以考虑转换为广播变量）。
-
-普通变量会copy给每个task一个该变量的副本
-
-广播变量会copy给每个executor一个该变量的副本
-
-将普通变量转换为广播变量可以减小传输的数据量。
-
-#### 数据位置（Data Locality）
-
-计算和数据在同一位置，那么计算会比较快。如果计算和数据是分离的，那么需要将计算（应用程序代码）移动到数据节点，再进行计算（应为应用程序代码比数据大小，小的多）。
-
-### 总结
-
-Spark应用程序调优的主要问题——数据序列化和内存调优。对于大多数程序，切换到Kryo序列化，并将序列化的数据持久化将解决大多数常见的性能问题。
-
-**数据位置是指数据与处理它的代码之间的距离**。基于数据的当前位置，有几个级别的位置。按照从最近到最远的顺序：
-
-- `PROCESS_LOCAL`
-
-  数据与运行代码位于同一JVM中。这是最佳位置
-
-- `NODE_LOCAL`
-
-  数据位于同一节点上。示例可能在同一节点上的HDFS中，或者在同一个节点上的另一个executor中。这比`PROCESS_LOCAL`稍慢，因为数据必须在进程之间传输
-
-- `NO_PREF`
-
-  数据可以从任何地方快速访问，并且没有位置偏好
-
-- `RACK_LOCAL`
-
-  数据位于同一服务器机架上。数据位于同一机架上的不同服务器上，因此需要通过网络发送，通常通过单个交换机传输
-
-- `any` 
-
-  数据都在网络上的其他位置，而不在同一机架中
-
-数据和计算可以在同一节点，但是该节点计算资源不够了，此时有两种选择：
-
-a）等待忙碌的CPU释放出来，在同一台服务器上启动计算任务
-
-b）在其它节点启动计算任务，并移动需要的数据。
-
-Spark通常做的是等待一段时间，希望繁忙的CPU能够释放出来。一旦超时，它就开始将数据从远处移动到空闲CPU所在节点。
-
-## 1.13 Spark监控
-
-参考：https://spark.apache.org/docs/3.0.2/monitoring.html
-
-TODO
-
-## 1.14 作业调度
+## 1.11 作业调度
 
 参考：https://spark.apache.org/docs/3.0.2/job-scheduling.html
 
@@ -2082,12 +1550,11 @@ conf.set("spark.scheduler.allocation.file", "/path/to/file")
 
 ```sql
 SET spark.sql.thriftserver.scheduler.pool=accounting;
-
 ```
 
 
 
-## 1.15 Spark相关的硬件资源配置
+## 1.12 Spark相关的硬件资源配置
 
 参考：https://spark.apache.org/docs/3.0.2/hardware-provisioning.html
 
@@ -2505,39 +1972,573 @@ spark自带的示例
 ./bin/spark-submit examples/src/main/r/dataframe.R
 ```
 
+## Spark日志查看方法
+
+https://blog.csdn.net/qq_33588730/article/details/109353336
 
 
-# 4. spark配置
+
+# 4. spark配置项
+
+参考：https://spark.apache.org/docs/3.0.2/configuration.html
 
 TODO
 
-# 5. Spark迁移
+Spark有三种类型的属性：
+
+- Spark Properties
+
+  此类属性用来控制application的行为，可以基于每个应用程序单独配置不同的属性值。
+
+- 环境变量
+
+- 日志配置
+
+### Spark Properties
+
+#### 动态加载Spark Properties
+
+Spark shell和`spark-submit`有两种动态加载Spark Properties配置的方法：
+
+- 命令行参数
+
+  通过`--conf` 来指定spark的properties。
+
+  ```scala
+  ./bin/spark-submit --name "My app" --master local[4] --conf spark.eventLog.enabled=false
+    --conf "spark.executor.extraJavaOptions=-XX:+PrintGCDetails -XX:+PrintGCTimeStamps" myApp.jar
+  ```
+
+  
+
+- `conf/spark-defaults.conf`
+
+  `spark-submit`会读取`conf/spark-defaults.conf`中的配置项，通过修改此配置中配置项的值。最终会与`SparkConf`中的配置进行合并，然后创建`SparkContext`实例对象。
+
+写死在代码中的配置项的优先级最高，代码中的配置项 > 命令行中的配置项 > 配置文件中的配置项。
+
+通过`http://<dirver>:4040`打开应用程序的Web UI，然后在"Environment"页面可以查看当前应用程序的spark properties。
+
+***注意：只有通过`spark-defaults.con`、`SparkConf`或`命令行显式指定的配置项`才会显示出来。***
+
+##### application相关配置
+
+TODO
+
+##### runtime相关配置
+
+TODO
+
+##### shuffle相关配置
+
+| Property Name                                                | Default           | Meaning                                                      | Since Version |
+| :----------------------------------------------------------- | :---------------- | :----------------------------------------------------------- | :------------ |
+| <font color="red">`spark.reducer.maxSizeInFlight`</font>     | 48m               | 参数说明：该参数用于设置`shuffle read`任务的buff缓冲区大小，该缓冲区决定一次可以拉取多少数据。</br>调优建议：如果可用内存资源足够，则可以增加参数的大小（例如96m），从而减少拉取数据的次数，这可以减少网络传输的次数并提高性能。 在实践中发现，合理调整参数后，性能会提高1％至5％。但是executor内存不足时,设置的太大,就会造成OOM导致宕机 | 1.4.0         |
+| `spark.reducer.maxReqsInFlight`                              | Int.MaxValue      | 参数建议：该参数用于设置fetch block时的连接数大小。如果集群节点数量很多，reducer在从其他节点fetch shuffle数据时可能会建立很多远程连接，严重时可能会导致该节点瘫痪。避免节点因为请求量过大而瘫痪掉，当并行度大到一定程度，N个[reduce](https://so.csdn.net/so/search?q=reduce&spm=1001.2101.3001.7020) task去同一个节点拉数据，</br>调优建议： | 2.0.0         |
+| `spark.reducer.maxBlocksInFlightPerAddress`                  | Int.MaxValue      | 参数建议：该参数用于限制每个reduce任务从给定主机端口fetch的block数量。</br>调优建议： | 2.2.1         |
+| <font color="red">`spark.shuffle.compress`</font>            | true              | 参数建议：是否压缩map的输出文件。启用后会采用spark.io.compression.codec格式进行压缩。</br>调优建议： | 0.6.0         |
+| <font color="red">`spark.shuffle.file.buffer`</font>         | 32k               | 参数建议：该参数表示每个shuffle文件输出流的内存缓冲区大小（以KiB为单位）。增加此参数大小，可以降低在创建中间shuffle文件时的，磁盘寻址和系统调用的次数，提高性能</br>调优建议：不够用的话可每次翻倍，如64k。 | 1.4.0         |
+| <font color="red">`spark.shuffle.io.maxRetries`</font>       | 3                 | 参数建议：（仅限Netty）`shuffle read`任务从`shuffle write`任务那里节点正在拉自己的数据，如果网络由于异常拉失败而失败，它将自动重试。 此参数表示可以重试的最大次数。 如果在指定的次数内进行或不成功，则可能导致作业失败。在遇到长时间GC或短暂网络连接问题时，这种重试逻辑可以提高shuffle的稳定性。</br>调优建议：对于那些包含耗时的`shuffle`的作业，建议增加最大重试次数（例如60次），以避免由于诸如JVM或网络的完整gc之类的因素而导致数据失败。 不稳定。 在实践中发现，对于大量数据（数十亿到数十亿的`shuffle`过程），调整参数可以大大提高稳定性。 | 1.2.0         |
+| <font color="red">`spark.shuffle.io.numConnectionsPerPeer`</font> | 1                 | 参数建议：（仅限Netty）在大集群中，为了减少建立连接，主机之间的连接可以被重复使用。</br>调优建议：对于节点少但磁盘多的集群，可能导致并发度不够。可以增加此参数的值。 | 1.2.1         |
+| <font color="red">`spark.shuffle.io.preferDirectBufs`</font> | true              | 参数建议：（仅限Netty）启用堆外内存，可以避免shuffle过程的频繁gc，如果堆外内存非常紧张，则可以考虑关闭这个选项</br>调优建议： | 1.2.0         |
+| <font color="red">`spark.shuffle.io.retryWait`</font>        | 5s                | 参数建议：两次fetch之间需要等待多长时间。重试导致的延迟最大为：maxRetries * retryWait</br>调优建议： | 1.2.1         |
+| `spark.shuffle.io.backLog`                                   | -1                | 参数建议：shuffle服务的accept队列的长度。</br>调优建议：对于比较大的应用程序可以考虑增大此参数，避免因为accept对量满了而drop掉某些连接。 | 1.1.1         |
+| <font color="red">`spark.shuffle.service.enabled`</font>     | false             | 参数建议：是否启用external shuffle服务。</br>调优建议：      | 1.2.0         |
+| <font color="red">`spark.shuffle.service.port`</font>        | 7337              | 参数建议：external shuffle服务运行的端口。</br>调优建议：    | 1.2.0         |
+| <font color="red">`spark.shuffle.service.index.cache.size`</font> | 100m              | 参数建议：缓存Shuffle服务的索引文件的内存大小</br>调优建议： | 2.3.0         |
+| `spark.shuffle.maxChunksBeingTransferred`                    | Long.MAX_VALUE    | 参数建议：shuffle服务允许同时传输的chunk的最大数量。</br>调优建议： | 2.3.0         |
+| <font color="red">`spark.shuffle.sort.bypassMergeThreshold`</font> | 200               | 参数建议：当ShuffleManager为SortShuffleManager时，如果shuffle read task的数量小于这个阈值（默认是200），则shuffle write过程中不会进行排序操作，而是直接按照未经优化的HashShuffleManager的方式去写数据，但是最后会将每个task产生的所有临时磁盘文件都合并成一个文件，并会创建单独的索引文件。</br>调优建议：当你使用SortShuffleManager时，如果的确不需要排序操作，那么建议将这个参数调大一些，大于shuffle read task的数量。那么此时就会自动启用bypass机制，map-side就不会进行排序了，减少了排序的性能开销。但是这种方式下，依然会产生大量的磁盘文件，因此shuffle write性能有待提高。 | 1.1.1         |
+| <font color="red">`spark.shuffle.spill.compress`</font>      | true              | 参数建议：在shuffle过程中，是否压缩溢写的文件。启用后会采用spark.io.compression.codec格式进行压缩。</br>调优建议： | 0.9.0         |
+| `spark.shuffle.accurateBlockThreshold`                       | 100 * 1024 * 1024 | 参数建议：HighlyCompressedMapStatus 中记录 shuffle blcok 准确大小的阈值，当 block 小于该值则用平均值代替。</br>调优建议： | 2.2.1         |
+| `spark.shuffle.registration.timeout`                         | 5000              | 参数建议：向external shuffle服务注册时的超时时间，单位ms。</br>调优建议： | 2.3.0         |
+| `spark.shuffle.registration.maxAttempts`                     | 3                 | 参数建议：向external shuffle服务注册失败时，最多尝试多少次。</br>调优建议： | 2.3.0         |
+
+##### spark ui相关配置
+
+TODO
+
+##### 压缩和序列化相关配置
+
+| Property Name                                                | Default                                     | Meaning                                                      | Since Version |
+| :----------------------------------------------------------- | :------------------------------------------ | :----------------------------------------------------------- | :------------ |
+| <font color="red">`spark.broadcast.compress`</font>          | true                                        | 参数说明：在传递广播变量前是否压缩它。若启用，采用spark.io.compression.codec格式进行压缩。</br>调优建议：开启 | 0.6.0         |
+| <font color="red">`spark.checkpoint.compress`</font>         | false                                       | 参数说明：是否压缩RDD的checkpoint。若启用，采用spark.io.compression.codec格式进行压缩。</br>调优建议：开启 | 2.2.0         |
+| <font color="red">`spark.io.compression.codec`</font>        | lz4                                         | 参数说明：用来压缩内部数据（如RDD partition, event log, broadcast variable和shuffle输出）的格式。默认地，Spark提供四中压缩格式：lz4`, `lzf`, `snappy`, and `zstd。</br>调优建议： | 0.8.0         |
+| <font color="red">`spark.io.compression.lz4.blockSize`</font> | 32k                                         | 参数说明：当压缩格式为LZ4时，LZ4压缩使用的block大小。</br>调优建议：更小的block size可以降低LZ4压缩时使用的shuffle memory，但会增加溢写次数。建议32k~512k。 | 1.4.0         |
+| <font color="red">`spark.io.compression.snappy.blockSize`</font> | 32k                                         | 参数说明：参数说明：当压缩格式为snappy时，snappy压缩使用的block大小。</br>调优建议：更小的block size可以降低snappy压缩时使用的shuffle memory，但会增加溢写次数。建议32k~512k。</br>调优建议： | 1.4.0         |
+| `spark.io.compression.zstd.level`                            | 1                                           | 参数说明：zstd压缩时的压缩级别。增大此参数可以提高压缩率，但会更消耗CPU和内存。</br>调优建议： | 2.3.0         |
+| `spark.io.compression.zstd.bufferSize`                       | 32k                                         | 参数说明：zstd压缩时的buffer大小。更小的buffer size可以降低zstd压缩时使用的shuffle memory，但会增加压缩时的开销。</br>调优建议： | 2.3.0         |
+| `spark.kryo.classesToRegister`                               | (none)                                      | 参数说明：如果使用Kryo序列化，可提供一个以逗号分隔的自定义类名列表，以便向Kryo注册这些类。</br>调优建议： | 1.2.0         |
+| `spark.kryo.referenceTracking`                               | true                                        | 参数说明：在使用Kryo序列化数据时是否跟踪对同一对象的引用，</br>调优建议： | 0.8.0         |
+| <font color="red">`spark.kryo.registrationRequired`</font>   | false                                       | 参数说明：在使用kryo序列化数据时，是否严格要求这些类必须向kryo注册。若为false，kryo仍可以序列化这些未注册的类，但是性能开销会很大。</br>调优建议：设置为true，然后向kryo注册需要序列化的类，可以提高序列化的性能（更短的时间，更小的字节数） | 1.1.0         |
+| `spark.kryo.registrator`                                     | (none)                                      | 参数说明：配置此参数的前提是，要以自定义的方式向kryo注册一些类（默认的注册方式是spark.kryo.classesToRegister）。此参数值必须是[`KryoRegistrator`](https://spark.apache.org/docs/3.0.2/api/scala/org/apache/spark/serializer/KryoRegistrator.html)的子类</br>调优建议： | 0.5.0         |
+| `spark.kryo.unsafe`                                          | false                                       | 参数说明：是否使用基于不安全的Kryo序列化器。使用基于不安全的IO可以大大加快速度。</br>调优建议： | 2.1.0         |
+| <font color="red">`spark.kryoserializer.buffer.max`</font>   | 64m                                         | 参数说明：kryo序列化的最大buffer大小。范围：需要序列化的任何对象 < buffer.max < 2048m。</br>调优建议：如果出现"buffer limit exceeded"的报错，需要增大此值。 | 1.4.0         |
+| `spark.kryoserializer.buffer`                                | 64k                                         | 参数说明：kryo序列化的初始buffer大小。***注意：一个worker节点的一个core会有一个buffer。***最大可增大到spark.kryoserializer.buffer.max</br>调优建议： | 1.4.0         |
+| `spark.rdd.compress`                                         | false                                       | 参数说明：是否压缩序列化的RDD partition。可以节省空间，但会消耗更多的CPU资源。启用后，使用spark.io.compression.codec格式进行压缩。</br>调优建议： | 0.6.0         |
+| <font color="red">`spark.serializer`</font>                  | org.apache.spark.serializer. JavaSerializer | 参数说明：用来序列化对象的类。序列化之后的可以通过网络传输到其他，也可以缓存。可以是任何org.apache.spark.Serializer的子类。</br>调优建议：默认的Java序列化器很慢。推荐使用org.apache.spark.serializer.KryoSerializer | 0.5.0         |
+| `spark.serializer.objectStreamReset`                         | 100                                         | 参数说明：当使用org.apache.spark.serializer.JavaSerializer进行序列化时，序列化器会缓存对象以防止写入冗余数据，但这会停止这些对象的垃圾收集。通过调用“reset”，可以从序列化器flush数据，并允许收集旧对象。要关闭此定期重置，请将其设置为-1。默认情况下，它将每100个对象reset一次序列化程序。</br>调优建议： | 1.0.0         |
+
+##### 内存管理相关配置
+
+| Property Name                                               | Default | Meaning                                                      | Since Version |
+| :---------------------------------------------------------- | :------ | :----------------------------------------------------------- | :------------ |
+| <font color="red">**`spark.memory.fraction`**</font>        | 0.6     | 参数说明：用于execution和storage的内存，默认情况下，内存大小为(heap space - 300MB)*spark.memory.fraction。300MB是预留的内存。值越低，溢写和驱逐数据（从内存中）的频率会更高。</br>调优建议： | 1.6.0         |
+| <font color="red">**`spark.memory.storageFraction`**</font> | 0.5     | 参数说明：`spark.memory.fraction`中用于storage的memory比例。此内存中的数据不会被驱逐。</br>调优建议：此值越大，则用于execution的内存越少，execution相关的数据可能会更频繁的溢写到磁盘。 | 1.6.0         |
+| <font color="red">**`spark.memory.offHeap.enabled`**</font> | false   | 参数说明：如果为true，Spark将尝试将堆外内存用于某些操作。如果启用了堆外内存使用，则spark.memory.offHeap.size必须为正。</br>调优建议： | 1.6.0         |
+| <font color="red">**`spark.memory.offHeap.size`**</font>    | 0       | 参数说明：堆外内存的大小</br>调优建议：                      | 1.6.0         |
+| `spark.storage.replication.proactive`                       | false   | 参数说明：是否启用RDD 块复制。</br>调优建议：一般不用改      | 2.2.0         |
+| `spark.cleaner.periodicGC.interval`                         | 30min   | 参数说明：控制GC触发的频率。只有垃圾回收弱引用时，context清理器会触发。</br>调优建议：一般不用改 | 1.6.0         |
+| `spark.cleaner.referenceTracking`                           | true    | 参数说明：是否启用context清理。</br>调优建议：一般不用改     | 1.0.0         |
+| `spark.cleaner.referenceTracking.blocking`                  | true    | 参数说明：控制清理器的线程是否会阻塞cleanup task。</br>调优建议：一般不用改 | 1.0.0         |
+| `spark.cleaner.referenceTracking.blocking.shuffle`          | false   | 参数说明：控制清理器线程是否会阻塞shuffle cleanup task任务</br>调优建议：一般不用改 | 1.1.1         |
+| `spark.cleaner.referenceTracking.cleanCheckpoints`          | false   | 参数说明：引用如果超出范围，是否清除checkpoint文件。</br>调优建议：一般不用改 | 1.4.0         |
+
+##### execution相关配置
+
+| Property Name                                                | Default                                                      | Meaning                                                      | Since Version |
+| :----------------------------------------------------------- | :----------------------------------------------------------- | :----------------------------------------------------------- | :------------ |
+| `spark.broadcast.blockSize`                                  | 4m                                                           | 参数说明：TorrentBroadcastFactory的块大小。值太大会降低广播变量时的并行度；值太小会影响BlockManager的性能。</br>调优建议：一般不修改。 | 0.5.0         |
+| `spark.broadcast.checksum`                                   | true                                                         | 参数说明：在广播过程中是否计算校验和。用来检测广播过程中哪些块损坏了。代价是计算和发送更多的数据</br>调优建议：一般不修改。 | 2.1.1         |
+| <font color="red">`spark.executor.cores`</font>              | 1 in YARN mode,  standalone和Mesos coarse-grained modes   是worker节点的所有core | 参数说明：executor可用的core数</br>调优建议：任务级别调整。  | 1.0.0         |
+| <font color="red">`spark.default.parallelism`</font>         | 对于reduceByKey和join等分布式shuffle操作，默认值为父RDD中的最大分区数。</br>local模式：本地机器的core数；</br>Mesos模式：8；</br>其他模式：所有executor上的总核数与2的最大值。如配置Executor的数量为5，每个Executor的CPU Core数量为2，executor上的总核数10，则默认并行度为`Max(10,2)=10`。 | 参数说明：通过join、reduceByKey和parallelize等transformation算子返回的RDD中的默认分区数。</br>调优建议： | 0.5.0         |
+| `spark.executor.heartbeatInterval`                           | 10s                                                          | 参数说明：executor向driver发送心跳的间隔时间。通过心跳，driver可以知道executor是否存活，且每次心跳会更新executor的一些指标数据。</br>调优建议：spark.executor.heartbeatInterval应显著小于spark.network.timeout | 1.1.0         |
+| `spark.files.fetchTimeout`                                   | 60s                                                          | 参数说明：从driver获取 通过`SparkContext.addFile()`添加的文件时使用的超时时间。</br>调优建议：一般不修改。 | 1.0.0         |
+| `spark.files.useFetchCache`                                  | true                                                         | 参数说明：fetch文件时是否通过本地缓存进行共享，同一个application的executor如果在同一个worker节点，那么这些executor是可以共享本地缓存中的文件，效率更高。</br>调优建议：一般不修改。 | 1.2.2         |
+| `spark.files.overwrite`                                      | false                                                        | 参数说明：当目标文件存在且其内容与源文件不匹配时，是否覆盖通过`SparkContext.addFile()`添加的文件。</br>调优建议：一般不修改。 | 1.0.0         |
+| `spark.files.maxPartitionBytes`                              | 134217728 (128 MiB)                                          | 参数说明：在读取文件时，会将文件分割为partition，一个partition的最大字节数为此值。</br>调优建议：值太大会降低并发度。一般不修改。 | 2.1.0         |
+| `spark.files.openCostInBytes`                                | 4194304 (4 MiB)                                              | 参数说明：打开文件的成本。表示同一时间可扫描的字节数。</br>调优建议：一般不修改。 | 2.1.0         |
+| `spark.hadoop.cloneConf`                                     | false                                                        | 参数说明：如果设置为true，则为每个task克隆一个新的Hadoop配置对象。应启用此选项以解决配置线程安全问题。开启会降低性能</br>调优建议：一般不修改。 | 1.0.3         |
+| `spark.hadoop.validateOutputSpecs`                           | true                                                         | 参数说明：</br>调优建议：一般不修改。                        | 1.0.1         |
+| `spark.storage.memoryMapThreshold`                           | 2m                                                           | 参数说明：从磁盘读取数据块时，Spark内存映射的数据块大小。</br>调优建议：一般不修改。 | 0.9.2         |
+| `spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version` | 1                                                            | 参数说明：</br>调优建议：一般不修改。                        |               |
+
+##### executor指标相关配置
+
+
+
+##### 网络相关配置
+
+| Property Name                                        | Default                            | Meaning                                                      | Since Version |
+| :--------------------------------------------------- | :--------------------------------- | :----------------------------------------------------------- | :------------ |
+| <font color="red">`spark.rpc.message.maxSize`</font> | 128                                | 参数说明：executor和driver间RPC通信时传递的数据量大小。如果任务数过多（上千）</br>调优建议：如果报错提示此值过小，可以增大此值。如256，512等。 | 2.0.0         |
+| `spark.blockManager.port`                            | (random)                           | 参数说明：</br>调优建议：一般不修改。                        | 1.1.0         |
+| `spark.driver.blockManager.port`                     | (value of spark.blockManager.port) | 参数说明：</br>调优建议：一般不修改。                        | 2.1.0         |
+| `spark.driver.bindAddress`                           | (value of spark.driver.host)       | 参数说明：</br>调优建议：一般不修改。                        | 2.1.0         |
+| `spark.driver.host`                                  | (local hostname)                   | 参数说明：spark standalone模式。</br>调优建议：一般不修改。  | 0.7.0         |
+| `spark.driver.port`                                  | (random)                           | 参数说明：spark standalone模式。</br>调优建议：一般不修改。  | 0.7.0         |
+| `spark.rpc.io.backLog`                               | 64                                 | 参数说明：</br>调优建议：一般不修改。                        | 3.0.0         |
+| <font color="red">`spark.network.timeout`</font>     | 120s                               | 参数说明：所有网络交互的默认超时时间。如果配置了`spark.storage.blockManagerSlaveTimeoutMs`</br>, `spark.shuffle.io.connectionTimeout`</br>, `spark.rpc.askTimeout` or `spark.rpc.lookupTimeout`</br>则对应的功能的超时时间不为spark.network.timeout。</br>调优建议：一般不修改。 | 1.3.0         |
+| `spark.network.io.preferDirectBufs`                  | true                               | 参数说明：</br>调优建议：一般不修改。                        | 3.0.0         |
+| `spark.port.maxRetries`                              | 16                                 | 参数说明：</br>调优建议：一般不修改。                        | 1.1.1         |
+| `spark.rpc.numRetries`                               | 3                                  | 参数说明：</br>调优建议：一般不修改。                        | 1.4.0         |
+| `spark.rpc.retry.wait`                               | 3s                                 | 参数说明：</br>调优建议：一般不修改。                        | 1.4.0         |
+| `spark.rpc.askTimeout`                               | `spark.network.timeout`            | 参数说明：</br>调优建议：一般不修改。                        | 1.4.0         |
+| `spark.rpc.lookupTimeout`                            | 120s                               | 参数说明：</br>调优建议：一般不修改。                        | 1.4.0         |
+| `spark.network.maxRemoteBlockSizeFetchToMem`         | 200m                               | 参数说明：</br>调优建议：一般不修改。                        | 3.0.0         |
+
+##### 调度相关配置
+
+TODO
+
+##### barrier execution mode
+
+TODO
+
+##### 动态资源调度配置
+
+| Property Name                                              | Default                                | Meaning                                                      | Since Version |
+| :--------------------------------------------------------- | :------------------------------------- | :----------------------------------------------------------- | :------------ |
+| `spark.dynamicAllocation.enabled`                          | false                                  | 参数说明：是否启用动态资源调度，会根据工作负载动态调整此application的executor的数量</br>调优建议：可以开启。 | 1.2.0         |
+| `spark.dynamicAllocation.executorIdleTimeout`              | 60s                                    | 参数说明：当spark.dynamicAllocation.enabled=true后，若executor的空闲时间超过此值，则释放此executor。</br>调优建议：一般不修改。 | 1.2.0         |
+| `spark.dynamicAllocation.cachedExecutorIdleTimeout`        | infinity                               | 参数说明：当spark.dynamicAllocation.enabled=true后，若缓存了数据的executor的空闲时间超过此值，则释放此executor。</br>调优建议：一般不修改。240s | 1.4.0         |
+| `spark.dynamicAllocation.initialExecutors`                 | `spark.dynamicAllocation.minExecutors` | 参数说明：当spark.dynamicAllocation.enabled=true后，此值表示应用程序初始的executor数量。若通过`--num-executors`指定了executor的数量，则初始的exectuor数量为max(此项配置的值, `--num-executor`的值)</br>调优建议：一般不修改。 | 1.3.0         |
+| `spark.dynamicAllocation.maxExecutors`                     | infinity                               | 参数说明：当spark.dynamicAllocation.enabled=true后，executor的数量上限</br>调优建议：根据具体修改，如10 | 1.2.0         |
+| `spark.dynamicAllocation.minExecutors`                     | 0                                      | 参数说明：当spark.dynamicAllocation.enabled=true后，executor的数量下限</br>调优建议：根据具体修改，1 | 1.2.0         |
+| `spark.dynamicAllocation.executorAllocationRatio`          | 1                                      | 参数说明：默认情况下，动态资源调度会根据task量来申请足够多的executor保证最大化并行度。但是这种情况可能存在资源浪费（因为某些executor可能不会做任何事情）。通过这个比率来控制申请的executor的数量。预计申请的executor数*此值。一般为1.0或0.5。**当此参数计算出来的executor数量与spark.dynamicAllocation.maxExecutors或spark.dynamicAllocation.minExecutors的值冲突时，以后两者为准。**</br>调优建议：一般不修改。 | 2.4.0         |
+| `spark.dynamicAllocation.schedulerBacklogTimeout`          | 1s                                     | 参数说明：当spark.dynamicAllocation.enabled=true后，如果pending的task的积压时间超过此值，则为其申请新的executor。</br>调优建议：一般不修改。 | 1.2.0         |
+| `spark.dynamicAllocation.sustainedSchedulerBacklogTimeout` | `schedulerBacklogTimeout`              | 参数说明：同schedulerBacklogTimeout，是申请了新executor之后继续申请的间隔，默认=schedulerBacklogTimeout（第二次及之后）</br>调优建议：一般不修改。 | 1.2.0         |
+| `spark.dynamicAllocation.shuffleTracking.enabled`          | `false`                                | 参数说明：（实验性质）是否启用shuffle文件跟踪，它允许动态资源调度可以不依赖external shuffle服务。此配置不会回收保存了shuffle数据的executor。</br>调优建议：一般不修改。 | 3.0.0         |
+| `spark.dynamicAllocation.shuffleTracking.timeout`          | `infinity`                             | 参数说明：当spark.dynamicAllocation.shuffleTracking.enabled=true后，控制保存shuffle数据的executor超时时间，默认使用GC垃圾回收控制释放。如果有时候GC不及时，配置此参数后，即使executor上存在shuffle数据，也会被回收。</br>调优建议：一般不修改。 | 3.0.0         |
+
+##### 线程配置
+
+TODO
+
+##### Spark SQL相关配置
+
+TODO
+
+##### Spark Streaming相关配置
+
+TODO
+
+##### SparkR相关配置
+
+TODO
+
+##### GraphX相关配置
+
+TODO
+
+##### 部署相关配置
+
+TODO
+
+##### 集群管理器相关配置
+
+TODO
+
+### 环境变量
+
+Spark的环境变量定义在`$SPARK_HOME/conf/spark-env.sh`脚本中（windows系统则在`$SPARK_HOME/conf/spark-env.cmd`）。
+
+默认情下，当Spark安装好之后，`$SPARK_HOME/conf/spark-env.sh`文件并不存在，可以通过复制`$SPARK_HOME/conf/spark-env.sh.template`文件来创建`$SPARK_HOME/conf/spark-env.sh`。需要确保`$SPARK_HOME/conf/spark-env.sh`文件是可执行的。
+
+| Environment Variable    | Meaning                                                      |
+| :---------------------- | :----------------------------------------------------------- |
+| `JAVA_HOME`             | Location where Java is installed (if it's not on your default `PATH`). |
+| `PYSPARK_PYTHON`        | Python binary executable to use for PySpark in both driver and workers (default is `python2.7` if available, otherwise `python`). Property `spark.pyspark.python` take precedence if it is set |
+| `PYSPARK_DRIVER_PYTHON` | Python binary executable to use for PySpark in driver only (default is `PYSPARK_PYTHON`). Property `spark.pyspark.driver.python` take precedence if it is set |
+| `SPARKR_DRIVER_R`       | R binary executable to use for SparkR shell (default is `R`). Property `spark.r.shell.command` take precedence if it is set |
+| `SPARK_LOCAL_IP`        | IP address of the machine to bind to.                        |
+| `SPARK_PUBLIC_DNS`      | Hostname your Spark program will advertise to other machines. |
+
+
+
+<font color="red">***注意：当以Spark on YARN的集群模式运行时，环境变量需要在`$SPARK_HOME/conf/spark-defaults.xml`文件中通过`spark.yarn.appMasterEnv.[EnvironmentVariableName]`的形式来设置。这是因为在`spark-env.sh`中设置的环境变量并不能在YARN的Application Master（AM）进程中生效。***</font>
+
+### 配置日志格式
+
+Spark使用log4j来记录日志，通过`$SPARK_HOME/conf/log4j.properties`配置文件可以决定Spark如何记录日志。
+
+### 覆盖配置目录
+
+修改`SPARK_CONF_DIR`环境变量的值，就可以让Spark读取该目录下的配置文件（`spark-defaults.conf`, `spark-env.sh`, `log4j.properties`等），而不从默认的`SPARK_HOME/conf`目录下读取配置。
+
+### 继承Hadoop集群的配置
+
+要让Spark能够从HDFS中读取和写入数据，那么要保证在Spark的classpath中存在如下两个配置文件：
+
+- core-site.xml
+- hdfs-site.xml
+
+要使这些文件对Spark可见，请将`$spark_HOME/CONF/Spark-env.sh`中的`HADOOP_CONF_DIR`设置为`$HADOOP_HOME/etc/hadoop/conf`。
+
+### 自定义Hadoop/Hive的配置
+
+不同的application可能需要不同的Hadoop/Hive的client端配置。在Spark on YARN模式下，这个时候不能通过修改Spark的classpath中的`hdfs-site.xml`, `core-site.xml`, `yarn-site.xml`, `hive-site.xml`文件来适配所有application。修改了这些配置，也可能会影响cluster端的配置参数。
+
+更好的做法是:
+
+- 使用`spark.hadoop.*`这种spark hadoop属性的方式在应用程序中指定需要设置的参数
+
+  下面的代码表示设置了一个hadoop属性`abc.def=xyz`
+
+  ```scala
+  val conf = new SparkConf().set("spark.hadoop.abc.def", "xyz")
+  ```
+
+  
+
+- 使用`spark.hive.*`
+
+  下面的代码表示设置了一个hive属性`abc=xyz`
+
+  ```scala
+  val conf = new SparkConf().set("spark.hadoop.abc", "xyz")
+  ```
+
+这类`spark.hadoop.*`和`spark.hive.*`属性也可以在`$spark_HOME/conf/spark-defaults.conf`中设置。
+
+还可以在`spark-submit`的命令行显式地指定这里参数：
+
+```shell
+./bin/spark-submit \ 
+  --name "My app" \ 
+  --master local[4] \  
+  --conf spark.eventLog.enabled=false \ 
+  --conf "spark.executor.extraJavaOptions=-XX:+PrintGCDetails -XX:+PrintGCTimeStamps" \ 
+  --conf spark.hadoop.abc.def=xyz \
+  --conf spark.hive.abc=xyz
+  myApp.jar
+```
+
+
+
+### 自定义资源调度配置
+
+TODO
+
+# 5. Spark调优
+
+参考：https://spark.apache.org/docs/3.0.2/tuning.html
+
+Spark程序受到：CPU、网络带宽、内存的资源限制。
+
+- 数据序列化
+
+  选择合理的序列化格式，可以减少内存的使用，也可以减少网络传输中的数据量大小，提高应用程序执行效率。
+
+  ```scala
+  val conf = new SparkConf()
+               .setMaster("local[2]")
+               .setAppName("CountingSheep")
+  val sc = new SparkContext(conf)
+  ```
+
+  
+
+- 内存调优
+
+### 数据序列化
+
+分布式应用中，序列化扮演这很重要的角色。如果序列化很慢，或者序列化之后占用大量的字节，这会严重降低计算的效率。
+
+Spark提供了两个序列化的库：
+
+- Java serialization
+
+  默认情况下，Spark使用Java的`ObjectOutputStream`框架对对象进行序列化，兼容任何实现`Java.io.Serializable`的类。还可以通过扩展`java.io.Externalizable`来控制序列化的性能。Java序列化是灵活的，但通常非常慢。
+
+- Kryo serialization
+
+  Spark还可以使用Kryo库（版本4）更快地序列化对象。Kryo比Java序列化快得多，也更紧凑（通常高达10倍），但它不支持所有的Serializable类型，需要您预先注册程序中使用的类以获得最佳性能。
+
+
+
+切换序列化类为Kryo。
+
+```scala
+val conf = new SparkConf().setMaster(...).setAppName(...)
+conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+```
+
+这样，在worker节点shuffle序列化时和RDD序列化到磁盘时，都使用Kryo来序列化。
+
+之所以不把Kryo设置为默认的序列化器，是因为需要在手动注册需要kryo来序列化 的类。如下所示：
+
+```scala
+val conf = new SparkConf().setMaster(...).setAppName(...)
+conf.registerKryoClasses(Array(classOf[MyClass1], classOf[MyClass2]))
+val sc = new SparkContext(conf)
+```
+
+
+
+### 内存调优
+
+在内存调优中，主要考虑三个因素：
+
+- 对象使用的内存量
+- 访问这些对象的成本
+- 垃圾回收的开销
+
+默认情况下，Java对象访问速度很快，但很容易比字段中的“原始”数据多消耗2-5倍的空间。这有几个原因：
+
+- 每个不同的Java对象都有一个“对象头”，大约16个字节，包含指向其类的指针等信息。对于一个数据很少的对象（比如一个Int字段），这可能比数据大。
+- Java字符串在原始字符串数据上有大约40个字节的开销（因为它们将其存储在一个Chars数组中，并保留额外的数据，例如长度），并且由于字符串内部使用UTF-16编码，因此将每个字符存储为两个字节。因此，10个字符的字符串可以很容易地消耗60个字节。
+- 常见的集合类，如HashMap和LinkedList，使用链接数据结构，其中每个条目都有一个“包装器”对象（例如Map.entry）。该对象不仅有一个标头，而且还有指向列表中下一个对象的指针（通常每个8个字节）。
+- 基本类型的集合通常将它们存储为“装箱”对象，对应的包装器对象，例如java.lang.Integer。
+
+#### Spark的内存管理
+
+Spark中的内存使用可以分为两类：执行内存（execution memory）和存储内存（storage memory）。
+
+- execution memory
+
+  指的是在shuffle、join、sort、aggregation等计算过程中使用的内存。
+
+- storage memory
+
+  指的是在集群中，缓存和传递内部数据所用的内存。
+
+在Spark中，执行和存储共享一个统一的区域（M）。当不使用执行内存时，存储可以获取所有可用内存，反之亦然。R是应用程序中storage memory的最小值，当storage memory使用的内存小于R时，会减少execution memory使用的内存，以增加storage memory使用的内存。
+
+有几个好处：
+
+1、不使用缓存的应用程序可以使用整个execution memory，从而避免不必要的磁盘溢写。
+
+2、使用缓存的应用程序可以保留最小的storage memory（R），使其数据块不会被逐出。
+
+3、这种方法为各种工作负载提供了合理的开箱即用性能，而不需用户具有内存分配的专门知识。
+
+- `spark.memory.fraction默认值0.6。`表示M占JVM内存的比例，即execution memory和storage memory的总大小。剩下的0.4的内存用于用户的数据结构、Spark内部元数据等。
+- `spark.memory.storageFraction`默认0.5。表示R占M的比例。表示用于存储的内存至少为0.5M。
+
+#### 如何确定对象的内存使用情况
+
+确定DataSet所需内存消耗量的最佳方法是创建RDD，将其放入缓存，然后查看web UI中的“storage”页面。该页面将告诉您RDD占用了多少内存。
+要估计特定对象的内存消耗，请使用SizeEstimator的estimate 方法。这对于尝试不同的数据布局以减少内存使用，以及确定广播变量将在每个executor堆上占用的空间量非常有用。
+
+#### 优化数据结构
+
+减少内存消耗的方法：
+
+避免使用增加内存消耗的JAVA特性，如基于指针的数据结构和包装对象。
+
+- 使用合适的数据结构和基础类型。如fastutil提供了比较方便的结合类，而且兼容Java标准库。标准Java或标准Scala集合类可能消耗内存更大。
+- 尽可能避免包含大量小对象和指针的嵌套结构
+- key使用数字类型的id，或者枚举类，而不是String类型
+- 如果内存小于32GB，可以通过设置JVM参数`-XX:+UseCompressedOops`来减少指针所占的字节（8字节减少为4字节）。可以在spark-env.sh中添加此选项
+
+#### 序列化RDD存储
+
+对象太大而无法进行有效存储，可以将RDD序列化之后存储，这样可以减少存储时占用的内存。
+
+使用这种方式，Spark会将RDD的每个partition存储为一个大的字节数组。以序列化的形式存储的有点是占用的内存空间更小，缺点是访问时需要先反序列化，因此访问较慢。建议使用Kryo序列化。
+
+#### 如何调整Spark的缓存大小
+
+TODO
+
+#### 如何调整Java垃圾收集器
+
+如果GC过于频繁，可以尝试使用序列化RDD之后再缓存。
+
+GC调优的第一步是收集垃圾收集频率和GC花费时间的统计信息。这可以通过向Java选项添加`-verbose:gc -XX:+PrintGCDetails -XX:+PPrintGCTimeStamps`来完成。请注意，这些日志将位于集群的工作节点（位于其工作目录中的stdout文件中），而不是驱动程序中。
+
+为了进一步优化垃圾收集，我们首先需要了解JVM内存管理的一些基本信息：
+
+- Java堆空间分为两个区域：Young和Old。年轻代保存短期的对象，而老年代保存长期的对象。
+- 年轻代又划分为3个区域：Eden、Survivor1、Survivor2。
+- GC流程：
+  - 当Eden满了，在Eden中运行一次minor GC，Eden和Survivor1中存活的对象copy到Survivor2中
+  - Survivor2变为Survivor1，Survivor1变为Survivor2
+  - 当对象足够老，或者Survivor2满了，将其中的对象移动到Old
+  - 当Old满了，执行Full GC。
+
+Spark中GC调优的目标是确保Old中只存储长期的RDD，短期存活的对象存储在Young中。
+
+- 通过收集GC统计信息来检查GC是否过多。如果在任务完成之前多次调用Full GC，则意味着没有足够的内存用于执行任务。
+
+- 如果minor GC次数很多，而major GC次数很少，则可以增加Eden的内存大小。
+
+- 在打印的GC统计信息中，如果OldGen快要满了，可以降低`spark.memory.fraction`比例来降低用于spark中execution memory和storage memory的内存量。另外，还可以降低YoungGen的内存比例。
+
+- 使用`G1GC` 垃圾回收器。`-XX:+UserG1GC`。可以提高性能。如果executor的堆内存比较大，可以使用`-XX:G1HeapRegionSize`增加G1区域的内存大小。
+
+- 举个例子，如果Task是从HDFS读取数据，那么可以按如下来估算Eden的内存大小。
+
+  一个executor运行4个task，
+
+  一个task读取一个block的数据
+
+  一个block解压之后是原来的3倍大小
+
+  HDFS的block sieze 为128MB
+
+  那么可以设置Eden大小为：4 * 3 * 128MB。
+
+- 监视GC的频率和时间如何随新设置而变化。
+
+GC调优的效果要看具体的应用程序和具体分配的内存量，也是任务级别的调优了。
+
+### 其他调优
+
+#### 并行度
+
+在编写Spark应用程序是，可以指定应用程序的并发度，如`SparkContext.textFile()`的第二个参数，也可以设置`spark.default.paralelism`来修改spark应用程序的默认并发度。建议是每个CPU核心处理2-3个Task。
+
+#### 列出Input Path的并行度
+
+当作业输入包含大量目录时，您可能还需要增加目录列表的并行性，否则该过程可能会花费很长时间，尤其是在针对S3这样的对象存储时。如果您的工作在RDD上使用Hadoop输入格式（例如，通过`SparkContext.sequenceFile`），则并行度通过`spark.Hadoop.mapreduce.input.fileinputformat.list-status.num-threads`（当前默认值为1）控制。
+
+对于具有基于文件的数据源的Spark SQL，可以调整`Spark.SQL.sources.parallelPartitionDiscovery.threshold`和`Spark.SQL.sesources.parallel PartitionDiscovery.parallelism`以提高列表并行性。
+
+参考：Spark SQL调优 https://spark.apache.org/docs/3.0.2/sql-performance-tuning.html
+
+#### reduce task的内存使用
+
+有时候会出现某个task OutOfMemoryError的情况，比如`groupByKey`的reduce task涉及的数据量太大了。Spark的Shuffle操作（`sortByKey`, `groupByKey`,`reduceByKey`, `join`等）会在每个reduce task中构建一个`Hashtable`来进行分组。
+
+解决方法：
+
+提高并行度，使得每个reduce task的输入数据量变小。
+
+#### 广播大变量
+
+如果task需要使用driver程序中的大的对象，那么可以将此对象转换为广播变量。（通常大于20KB的对象，可以考虑转换为广播变量）。
+
+普通变量会copy给每个task一个该变量的副本
+
+广播变量会copy给每个executor一个该变量的副本
+
+将普通变量转换为广播变量可以减小传输的数据量。
+
+#### 数据位置（Data Locality）
+
+计算和数据在同一位置，那么计算会比较快。如果计算和数据是分离的，那么需要将计算（应用程序代码）移动到数据节点，再进行计算（应为应用程序代码比数据大小，小的多）。
+
+### 总结
+
+Spark应用程序调优的主要问题——数据序列化和内存调优。对于大多数程序，切换到Kryo序列化，并将序列化的数据持久化将解决大多数常见的性能问题。
+
+**数据位置是指数据与处理它的代码之间的距离**。基于数据的当前位置，有几个级别的位置。按照从最近到最远的顺序：
+
+- `PROCESS_LOCAL`
+
+  数据与运行代码位于同一JVM中。这是最佳位置
+
+- `NODE_LOCAL`
+
+  数据位于同一节点上。示例可能在同一节点上的HDFS中，或者在同一个节点上的另一个executor中。这比`PROCESS_LOCAL`稍慢，因为数据必须在进程之间传输
+
+- `NO_PREF`
+
+  数据可以从任何地方快速访问，并且没有位置偏好
+
+- `RACK_LOCAL`
+
+  数据位于同一服务器机架上。数据位于同一机架上的不同服务器上，因此需要通过网络发送，通常通过单个交换机传输
+
+- `any` 
+
+  数据都在网络上的其他位置，而不在同一机架中
+
+数据和计算可以在同一节点，但是该节点计算资源不够了，此时有两种选择：
+
+a）等待忙碌的CPU释放出来，在同一台服务器上启动计算任务
+
+b）在其它节点启动计算任务，并移动需要的数据。
+
+Spark通常做的是等待一段时间，希望繁忙的CPU能够释放出来。一旦超时，它就开始将数据从远处移动到空闲CPU所在节点。
+
+# 6. Spark监控
+
+参考：https://spark.apache.org/docs/3.0.2/monitoring.html
+
+TODO
+
+
+
+# 7. Spark迁移
 
 参考：https://spark.apache.org/docs/3.0.2/migration-guide.html
 
-## 5.1 Spark Core
+## 7.1 Spark Core
 
 假设Spark Core 2.4 迁移/升级为 Spark Core 3.0
 
 - 因为某些接口有变化，对应的Spark应用程序可能需要重写代码，并编译。如 `org.apache.spark.ExecutorPlugin` 接口被替换为`org.apache.spark.api.plugin.SparkPlugin`。
 - 旧版本的某些方法可以已经弃用，或者删除了，对应的Spark应用程序可能需要重写代码，并编译。如`shuffleBytesWritten`, `shuffleWriteTime` 和 `shuffleRecordsWritten` 
 
-## 5.2 SQL, Datasets and DataFrame
+## 7.2 SQL, Datasets and DataFrame
 
 pass
 
-## 5.3 Structured Streaming
+## 7.3 Structured Streaming
 
 pass
 
-## 5.4 MLlib (Machine Learning)
+## 7.4 MLlib (Machine Learning)
 
 pass
 
-## 5.5 PySpark (Python on Spark)
+## 7.5 PySpark (Python on Spark)
 
 pass
 
-## 5.6 SparkR (R on Spark)
+## 7.6 SparkR (R on Spark)
 
 pass
