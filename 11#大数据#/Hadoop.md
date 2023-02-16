@@ -680,6 +680,8 @@ Hadoop配置文件分为：默认配置文件和自定义配置文件，只有�
 
 ### 4.3 完全分布式模式（开发重点）
 
+官方文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-common/ClusterSetup.html
+
 步骤：
 
 1. 准备3台服务器（关闭防火墙、静态IP、主机名称）
@@ -724,9 +726,6 @@ Hadoop配置文件分为：默认配置文件和自定义配置文件，只有�
 #示例, -r 递归，-v 显示复制过程，-l拷贝符号连接 
    rsync -rvl sjl-test.txt root@hadoop102:/opt   
    ```
-```
-
-   
 
 3. **xsync，集群分发脚本**
 
@@ -734,8 +733,8 @@ Hadoop配置文件分为：默认配置文件和自定义配置文件，只有�
 
    这个脚本是需要写的，并不是linux中的某个命令行工具。在`/home/atguigu/bin`目录下，创建一个`xsync`的脚本，脚本内容如下：
 
-   ```shell
-   #!/bin/bash
+```bash
+#!/bin/bash
    # 1.获取输入参数的个数，如果没有参数，则直接退出
    pcount=$#
    if((pcount==0)); then
@@ -789,7 +788,7 @@ Hadoop配置文件分为：默认配置文件和自定义配置文件，只有�
 
    配置`core-site.xml`
 
-   ```shell
+   ```xml
    <configuration>
        <!-- 指定HDFS中NameNode的地址 -->
        <property>
@@ -922,6 +921,12 @@ Hadoop配置文件分为：默认配置文件和自定义配置文件，只有�
    [atguigu@hadoop102 hadoop-2.7.2]$ sbin/hadoop-daemon.sh start namenode
    ```
 
+   或者
+
+   ```shell
+   hdfs --daemon start namenode
+   ```
+
    
 
 3. 在hadoop102、hadoop103、hadoop104上分别启动DataNode
@@ -930,11 +935,21 @@ Hadoop配置文件分为：默认配置文件和自定义配置文件，只有�
    sbin/hadoop-daemon.sh start datanode
    ```
 
+   或者
+
+   ```shell
+   hdfs --daemon start datanode
+   ```
+
+   
+
 4. 查看集群是否正常启动
 
    通过hadoop102:50070查看hdfs的UI是否能正常打开
 
 ![image-20210615144538671](Hadoop.assets/image-20210615144538671.png)
+
+<font color="red">***注意：在hadoop3中默认的HDFS Web UI地址为`dfs.namenode.http-address`(默认值`0.0.0.0:9870`)。***</font>
 
 #### 4.3.5 配置SSH免密登录
 
@@ -1011,11 +1026,7 @@ Connection to hadoop103 closed.
 
 同理对hadoop102配置可免密登录hadoop104。
 
-注意：
-
-还需要在hadoop102上采用root账号，配置一下免密登录到hadoop102、hadoop103、hadoop104；
-
-还需要在hadoop103上采用atguigu账号，配置一下免密登录到hadoop102、hadoop103、hadoop104
+<font color="red">**注意：</br>还需要在hadoop102上采用root账号，配置一下免密登录到hadoop102、hadoop103、hadoop104；</br>还需要在hadoop103上采用atguigu账号，配置一下免密登录到hadoop102、hadoop103、hadoop104**</font>
 
 #### 4.3.6 群起集群
 
@@ -1047,6 +1058,8 @@ sent 120 bytes  received 41 bytes  107.33 bytes/sec
 total size is 30  speedup is 0.19
 [atguigu@hadoop102 hadoop-2.7.2]$ 
 ```
+
+<font color="red">***注意：从`hadoop3.0.1`开始，hadoop的`slaves file`路径由`etc/hadoop/slaves`改为了`etc/hadoop/workers`了。`etc/hadoop/workers`默认内容为`localhost`。如果未修改`etc/hadoop/workers`文件，如，在执行`start-dfs.sh`时，只会在本机启动DataNode，其他worker节点并不会启动。***</font>
 
 ##### 4.3.6.2 启动集群
 
@@ -1082,7 +1095,7 @@ hadoop104: starting secondarynamenode, logging to /opt/module/hadoop-2.7.2/logs/
 
 **启动YARN**
 
-必须在hadoop103上启，因为RM在hadoop103上。
+**必须在hadoop103上启，因为RM在hadoop103上。**
 
 ```shell
 # hadoop103
@@ -1208,11 +1221,43 @@ hadoop104: starting nodemanager, logging to /opt/module/hadoop-2.7.2/logs/yarn-a
 hadoop-daemon.sh [start|stop] [namenode|datanode|secondarynamenode]
 ```
 
+**上面是旧的方法，官方建议使用如下方式**
+
+```shell
+hdfs --daemon [start|stop] namenode
+hdfs --daemon [start|stop] datanode
+hdfs --daemon [start|stop] secondarynamenode
+```
+
+
+
 启停YARN组件
 
 ```shell
 yarn-daemon.sh [start|stop] [resourcemanager|nodemanager]
 ```
+
+**上面是旧的方法，官方建议使用如下方式**
+
+```shell
+yarn --daemon [start|stop] resourcemanager
+yarn --daemon [start|stop] nodemanager
+```
+
+启停MapReduce历史服务器
+
+```shell
+mr-jobhistory-daemon.sh [start|stop|status] historyserver
+
+```
+
+**上面是旧的方法，官方建议使用如下方式**
+
+```shell
+mapred --daemon [start|stop] historyserver
+```
+
+![image-20230213161316608](Hadoop.assets/image-20230213161316608.png)
 
 ##### 4.3.7.2 各个模块分开启动/停止（配置SSH为前提）（常用)
 

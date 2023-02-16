@@ -1255,7 +1255,7 @@ hdfs://haoop102:9000/user/atguigu/hello.txt hdfs://hadoop103:9000/user/atguigu/h
 
 2. 归档文件
 
-   把/user/atguigu/input目录里的所有文件归档成一个叫做input.har的归档文件，并把归档后的文件存储到/user/atguigu/output路径下。<font color=red>/user/atguigu/output目录可以事先不存在。</font> HAR即Hadoop Archive（HAR）
+   把/user/atguigu/input目录里的所有文件归档成一个叫做input.har的归档文件，并把归档后的文件存储到/user/atguigu/output路径下。<font color=red>/user/atguigu/output目录可以事先不存在。</font> HAR即`Hadoop Archive（HAR）`
 
    ```shell
    [atguigu@hadoop103 hadoop-2.7.2]$ hadoop archive -archiveName input.har -p /user/atguigu/input/  /user/atguigu/output
@@ -1464,7 +1464,7 @@ hdfs://haoop102:9000/user/atguigu/hello.txt hdfs://hadoop103:9000/user/atguigu/h
 
    
 
-4. 通过程序删除的文件不会经过回收站，需要调用
+4. <font color="red">**通过程序删除的文件不会经过回收站**</font>，需要调用
 
    ```java
    Trash trash = New Trash(conf);
@@ -1473,7 +1473,7 @@ hdfs://haoop102:9000/user/atguigu/hello.txt hdfs://hadoop103:9000/user/atguigu/h
 
    
 
-5. 恢复回收站数据
+5. **恢复回收站数据**
 
    ```shell
    [atguigu@hadoop102 hadoop]$ hdfs dfs -mv /user/atguigu/.Trash/Current/yanjing.txt /
@@ -1488,7 +1488,7 @@ hdfs://haoop102:9000/user/atguigu/hello.txt hdfs://hadoop103:9000/user/atguigu/h
 
    
 
-6.  清空回收站
+6. **清空回收站**
 
    ```shell
    [atguigu@hadoop102 hadoop-2.7.2]$ hadoop fs -expunge
@@ -1581,7 +1581,7 @@ hdfs://haoop102:9000/user/atguigu/hello.txt hdfs://hadoop103:9000/user/atguigu/h
 
 ## 8.2 HDFS HA工作机制
 
-通过双NameNode消除单点故障。
+**通过双NameNode消除单点故障**。
 
 ### 8.2.1 HDFS HA 工作要点
 
@@ -1911,7 +1911,7 @@ ZKFC是自动故障转移中的另一个新组件，是ZooKeeper的客户端，�
 
    ![image-20210912100707574](HDFS.assets/image-20210912100707574.png)
 
-   <font color=red>注意：的是Stanby状态的NameNode是不能对外提供服务的！</font>
+   <font color=red>**注意：的是Stanby状态的NameNode是不能对外提供服务的！**</font>
 
    ![image-20210912100102056](HDFS.assets/image-20210912100102056.png)
 
