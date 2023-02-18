@@ -615,3 +615,39 @@ xfs_growfs /dev/mapper/vg_data-lv_data
 ![img](Linux命令.assets/20170617150039221)
 
 ​																		图片来源于互联网
+
+
+
+
+
+## ulimit
+
+查看文件描述符限制
+
+## hpparm
+
+测试磁盘速度
+
+```bash
+hpparm -t /dev/sda1
+```
+
+## selinux相关
+
+查看当前调度selinux
+
+```bash
+getenforce 
+```
+
+开启或关闭selinux
+
+```bash
+# 关闭selinux
+setenforce 0
+# 开启selinux
+setenforce 1
+```
+
+
+
