@@ -4,9 +4,32 @@
 
 ## Maven是什么？
 
-Maven是一个项目管理工具
+Maven是一个项目管理工具。
+
+构建工具：
+
+- `make`：Java的构建工具，需要编写makefile，不方便。
+
+- `Apache Ant`：Java的构建工具，灵活定义清理、编译、测试、打包过程，但是没有依赖管理，不方便。
+
+- `Apache Maven`：Java的构建工具，是自动化构建工具和依赖管理工具，使用`pom.xml`作为配置文件。
+
+- `Gradle`：Gradle是一个基于[Apache](https://baike.baidu.com/item/Apache/6265?fromModule=lemma_inlink) Ant和Apache [Maven](https://baike.baidu.com/item/Maven/6094909?fromModule=lemma_inlink)概念的项目自动化构建[开源工具](https://baike.baidu.com/item/开源工具/22692453?fromModule=lemma_inlink)。它使用一种基于[Groovy](https://baike.baidu.com/item/Groovy/180590?fromModule=lemma_inlink)的特定领域语言([DSL](https://baike.baidu.com/item/DSL/60963557?fromModule=lemma_inlink))来声明项目设置，也增加了基于[Kotlin](https://baike.baidu.com/item/Kotlin/1133714?fromModule=lemma_inlink)语言的kotlin-based DSL，抛弃了基于XML的各种繁琐配置。
+
+  面向[Java](https://baike.baidu.com/item/Java/85979?fromModule=lemma_inlink)应用为主。当前其支持的语言C++、Java、[Groovy](https://baike.baidu.com/item/Groovy/180590?fromModule=lemma_inlink)、[Kotlin](https://baike.baidu.com/item/Kotlin/1133714?fromModule=lemma_inlink)、[Scala](https://baike.baidu.com/item/Scala/2462287?fromModule=lemma_inlink)和Swift，计划未来将支持更多的语言。
+
+- `Bazel`：Bazel是一个类似于Make，Maven和Gradle的开源构建和测试工具。Bazel支持多种语言混编的项目并且可以根据不同的平台输出不同的构建结果。
+
+  优势：
+
+  - 加快构建和测试速度：Bazel只重建必要的东西，借助缓存，优化依赖关系分析和并行执行，可以获得快速的和增量的构建。
+  - 支持多种语言：支持Java, C++, Android, iOS, Go和各种其他语言，可以运行在Windows，macOS和Linux上。
+  - 可扩展：可以扩展Bazel以支持您选择的语言
+
+- `SBT`：SBT是 Scala 的构建工具，全称是 `Simple Build Tool`， 类似 Maven 或 Gradle。 SBT 的野心很大，采用Scala编程语言本身编写配置文件，这使得它稍显另类，虽然增强了灵活性，但是对于初学者来说同时也增加了上手难度。
 
 ## Maven的好处是什么？
+
 采用标准管理和实践来加快开发周期
 
 ## 怎么配置Maven？
