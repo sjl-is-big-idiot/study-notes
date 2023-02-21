@@ -1,4 +1,4 @@
-[ZooKeeper官网](https://zookeeper.apache.org/)
+[ZooKeeper官方文档](https://zookeeper.apache.org/doc/r3.6.1/zookeeperAdmin.html#sc_zkMulitServerSetup)
 
 # ZooKeeper的概念和基础
 
@@ -290,6 +290,13 @@ zk事件类型：
 - `ChildrenWatchRemoved `子节点监听移除
 
 好奇的是，zk中如何保证leader和follower之前数据一致的？
+
+这篇文章对ZooKeeper常用配置讲得比较细：https://www.jianshu.com/p/67a6bd94d353
+
+ZooKeeper JVM内存配置：https://www.cnblogs.com/LiuChang-blog/p/15127157.html
+
+
+
 # ZK常用命令
 
 查看zk版本
