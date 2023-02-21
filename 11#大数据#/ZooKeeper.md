@@ -20,42 +20,44 @@
 
 ## ZooKeeper的管理
 
-# 学习
+# Zookeeper概述
 
 **bilibili 视频**
 
 https://www.bilibili.com/video/BV1PW411r7iP?p=7&spm_id_from=pageDriver
 
-### Zookeeper概述
-
 ![image-20210526195851097](ZooKeeper.assets/image-20210526195851097.png)
 
-### Zookeeper的特点
+# Zookeeper的特点
 
 ![image-20210526195811629](ZooKeeper.assets/image-20210526195811629.png)
 
-### Zookeeper的数据结构
+# Zookeeper的数据结构
 
 ![image-20210526200030948](ZooKeeper.assets/image-20210526200030948.png)
 
-### Zookeeper的应用场景
+# Zookeeper的应用场景
 
 ![image-20210526200305614](ZooKeeper.assets/image-20210526200305614.png)
 
 - **统一命名服务**。对应用/服务进行统一命名，方便识别。如用域名来作为多个IP的统一命名
-- **统一配置管理**。将配置信息写入一个Znode，各个客户端watch这个Znode，配置信息发生改变则会通知这些客户端，实现配置文件的快速同步。
-- **统一集群管理**。将节点信息写入一个Znode，监听这个Znode可以获取它的实时状态变化。
+- **统一配置管理**。将配置信息写入一个`Znode`，各个客户端watch这个Znode，配置信息发生改变则会通知这些客户端，实现配置文件的快速同步。
+- **统一集群管理**。将节点信息写入一个`Znode`，监听这个Znode可以获取它的实时状态变化。
 - **服务器节点动态上下线**。服务端的服务器节点上下线，通知设置了watch的客户端。
 - **软负载均衡**。在ZK中记录每台服务器的访问数，让访问最少的服务器去处理最新的客户端请求
 
-### Zookeeper的下载和安装
+# Zookeeper的下载和安装
+
+## 下载
+
+官方下载地址：https://archive.apache.org/dist/zookeeper/
 
 两种安装方式：
 
 1. 本地安装
 2. 分布式安装
 
-#### 本地安装
+## 本地安装
 
 安装前准备：
 
@@ -110,72 +112,6 @@ Mode: standalone
 [root@agent apache-zookeeper-3.5.9-bin]# bin/zkServer.sh stop
 ```
 
-ZK bin下脚本使用解读
-
-```shell
-bin/zkCli.sh help #查看帮助命令
-ZooKeeper -server host:port cmd args
-	addauth scheme auth
-	close 
-	config [-c] [-w] [-s]
-	connect host:port
-	create [-s] [-e] [-c] [-t ttl] path [data] [acl]
-	delete [-v version] path
-	deleteall path
-	delquota [-n|-b] path
-	get [-s] [-w] path
-	getAcl [-s] path
-	history 
-	listquota path
-	ls [-s] [-w] [-R] path
-	ls2 path [watch]
-	printwatches on|off
-	quit 
-	reconfig [-s] [-v version] [[-file path] | [-members serverID=host:port1:port2;port3[,...]*]] | [-add serverId=host:port1:port2;port3[,...]]* [-remove serverId[,...]*]
-	redo cmdno
-	removewatches path [-c|-d|-a] [-l]
-	rmr path
-	set [-s] [-v version] path data
-	setAcl [-s] [-v version] [-R] path acl
-	setquota -n|-b val path
-	stat [-w] path
-	sync path
-Command not found: Command not found help
-
-
-bin/zkServer.sh help # 查看帮助命令
-
-# 通过zkCli.sh 连接zk服务器后，也可以在交互模式下使用help查看命令帮助
-[zk: hadoop102:2181(CONNECTED) 13] help
-ZooKeeper -server host:port cmd args
-	addauth scheme auth
-	close 
-	config [-c] [-w] [-s]
-	connect host:port
-	create [-s] [-e] [-c] [-t ttl] path [data] [acl]
-	delete [-v version] path
-	deleteall path
-	delquota [-n|-b] path
-	get [-s] [-w] path
-	getAcl [-s] path
-	history 
-	listquota path
-	ls [-s] [-w] [-R] path
-	ls2 path [watch]
-	printwatches on|off
-	quit 
-	reconfig [-s] [-v version] [[-file path] | [-members serverID=host:port1:port2;port3[,...]*]] | [-add serverId=host:port1:port2;port3[,...]]* [-remove serverId[,...]*]
-	redo cmdno
-	removewatches path [-c|-d|-a] [-l]
-	rmr path
-	set [-s] [-v version] path data
-	setAcl [-s] [-v version] [-R] path acl
-	setquota -n|-b val path
-	stat [-w] path
-	sync path
-Command not found: Command not found help
-```
-
 配置参数解读
 ```yml
 tickTime=2000 # zk中的时间以tickTime为单位，1个tickTime现在为2000ms
@@ -185,7 +121,7 @@ dataDir=/tmp/zookeeper # 存储zk数据的目录
 clientPort=2181 # 监听客户端连接的端口
 ```
 
-#### 分布式部署zk
+## 分布式部署zk
 
 ##### 集群规划
 
@@ -205,13 +141,23 @@ tar -zxvf zookeeper-3.4.10.tar.gz -C /opt/module/
 [root@agent apache-zookeeper-3.5.9-bin]# echo 3 > myid
 ```
 
-分别修改hadoop01，hadoop02，hadoop03这上台机器上的myid为1， 2， 3。
+分别修改hadoop01，hadoop02，hadoop03这上台机器上的**myid**为1， 2， 3。**官方要求同一个`ZooKeeper`集群中的myid 取值在[1, 255]，且是唯一id。**
+
+<font color="red">***注意：如果ZooKeeper启用了TLS Node功能，那么myid的取值范围为[1, 254]。***</font>
 
 ##### 配置zk
+
+修改`dataDir=/opt/modules/apache-zookeeper-3.6.1-bin/zkData`
 
 ```shell
 [root@agent apache-zookeeper-3.5.9-bin]# cp conf/zoo_sample.cfg conf/zoo.cfg
 [root@agent apache-zookeeper-3.5.9-bin]# vim conf/zoo.cfg
+tickTime=2000
+initLimit=10
+syncLimit=5
+# 修改ZooKeeper的数据存储目录
+dataDir=/opt/modules/apache-zookeeper-3.6.1-bin/zkData
+clientPort=2181
 # 增加如下内容
 server.1=hadoop01:2888:3888
 server.2=hadoop01:2888:3888
@@ -220,7 +166,7 @@ server.3=hadoop01:2888:3888
 
 ##### 配置解读
 
-集群模式下，有一个文件`myid`，这个文件在dataDir配置的目录下，这个文件里的数字就是A的值。
+集群模式下，有一个文件`myid`，这个文件在`dataDir`配置的目录下，这个文件里的数字就是A的值。
 
 ```shell
 # A是当前zk服务器的myid，
@@ -241,11 +187,11 @@ server.A=B:C:D
 [root@agent apache-zookeeper-3.5.9-bin]# bin/zkServer.sh start
 ```
 
+<font color="red">***注意：节点之间的防火墙需要关闭，或者防火墙要放通ZooKeeper使用的端口2181、2888、3888。***</font>
 
+# ZK的内部原理
 
-### ZK的内部原理
-
-##### 选举机制（面试重点）
+## 选举机制（面试重点）
 
 半数机制：集群中半数以上的机器存活，则集群就是可用的。所以使用奇数台服务器。
 
@@ -261,7 +207,7 @@ server.A=B:C:D
 > 4. server-4启动，发现已经有leader了，server-4成为follower；
 > 5. server-5启动，发现已经有leader了，server-4成为follower；
 
-##### 节点类型
+### 节点类型
 
 - 持久节点（persistent）。客户端和服务端断开连接后，创建的额znode不删除。
 - 临时节点（ephemeral）。客户端和服务端断开连接后，创建的额znode删除。
@@ -271,7 +217,7 @@ server.A=B:C:D
 
 
 
-#### stat结构体
+## stat结构体
 
 ```shell
 czxid： 创建接地那的事务zxid
@@ -285,11 +231,11 @@ aclversion：znode访问控制列表的版本号
 ephemeralOwner：如果是临时节点，则是znode拥有者的session id，如果不是临时节点，则是0
 ```
 
-#### 监听器原理（面试重点）
+## 监听器原理（面试重点）
 
 ![image-20210530235010328](ZooKeeper.assets/image-20210530235010328.png)
 
-#### 写数据流程
+## 写数据流程
 
 ![image-20210530235203974](ZooKeeper.assets/image-20210530235203974.png)
 
@@ -307,7 +253,7 @@ TODO
 
 
 
-### ZooKeeper的watch的案例实操
+## ZooKeeper的watch的案例实操
 
 https://blog.csdn.net/qq_27661881/article/details/105500424
 
@@ -342,7 +288,7 @@ zk事件类型：
 - `NodeChildrenChanged` 子节点列表变化
 - `DataWatchRemoved` 节点监听移除
 - `ChildrenWatchRemoved `子节点监听移除
-=======
+
 好奇的是，zk中如何保证leader和follower之前数据一致的？
 # ZK常用命令
 
@@ -350,5 +296,60 @@ zk事件类型：
 
 ```shell
 echo stat|nc localhost 2181
+```
+
+
+
+```bash
+bin/zkServer.sh help
+# 查看服务端版本
+bin/zkServer.sh version
+bin/zkServer.sh start
+bin/zkServer.sh stop
+bin/zkServer.sh restart
+# 查看服务端状态，follower/leader
+bin/zkServer.sh status
+...
+```
+
+连接`ZooKeeper Server`
+
+```bash
+bin/zkCli.sh -server hadoop322-node2:2181
+```
+
+
+
+`bin/zkCli.sh`介绍，参考网上的文章吧：https://blog.csdn.net/qq_42402854/article/details/124775663
+
+```shell
+bin/zkCli.sh help #查看帮助命令
+ZooKeeper -server host:port cmd args
+	addauth scheme auth
+	close 
+	config [-c] [-w] [-s]
+	connect host:port
+	create [-s] [-e] [-c] [-t ttl] path [data] [acl]
+	delete [-v version] path
+	deleteall path
+	delquota [-n|-b] path
+	get [-s] [-w] path
+	getAcl [-s] path
+	history 
+	listquota path
+	ls [-s] [-w] [-R] path
+	ls2 path [watch]
+	printwatches on|off
+	quit 
+	reconfig [-s] [-v version] [[-file path] | [-members serverID=host:port1:port2;port3[,...]*]] | [-add serverId=host:port1:port2;port3[,...]]* [-remove serverId[,...]*]
+	redo cmdno
+	removewatches path [-c|-d|-a] [-l]
+	rmr path
+	set [-s] [-v version] path data
+	setAcl [-s] [-v version] [-R] path acl
+	setquota -n|-b val path
+	stat [-w] path
+	sync path
+Command not found: Command not found help
 ```
 
