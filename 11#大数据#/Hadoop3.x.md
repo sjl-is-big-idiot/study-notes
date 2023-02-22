@@ -568,6 +568,8 @@ java -cp zookeeper.jar:lib/*:conf org.apache.zookeeper.server.quorum.QuorumPeerM
 
 ***注意：需要修改其中的zoo.conf为实际的ZooKeeper的配置文件。***
 
+**官方建议ZooKeeper的JVM堆内存为3 ~ 4G，避免影响ZooKeeper的性能。以我在公有云中的经验（腾讯云EMR），一般选择4C2G 100GB磁盘就够了。**
+
 如果要修改ZooKeeper进程的JVM内存大小，请参考：https://www.cnblogs.com/LiuChang-blog/p/15127157.html
 
 ##### 配置自动故障转移
@@ -752,13 +754,13 @@ sbin/start-yarn.sh
 
 ![image-20230222170205921](Hadoop3.x.assets/image-20230222170205921.png)
 
-**注意**：
+<font color="red">**注意：**</font>
 
-YARN把RM的状态信息存储在本地文件系统或ZooKeeper集群中，当RM重启后可以依据这些数据恢复状态。
+<font color="red">**YARN把RM的状态信息存储在本地文件系统或ZooKeeper集群中，当RM重启后可以依据这些数据恢复状态。**</font>
 
-当`Standby RM` 运行时，访问`Standby RM`的`web ui`的请求会重定向到`Active RM`。
+<font color="red">**当`Standby RM` 运行时，访问`Standby RM`的`web ui`的请求会重定向到`Active RM`。**</font>
 
-当`Standby RM` 运行时，访问`Standby RM`的`REST API`请求会重定向到`Active RM`。
+<font color="red">**当`Standby RM` 运行时，访问`Standby RM`的`REST API`请求会重定向到`Active RM`。**</font>
 
 ### YARN 命令
 
