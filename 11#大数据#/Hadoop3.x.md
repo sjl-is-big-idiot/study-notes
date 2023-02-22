@@ -116,7 +116,7 @@ MapReduce的JobHistoryServer服务。
 
 ![image-20230213161341891](Hadoop3.x.assets/image-20230213161341891.png)
 
-## HA 非联邦完全分布式
+## HDFS HA 非联邦完全分布式
 
 有两种HA的方案：
 
@@ -461,7 +461,170 @@ hdfs haadmin -transitionToActive nn2
 
 自动故障转移依赖`ZooKeeper`和`ZKFailoverController`（缩写为ZKFC）。
 
-ZooKeeper主要实现两个作用：故障检测和Active NameNode选举。
+ZooKeeper主要实现两个作用：**故障检测**和**Active NameNode选举**。
+
+- **故障检测**：集群中的每个NameNode机器都在ZooKeeper中维护一个持久会话。如果机器崩溃，ZooKeeper会话将过期，通知其他NameNode应该触发故障转移。
+- **Active NameNode选举**：ZooKeeper提供了一种简单的机制，以独占方式将节点选为活动节点。如果当前活动的NameNode崩溃，另一个节点可能会在ZooKeeper中获取一个特殊的独占锁，指示它应该成为下一个活动节点。
+
+**ZKFC**既是一个ZooKeeper client，又监控和管理NameNode的状态。每一个NameNode所在主机都会运行一个**ZKFC**。
+
+**ZKFC**有三个职责：
+
+- 健康监测（**Health monitor**）
+
+  ZKFC使用健康检查命令定期ping其本地NameNode。只要NameNode以健康状态及时响应，ZKFC就会认为该节点是健康的。如果节点已崩溃、僵死或以其他方式进入不正常状态，health monitor会将其标记为不正常状态。
+
+- **ZooKeeper session management**
+
+  当本地NameNode运行正常时，ZKFC会在ZooKeeper中持有一个会话。如果本地NameNode处于Active状态，它还持有一个特殊的“锁”znode。该锁使用ZooKeeper对“短暂”节点的支持；如果会话过期，锁定节点将被自动删除。
+
+- **ZooKeeper-based election**
+
+  如果本地NameNode运行正常，并且ZKFC发现当前没有其他节点持有锁znode，则它自己将尝试获取锁。如果它成功了，那么它就“赢得了选举”，并负责运行故障切换以使其本地NameNode处于Active状态。故障切换过程类似于上述手动故障切换：首先，如果需要，前一个活动状态被隔离，然后本地NameNode转换为Active状态。
+
+##### 部署ZooKeeper
+
+###### 下载ZooKeeper
+
+官方下载地址：https://archive.apache.org/dist/zookeeper/
+
+###### 解压ZooKeeper
+
+```bash
+tar -zxvf apache-zookeeper-3.6.1-bin.tar.gz -C /opt/modules/
+```
+
+###### 配置ZooKeeper
+
+【可选】安装`ansible`(操作系统为centos7.x)
+
+```bash
+yum install epel-release
+yum install ansible
+```
+
+在[nn1]创建`ansible`使用的主机名文件
+
+```bash
+vim ~/ansible_workers
+[workers]
+hadoop322-node01
+hadoop322-node02
+hadoop322-node03
+```
+
+创建ZooKeeper的数据目录
+
+​	没有安装ansible的话，就每个节点上去单独创建此目录即可。
+
+```bash
+ansible workers -i ansible_hosts -m shell -a 'mkdir /opt/modules/apache-zookeeper-3.6.1-bin/zkData'
+```
+
+为每个ZooKeeper节点创建`myid`文件
+
+```bash
+# [nn1]机器上
+echo 1 > /opt/modules/apache-zookeeper-3.6.1-bin/zkData/myid
+# [nn2]机器上
+echo 2 > /opt/modules/apache-zookeeper-3.6.1-bin/zkData/myid
+# [nn3]机器上
+echo 3 > /opt/modules/apache-zookeeper-3.6.1-bin/zkData/myid
+```
+
+修改`dataDir=/opt/modules/apache-zookeeper-3.6.1-bin/zkData`
+
+```shell
+[root@agent apache-zookeeper-3.5.9-bin]# cp conf/zoo_sample.cfg conf/zoo.cfg
+[root@agent apache-zookeeper-3.5.9-bin]# vim conf/zoo.cfg
+tickTime=2000
+initLimit=10
+syncLimit=5
+# 修改ZooKeeper的数据存储目录
+dataDir=/opt/modules/apache-zookeeper-3.6.1-bin/zkData
+clientPort=2181
+# 增加如下内容
+server.1=hadoop01:2888:3888
+server.2=hadoop01:2888:3888
+server.3=hadoop01:2888:3888
+```
+
+###### 启动zk集群
+
+```shel
+# 第一台机器
+[root@agent apache-zookeeper-3.5.9-bin]# bin/zkServer.sh start
+# 第二台机器
+[root@agent apache-zookeeper-3.5.9-bin]# bin/zkServer.sh start
+# 第三台机器
+[root@agent apache-zookeeper-3.5.9-bin]# bin/zkServer.sh start
+```
+
+也可以通过如下命令启动每个ZooKeeper服务器进程：
+
+```bash
+java -cp zookeeper.jar:lib/*:conf org.apache.zookeeper.server.quorum.QuorumPeerMain zoo.conf
+```
+
+***注意：需要修改其中的zoo.conf为实际的ZooKeeper的配置文件。***
+
+如果要修改ZooKeeper进程的JVM内存大小，请参考：https://www.cnblogs.com/LiuChang-blog/p/15127157.html
+
+##### 配置自动故障转移
+
+***在配置HDFS HA集群自动故障转移之前，需要先关闭HA集群。因为在集群运行时无法从手动故障转移切换至自动故障转移。***
+
+`core-site.xml`中增加如下配置项，配置的是ZooKeeper的地址，根据实际情况修改为自己的ZooKeeper集群。
+
+```xml
+ <property>
+   <name>ha.zookeeper.quorum</name>
+   <value>hadoop322-node01:2181,hadoop322-node02:2181,hadoop322-node03:2181</value>
+ </property>
+```
+
+
+
+`hdfs-site.xml`中增加
+
+```xml
+ <property>
+   <name>dfs.ha.automatic-failover.enabled</name>
+   <value>true</value>
+ </property>
+```
+
+<font color="red">***如果是联邦集群，则可以通过`dfs.ha.automatic-failover.enabled.[my-nameservice-ID]`来配置每个`nameservice`的配置。***</font>
+
+初始化HDFS HA在ZooKeeper中的状态（在某个NameNode节点执行）
+
+```bash
+$HADOOP_HOME/bin/hdfs zkfc -formatZK
+```
+
+​	**这会在ZooKeeper中创建HDFS HA集群所需的znode，一般为[hadoop-ha]**。
+
+启动HDFS HA集群中的所有服务进程。
+
+```bash
+$HADOOP_HOME/sbin/start-dfs.sh
+```
+
+手动启动`ZKFC`
+
+```bash
+$HADOOP_HOME/bin/hdfs --daemon start zkfc
+```
+
+当所有进程都正常启动后，NameNodes们会通过在ZooKeeper中抢占x znode，来进行选举，确认哪个NameNode为Active。会多出来两个znode：`ActiveBreadCrumb`和`ActiveStandbyElectorLock`
+
+![image-20230222110503331](Hadoop3.x.assets/image-20230222110503331.png)
+
+![image-20230222110834921](Hadoop3.x.assets/image-20230222110834921.png)
+
+从上图可以看出，当前的Active NameNode是 hadoop322-node01。
+
+**Tip**s：关于自动故障转移的测试见博客：https://blog.csdn.net/m0_37613244/article/details/114504071
 
 #### `In-Progress Edit Log Tailing`
 
@@ -489,7 +652,173 @@ ZooKeeper主要实现两个作用：故障检测和Active NameNode选举。
 
 参考官方文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HDFSHighAvailabilityWithNFS.html
 
+联邦模式也有HA和非HA的区别，见博客：https://blog.csdn.net/weixin_34244102/article/details/91645766
+
+https://my.oschina.net/bochs/blog/789612
+
 TODO
+
+## YARN的高可用
+
+官方文档：https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/ResourceManagerHA.html
+
+在hadoop2.4之前，YARN集群中的`ResourceManager`一直是存在单点故障的。
+
+YARN HA的架构图如下：
+
+![Overview of ResourceManager High Availability](Hadoop3.x.assets/rm-ha-overview.png)
+
+### RM故障转移
+
+RM的HA也是依赖ZooKeeper的，也是Active/Standby的。
+
+#### 手动故障转移
+
+如果没有开启RM的自动故障转移，我们也可以通过手动故障转移。
+
+TODO
+
+```bash
+yarn rmadin 
+```
+
+
+
+#### 自动故障转移
+
+RM中可以内嵌`ActiveStandbyElector`，用来做**故障检测**和**leader选举**。因此YARN中不需要类似ZKFC这种独立的服务进程。
+
+#### 配置YARN
+
+`yarn-site.xml`
+
+```xml
+<!-- 启用YARN resourcemanager的HA -->
+<property>
+  <name>yarn.resourcemanager.ha.enabled</name>
+  <value>true</value>
+</property>
+<!-- YARN集群id -->
+<property>
+  <name>yarn.resourcemanager.cluster-id</name>
+  <value>cluster-yarn1</value>
+</property>
+<!-- YARN HA集群中的RM的id -->
+<property>
+	<name>yarn.resourcemanager.ha.rm-ids</name>
+  <value>rm1,rm2</value>
+</property>
+<!-- YARN集群中RM的地址 -->
+<property>
+	<name>yarn.resourcemanager.hostname.rm1</name>
+  <value>hadoop322-node01</value>
+</property>
+<property>
+	<name>yarn.resourcemanager.hostname.rm2</name>
+  <value>hadoop322-node03</value>
+</property>
+
+<!-- 启动RM后，允许其恢复状态。开启后必须指定yarn.resourcemanager.store.class -->
+<property>
+  <name>yarn.resourcemanager.recovery.enabled</name>
+  <value>true</value>
+</property>
+<!-- 持久化RM状态信息的类 -->
+<property>
+  <name>yarn.resourcemanager.store.class</name>
+  <value>org.apache.hadoop.yarn.server.resourcemanager.recovery.ZKRMStateStore</value>
+</property>
+
+<!-- ZooKeeper集群地址 -->
+<property>
+  <name>hadoop.zk.address</name>
+  <value>hadoop322-node01:2181,hadoop322-node02:2181,hadoop322-node03:2181</value>
+</property>
+```
+
+#### 启动YARN
+
+
+
+```bash
+sbin/start-yarn.sh
+```
+
+连接ZooKeeper查看发现多了两个znode：`rmstore`和`yarn-leader-election`。一个是用来**存储状态信息的**，一个是用来做**leader选举的**。
+
+![image-20230222170233962](Hadoop3.x.assets/image-20230222170233962.png)
+
+如下所示，表示当前的Active RM 是rm2。
+
+![image-20230222170205921](Hadoop3.x.assets/image-20230222170205921.png)
+
+**注意**：
+
+YARN把RM的状态信息存储在本地文件系统或ZooKeeper集群中，当RM重启后可以依据这些数据恢复状态。
+
+当`Standby RM` 运行时，访问`Standby RM`的`web ui`的请求会重定向到`Active RM`。
+
+当`Standby RM` 运行时，访问`Standby RM`的`REST API`请求会重定向到`Active RM`。
+
+### YARN 命令
+
+查看RM的状态。
+
+```bash
+ $ yarn rmadmin -getServiceState rm1
+ active
+ 
+ $ yarn rmadmin -getServiceState rm2
+ standby
+ 
+```
+
+如果启用了自动故障转移，则不能使用`-transitionTOStandby`，如果一定要使用需要加`-forcemanual`。
+
+```bash
+ $ yarn rmadmin -transitionToStandby rm1
+ Automatic failover is enabled for org.apache.hadoop.yarn.client.RMHAServiceTarget@1d8299fd
+ Refusing to manually manage HA state, since it may cause
+ a split-brain scenario or other incorrect state.
+ If you are very sure you know what you are doing, please
+ specify the forcemanual flag.
+ 
+  $ yarn rmadmin -transitionToStandby -forcemanual rm1
+```
+
+其它命令见：https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/YarnCommands.html
+
+### 关于RM重启
+
+参考官方文档：https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/ResourceManagerRestart.html
+
+RM有两种重启类型：
+
+- `Non-work-preserving RM restart`：
+
+  RM将在客户端提交application时将application元数据存储在state-store（按照上述配置的话，就是`ZooKeeper`集群）。那么当RM重新启动时，它就可以从状态存储中获取application元数据并重新运行已提交的application。如果在RM停机之前申请已经完成（即失败、终止或完成），RM将不会重新提交申请。用户无需重新提交application。
+
+- `Work-preserving RM restart`：
+
+  在重启时，结合NodeManager反映的contianer状态和ApplicationMaster反映的container请求来重新构建RM的状态。这种方式不会重新运行之前正在运行的application。
+
+`yarn-site.xml`中的`yarn.resourcemanager.store.class`支持三种状态存储的方式：
+
+- `org.apache.hadoop.yarn.server.resourcemanager.recovery.ZKRMStateStore`
+
+  使用ZooKeeper做状态存储，**支持fence机制。**
+
+- `org.apache.hadoop.yarn.server.resourcemanager.recovery.FileSystemRMStateStore`
+
+  默认。使用本地文件系统做状态存储，**不支持fence机制。**
+
+- `org.apache.hadoop.yarn.server.resourcemanager.recovery.LeveldbRMStateStore`
+
+  **不支持fence机制。**
+
+### 配置`Load Balancer`
+
+YARN HA集群支持配置LB，通过RM web ui 的`/isAcitve` HTTP请求，可以对RM服务做健康检查。Active RM会返回200状态码，而其它会返回405状态码。
 
 # Hadoop命令
 
@@ -515,3 +844,4 @@ Usage: haadmin
 - **-checkHealth** ：获取指定NameNode的健康状态。健康则什么结果都没有，不健康则会有具体的报错信息。**功能目前尚未完全实现，不建议使用。**
 
 <font color="red">**注意：不执行fence，因此一般不建议使用这两个命令，而是建议使用`hdfs haadmin -failover`。**</font>
+
