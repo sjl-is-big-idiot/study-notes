@@ -723,6 +723,15 @@ public class AppTest
 
 ![image-20210624202158182](Hadoop.assets/image-20210624202158182.png)
 
+1）客户端通过Distributed FileSystem模块向NameNode请求上传文件，NameNode检查目标文件是否已存在，父目录是否存在。
+2）NameNode返回是否可以上传。
+3）客户端请求第一个 block上传到哪几个datanode服务器上。
+4）NameNode返回3个datanode节点，分别为dn1、dn2、dn3。
+5）客户端通过FSDataOutputStream模块请求dn1上传数据，dn1收到请求会继续调用dn2，然后dn2调用dn3，将这个通信管道建立完成。
+6）dn1、dn2、dn3逐级应答客户端。
+7）客户端开始往dn1上传第一个block（先从磁盘读取数据放到一个本地内存缓存），以packet为单位，dn1收到一个packet就会传给dn2，dn2传给dn3； dn1每传一个packet会放入一个应答队列等待应答。
+8）当一个block传输完成之后，客户端再次请求NameNode上传第二个block的服务器。（重复执行3-7步）。
+
 #### 4.1.2 网络拓扑-节点距离计算
 
 为什么是2，4，6呢？
@@ -745,11 +754,31 @@ n0到n1 == n0到r1 + n1到r1，即2，其他也是类似。
 
 ![image-20210624204953171](Hadoop.assets/image-20210624204953171.png)
 
+1）客户端通过Distributed FileSystem向NameNode请求下载文件，NameNode通过查询元数据，找到文件块所在的DataNode地址。
+2）挑选一台DataNode（就近原则，然后随机）服务器，请求读取数据。
+3）DataNode开始传输数据给客户端（从磁盘里面读取数据输入流，以packet为单位来做校验）。
+4）客户端以packet为单位接收，先在本地缓存，然后写入目标文件。
+
 ## 5. NameNode和SecondaryNameNode
 
 ### 5.1 NN和2NN工作机制
 
 ![image-20210628183826860](Hadoop.assets/image-20210628183826860.png)
+
+**1）第一阶段：NameNode启动**
+  （1）第一次启动NameNode格式化后，创建fsimage和edits文件。如果不是第一次启动，直接加载编辑日志和镜像文件到内存。
+  （2）客户端对元数据进行增删改的请求。
+  （3）NameNode记录操作日志，更新滚动日志。
+  （4）NameNode在内存中对数据进行增删改查。
+**2）第二阶段：Secondary NameNode工作**
+  （1）Secondary NameNode询问NameNode是否需要checkpoint。直接带回NameNode是否检查结果。
+  （2）Secondary NameNode请求执行checkpoint。
+  （3）NameNode滚动正在写的edits日志。
+  （4）将滚动前的编辑日志和镜像文件拷贝到Secondary NameNode。
+  （5）Secondary NameNode加载编辑日志和镜像文件到内存，并合并。
+  （6）生成新的镜像文件fsimage.chkpoint。
+  （7）拷贝fsimage.chkpoint到NameNode。
+  （8）NameNode将fsimage.chkpoint重新命名成fsimage。
 
 fsimage + edits == NN内存中的元数据
 
