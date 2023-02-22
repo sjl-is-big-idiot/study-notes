@@ -2157,7 +2157,7 @@ hadoop102: stopping journalnode
            <name>yarn.resourcemanager.zk-address</name> 			 
            <value>hadoop102:2181,hadoop103:2181,hadoop104:2181</value>  
        </property>   
-       <!--启用自动恢复-->   
+       <!-- RM启动时，启用自动恢复状态-->   
        <property>    
            <name>yarn.resourcemanager.recovery.enabled</name>    
        	<value>true</value>  
