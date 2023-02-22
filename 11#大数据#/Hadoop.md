@@ -153,6 +153,9 @@ Hadoop是一个由Apache基金会开发的`分布式系统`基础架构。
    systemctl stop firewalld
    systemctl status iptables
    systemctl stop iptables
+   # 关闭开机自启
+   systemctl disable firewalld
+   systemctl disable iptables
    ```
 
 5. 创建`atguigu`用户
