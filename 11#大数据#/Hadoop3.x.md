@@ -99,7 +99,7 @@ TODO
 
 ![image-20210615180835140](Hadoop3.x.assets/image-20210615180835140.png)
 
-##### 2.3.2.1 时间服务器配置（**必须root用户**）
+##### 2.3.2.1 时间服务器配置（**必须root用户**）f
 
 1. 检查ntp是否安装
 
@@ -344,6 +344,30 @@ export CLASSPATH=.:$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar
 [atguigu@hadoop101 ~]$ java -version
 [atguigu@hadoop101 ~]$ javac --help
 ```
+
+**为什么在`/etc/profile.d`而不是在`/etc/profile`文件中直接添加/修改环境变量呢？**
+
+> 在 /etc/profile 这个文件中有这么一段 shell, 会在每次启动时自动加载 profile.d 下的每个配置
+>
+> ```bash
+> if [ -d /etc/profile.d ]; then
+>   for i in /etc/profile.d/*.sh; do
+>     if [ -r $i ]; then
+>       . $i
+>     fi
+>   done
+>   unset i
+> fi
+> ```
+>
+> 区别
+> 1、都用来设置环境变量文件
+>
+> 2、/etc/profile.d/ 高度解耦, 比 /etc/profile 好维护，不想要什么变量直接删除 /etc/profile.d/ 下对应的 shell 脚本即可
+>
+> 3、/etc/profile 和 /etc/profile.d 同样是登录（login）级别的变量，当用户重新登录 shell 时会触发。所以效果一致。
+>
+> 4、设置登录级别的变量，重新登录 shell，或者 source /etc/profile。
 
 ### 2.3.5 安装和配置Hadoop3.2.2
 
