@@ -1,18 +1,375 @@
 Hadoop3.x和Hadoop2.x的区别
 
-# Hadoop概念
+# 1. Hadoop概念
 
 TODO
 
-# Hadoop安装和配置
+# 2. Hadoop安装和配置
 
-## 单节点
+## 2.1 单节点
+
+TODO
+
+## 2.2 伪分布式
 
 TODO
 
-## 伪分布式
 
-TODO
+
+
+
+## 2.3 非HA 完全分布式
+
+步骤：
+
+### 2.3.1 准备3台服务器
+
+这里是用的VM Ware克隆了3台Centos7.X的VM。
+
+1. 克隆虚拟机
+
+   右键>管理>克隆
+
+
+   `/etc/udev/rules.d/70-persistent-ipoib.rules`这个文件是关于网卡的。当网卡变动时，这个文件都会发生变化。
+
+2. 修改克隆虚拟机的静态IP
+
+   ```shell
+   vim /etc/sysconfig/network-scripts/ifcfg-eth0
+   ```
+
+3. 修改主机名
+
+   ```shell
+   vim /etc/sysconfig/network
+   vim /etc/hostname
+   reboot
+   ```
+
+4. 关闭防火墙
+
+   ```shell
+   systemctl status firewalld
+   systemctl stop firewalld
+   systemctl status iptables
+   systemctl stop iptables
+   # 关闭开机自启
+   systemctl disable firewalld
+   systemctl disable iptables
+   ```
+
+5. 创建`atguigu`用户
+
+   ```shell
+   useradd atguigu -p sjl1991
+   ```
+
+6. 配置`atguigu`用户具有`root`权限
+
+   ```shell
+   vim /etc/sudoers
+   ```
+
+7. 在`/opt`目录下创建文件夹
+
+   ```shell
+   mkdir /opt/module
+   mkdir /opt/software
+   ```
+
+8. 修改`/etc/host`
+
+   增加如下几行。
+
+   ```bash
+   hadoop322-node01  192.168.61.129
+   hadoop322-node02  192.168.61.135
+   hadoop322-node03  192.168.61.136
+   192.168.61.129 hadoop322-node01
+   192.168.61.135 hadoop322-node02
+   192.168.61.136 hadoop322-node03
+   ```
+
+   
+
+### 2.3.2 安装和配置NTP服务
+
+时间同步的方式：找一个机器作为时间服务器，所有的机器都与这台机器进行时间同步，比如：每隔10min同步一次（通过crontab来实现）。
+
+![image-20210615180835140](Hadoop3.x.assets/image-20210615180835140.png)
+
+##### 2.3.2.1 时间服务器配置（**必须root用户**）
+
+1. 检查ntp是否安装
+
+   ```shell
+   [atguigu@hadoop322-node01 hadoop-3.2.2]$ crontab -l
+   no crontab for atguigu
+   [atguigu@hadoop322-node01 hadoop-3.2.2]$ su root
+   Password: 
+   [root@hadoop322-node01 hadoop-3.2.2]# rpm -qa |grep ntp
+   fontpackages-filesystem-1.44-8.el7.noarch
+   python-ntplib-0.3.2-1.el7.noarch
+   ntp-4.2.6p5-29.el7.centos.x86_64
+   ntpdate-4.2.6p5-29.el7.centos.x86_64
+   ```
+
+   如果未安装ntp，使用如下命令进行安装
+
+   ```bash
+   yum install ntp -y
+   ```
+
+   
+
+2. 修改ntp配置文件
+
+   ```shell
+   [root@hadoop322-node02 hadoop-3.2.2]# vim /etc/ntp.conf
+   # 修改内容如下：
+   
+   # 修改1. 授权192.168.10-192.168.1.255 网段上的所有机器可以从这台机器上查询和同步时间，取消注释
+   restrict 192.168.61.0 mask 255.255.255.0 nomodify notrap
+   # 修改2. 集群在局域网中，不适用其他互联网上的时间，所以都注释掉
+   #server 0.centos.pool.ntp.org iburst
+   #server 1.centos.pool.ntp.org iburst
+   #server 2.centos.pool.ntp.org iburst
+   #server 3.centos.pool.ntp.org iburst
+   
+   # 添加3.当该节点丢失网络连接，依然可以采用本地时间作为时间服务器为集群中的其他节点提供时间同步
+   server 127.127.1.0						#如果国际通用时间服务器不能同步，则自动会按照本级时间进行同步
+   fudge 127.127.1.0 stratum 10	#指定127.127.1.0 为第10层。ntp和127.127.1.0同步完后，就变成了11
+   logfile /var/log/ntp.log　　　 #配置日志目录
+   ```
+
+3. 修改`/etc/sysconfig/ntpd`文件
+
+   ```shell
+   [root@hadoop322-node01 hadoop-3.2.2]# vim /etc/sysconfig/ntpd
+   # 添加如下内容，让硬件时间与系统时间一起同步
+   SYNC_HWCLOCK=yes
+   ```
+
+4. 重新启动`ntpd`服务
+
+   ```shell
+   service ntpd status
+   service ntpd start
+   service ntpd stop
+   service ntpd restart
+   
+   [root@hadoop322-node01 subdir0]# service ntpd status
+   Redirecting to /bin/systemctl status ntpd.service
+   ● ntpd.service - Network Time Service
+      Loaded: loaded (/usr/lib/systemd/system/ntpd.service; disabled; vendor preset: disabled)
+      Active: inactive (dead)
+   [root@hadoop322-node01 subdir0]# service ntpd start
+   Redirecting to /bin/systemctl start ntpd.service
+   [root@hadoop322-node01 subdir0]# service ntpd status
+   Redirecting to /bin/systemctl status ntpd.service
+   ● ntpd.service - Network Time Service
+      Loaded: loaded (/usr/lib/systemd/system/ntpd.service; disabled; vendor preset: disabled)
+      Active: active (running) since Tue 2021-06-15 18:31:45 CST; 4s ago
+     Process: 10615 ExecStart=/usr/sbin/ntpd -u ntp:ntp $OPTIONS (code=exited, status=0/SUCCESS)
+    Main PID: 10618 (ntpd)
+       Tasks: 1
+      Memory: 1.4M
+      CGroup: /system.slice/ntpd.service
+              └─10618 /usr/sbin/ntpd -u ntp:ntp -g
+   
+   Jun 15 18:31:45 hadoop322-node01 ntpd[10618]: Listen normally on 5 docker_gwbridge 172.19.0.1 ...123
+   Jun 15 18:31:45 hadoop322-node01 ntpd[10618]: Listen normally on 6 br-9f19cd8b27c1 172.18.0.1 ...123
+   Jun 15 18:31:45 hadoop322-node01 ntpd[10618]: Listen normally on 7 docker0 172.17.0.1 UDP 123
+   Jun 15 18:31:45 hadoop322-node01 ntpd[10618]: Listen normally on 8 lo ::1 UDP 123
+   Jun 15 18:31:45 hadoop322-node01 ntpd[10618]: Listen normally on 9 ens33 fe80::20c:29ff:fed3:2...123
+   Jun 15 18:31:45 hadoop322-node01 ntpd[10618]: Listening on routing socket on fd #26 for interf...tes
+   Jun 15 18:31:45 hadoop322-node01 ntpd[10618]: 0.0.0.0 c016 06 restart
+   Jun 15 18:31:45 hadoop322-node01 ntpd[10618]: 0.0.0.0 c012 02 freq_set kernel 0.000 PPM
+   Jun 15 18:31:45 hadoop322-node01 ntpd[10618]: 0.0.0.0 c011 01 freq_not_set
+   Jun 15 18:31:46 hadoop322-node01 ntpd[10618]: 0.0.0.0 c514 04 freq_mode
+   Hint: Some lines were ellipsized, use -l to show in full.
+   ```
+
+5. 设置`ntpd`服务开机启动
+
+   ```shell
+   chkconfig ntpd on
+   ```
+
+##### 2.3.2.2 其他机器配置（必须root用户）
+
+1. 在其它机器配置10min与时间服务器同步一次
+
+   ```shell
+   crontab -e
+   # 添加
+   */10 * * * * /usr/sbin/ntpdate hadoop322-node01
+   ```
+
+2. 修改任意机器时间
+
+   ```shell
+   date -s "2020 20:20:20"
+   ```
+
+3. 十分钟后，查看机器是否与时间服务器同步
+
+   ```shell
+   date
+   ```
+
+
+### 2.3.3 配置集群节点免密SSH
+
+配置SSH
+
+```shell
+[atguigu@hadoop322-node01 hadoop-3.2.2]$ ll ~/.ssh
+total 4
+-rw-r--r--. 1 atguigu atguigu 370 Jun 15 12:58 known_hosts
+# ~/.ssh/known_hosts 记录了所有ssh访问过的主机
+
+
+# 生成SSH公钥和私钥
+[atguigu@hadoop322-node01 hadoop-3.2.2]$ ssh-keygen -t rsa
+Generating public/private rsa key pair.
+Enter file in which to save the key (/home/atguigu/.ssh/id_rsa): 
+Enter passphrase (empty for no passphrase): 
+Enter same passphrase again: 
+Your identification has been saved in /home/atguigu/.ssh/id_rsa.
+Your public key has been saved in /home/atguigu/.ssh/id_rsa.pub.
+The key fingerprint is:
+SHA256:pwDfVu6zXlyVg1L/Wk/Z8aj9rJL8YISOhJIWSvQ9qtM atguigu@hadoop102
+The key's randomart image is:
++---[RSA 2048]----+
+|  .          .   |
+| . . .      . o .|
+|  . + o   .. . =.|
+| . . * + o ..  oB|
+|  . = + S + . o.*|
+|   + . + * o + +.|
+|  o E   o +.*.o .|
+|   .       =+. o |
+|         .o  oo.o|
++----[SHA256]-----+
+[atguigu@hadoop322-node01 hadoop-3.2.2]$ ll ~/.ssh
+total 12
+-rw-------. 1 atguigu atguigu 1675 Jun 15 14:53 id_rsa
+-rw-r--r--. 1 atguigu atguigu  399 Jun 15 14:53 id_rsa.pub
+-rw-r--r--. 1 atguigu atguigu  370 Jun 15 12:58 known_hosts
+[atguigu@hadoop322-node01 hadoop-3.2.2]$ 
+
+# 将hadoop322-node01的公钥拷贝到hadoop322-node02上
+[atguigu@hadoop322-node01 hadoop-3.2.2]$ ssh-copy-id hadoop322-node02
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: "/home/atguigu/.ssh/id_rsa.pub"
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+atguigu@hadoop322-node02's password: 
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   "ssh 'hadoop322-node02'"
+and check to make sure that only the key(s) you wanted were added.
+
+# 在hadoop322-node02上查看是否拷贝成功了
+[atguigu@hadoop103 hadoop-3.2.2]$ ll ~/.ssh/
+total 16
+-rw-------. 1 atguigu atguigu  399 Jun 15 14:57 authorized_keys
+-rw-------. 1 atguigu atguigu 1679 Jun 15 14:53 id_rsa
+-rw-r--r--. 1 atguigu atguigu  399 Jun 15 14:53 id_rsa.pub
+-rw-r--r--. 1 atguigu atguigu  185 Jun 15 12:52 known_hosts
+
+# 验证从hadoop322-node01是否能免密SSH到hadoop322-node02
+[atguigu@hadoop102 hadoop-3.2.2]$ ssh hadoop322-node02
+```
+
+同理对hadoop322-node01配置可免密登录hadoop322-node03。
+
+<font color="red">**注意：</br>还需要在hadoop322-node01、hadoop322-node02、hadoop322-node03都要配置root用户、atguigu用户的免密ssh。配置方式如上所示。**</font>
+
+### 2.3.4 安装和配置JDK
+
+#### 2.3.4.1 卸载openJDK
+
+VM ware中自带了openjdk，其中openJDK安装好的目录位于`/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.242.b08-1.el7.x86_64`
+
+那么应该如何配置`JAVA_HOME`等环境变量呢？
+
+首先，咱删除默认安装的openJDK，然后手动安装指定版本的JDK，再配置环境变量即可。
+
+[使用CentOS7卸载自带jdk安装自己的JDK1.8](https://blog.csdn.net/hui_2016/article/details/69941850?utm_medium=distribute.pc_relevant.none-task-blog-2%7Edefault%7EBlogCommendFromBaidu%7Edefault-7.control&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2%7Edefault%7EBlogCommendFromBaidu%7Edefault-7.control)
+
+```shell
+[root@hadoop101 alternatives]$  rpm -qa | grep java
+javapackages-tools-3.4.1-11.el7.noarch
+java-1.7.0-openjdk-headless-1.7.0.251-2.6.21.1.el7.x86_64
+python-javapackages-3.4.1-11.el7.noarch
+tzdata-java-2019c-1.el7.noarch
+java-1.8.0-openjdk-1.8.0.242.b08-1.el7.x86_64
+java-1.8.0-openjdk-headless-1.8.0.242.b08-1.el7.x86_64
+java-1.7.0-openjdk-1.7.0.251-2.6.21.1.el7.x86_64
+
+[root@hadoop101 opt]# rpm -e --nodeps java-1.7.0-openjdk-headless-1.7.0.251-2.6.21.1.el7.x86_64
+[root@hadoop101 opt]# rpm -e --nodeps java-1.8.0-openjdk-1.8.0.242.b08-1.el7.x86_64
+[root@hadoop101 opt]# rpm -e --nodeps java-1.8.0-openjdk-headless-1.8.0.242.b08-1.el7.x86_64
+[root@hadoop101 opt]# rpm -e --nodeps java-1.7.0-openjdk-1.7.0.251-2.6.21.1.el7.x86_64
+# 相比于之前，少了4个openjdk的包了
+[root@hadoop101 opt]# rpm -qa | grep java
+javapackages-tools-3.4.1-11.el7.noarch
+python-javapackages-3.4.1-11.el7.noarch
+tzdata-java-2019c-1.el7.noarch
+
+```
+
+#### 2.3.4.2 安装JDK8
+
+官网下载所需版本的JDK，然后拷贝到虚拟机中的`/opt/software`目录
+
+```shell
+[atguigu@hadoop101 hadoop]$ cd /opt/softwares
+[atguigu@hadoop101 ~]$ tar -zxvf jdk-8u291-linux-x64.tar.gz -C /opt/module
+```
+
+####  2.3.4.3 配置JAVA_HOME等环境变量
+
+```bash
+[atguigu@hadoop101 software]$ sudo vim /etc/profile.d/hadoop322_env.sh
+# 修改环境变量
+#JAVA_HOME
+export JAVA_HOME=/opt/module/jdk1.8.0_291
+export PATH=$PATH:$JAVA_HOME/bin
+export CLASSPATH=.:$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar
+[atguigu@hadoop101 ~]$ source /etc/profile
+[atguigu@hadoop101 ~]$ java -version
+[atguigu@hadoop101 ~]$ javac --help
+```
+
+### 2.3.5 安装和配置Hadoop3.2.2
+
+提前将hadoop3.2.2的tar包`hadoop-3.2.2.tar.gz`放到`/opt/softwares`目录下。
+
+#### 2.3.5.1 安装Hadoop3.2.2
+
+```bash
+[atguigu@hadoop101 hadoop]$ cd /opt/softwares
+[atguigu@hadoop101 software]$ tar -zxvf hadoop-3.2.2.tar.gz -C /opt/module
+```
+
+####  2.3.5.2 配置HADOOP_HOME等环境变量
+
+```bash
+[atguigu@hadoop101 software]$ sudo vim /etc/profile.d/hadoop322_env.sh
+#HADOOP_HOME
+export HADOOP_HOME=/opt/module/hadoop-3.2.2
+export PATH=$PATH:$HADOOP_HOME/bin
+export PATH=$PATH:$HADOOP_HOME/sbin
+
+[atguigu@hadoop101 software]$ source /etc/profile
+[atguigu@hadoop101 software]$ hadoop --help
+```
+
+### 2.3.6 调整集群配置
 
 core-site.xml
 
@@ -87,6 +444,17 @@ mapred-site.xml
     <name>mapreduce.framework.name</name>
     <value>yarn</value>
   </property>
+  
+  <!-- 历史服务器端地址 -->
+  <property>
+    <name>mapreduce.jobhistory.address</name>
+      <value>hadoop101:10020</value>
+  </property>
+  <!-- 历史服务器web端地址 -->
+  <property>
+    <name>mapreduce.jobhistory.webapp.address</name>
+      <value>hadoop101:19888</value>
+	</property>
 </configuration>
 ```
 
@@ -98,15 +466,75 @@ hadoop322-node02
 hadoop322-node03
 ```
 
+### 2.3.7 启动Hadoop集群服务
+
+#### 2.3.7.1 逐个启动
+
+1. 格式化`NameNode`（**第一次启动时格式化，以后就不要总格式化**）
+
+   ```shell
+   bin/hdfs namenode -format
+   ```
+
+2. 启动NameNode
+
+   ```shell
+   sbin/hadoop-daemon.sh start namenode
+   # hadoop3建议使用如下命令启动
+   hdfs --daemon start namenode
+   ```
+
+3. 启动NameNode
+
+   ```shell
+   sbin/hadoop-daemon.sh start datanode
+   # hadoop3建议使用如下命令启动
+   hdfs --daemon start datanode
+   ```
+
+4. 启动ResourceManager
+
+   ```bash
+   sbin/yarn-daemon.sh start resourcemanager
+   # hadoop3建议使用如下命令启动
+   yarn --daemon start resourcemanager
+   ```
+
+   
+
+5. 启动NodeManager
+
+   ```bash
+   sbin/yarn-daemon.sh start nodemanager
+   # hadoop3建议使用如下命令启动
+   yarn --daemon start nodemanager
+   ```
+
+   
+
+6. 启动MapReduce历史服务器
+
+   ```bash
+   sbin/mr-jobhistory-daemon.sh start historyserver
+   # hadoop3建议使用如下命令启动
+   mapred --daemon start historyserver
+   ```
+
+   
+
+#### 2.3.7.2 群起
+
+```bash
+#启动YARN的服务
+sbin/start-dfs.sh
+
+#启动YARN的服务
+sbin/start-yarn.sh
+```
 
 
 
 
-
-
-
-
-## 非HA 完全分布式
 
 MapReduce的JobHistoryServer服务。
 
@@ -116,14 +544,14 @@ MapReduce的JobHistoryServer服务。
 
 ![image-20230213161341891](Hadoop3.x.assets/image-20230213161341891.png)
 
-## HDFS HA 非联邦完全分布式
+## 2.4 HDFS HA 非联邦完全分布式
 
 有两种HA的方案：
 
 - `NameNode HA with QJM`。使用`the Quorum Journal Manager (QJM)`在`Active NameNode`和`Standby NameNode`之前共享edit logs。
 - `NameNode HA with NFS`。使用`NFS`在`Active NameNode`和`Standby NameNode`之前共享edit logs。
 
-### `NameNode HA with QJM`
+### 2.4.1 `NameNode HA with QJM`
 
 参考官方文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HDFSHighAvailabilityWithQJM.html
 
@@ -134,7 +562,7 @@ MapReduce的JobHistoryServer服务。
 - 机器挂了，或者NameNode进程挂了，则直到机器/进程重启之，集群才能变为可用。
 - 集群/软件升级，会导致一定时间窗口内集群不可用。
 
-### HA的设计架构
+### 2.4.2 HA的设计架构
 
 在典型的HA集群中，两个或多个单独的机器被配置为NameNodes。在任何时间点，只有一个NameNode处于active状态，而其他NameNode处于standby状态。Active NameNode负责集群中的所有客户端操作，而Standby只是在必要时保持足够的状态以提供快速的故障恢复（failover）。
 
@@ -152,18 +580,18 @@ MapReduce的JobHistoryServer服务。
 
 
 
-### 硬件准备
+### 2.4.3 硬件准备
 
 - 建议NameNode节点的硬件配置相同。
 - `JournalNode`守护进程是比较轻量的，可以放置在其它守护进程（如NameNode、JobTracker、ResourceManager等）如所在节点。但是，就公有云的EMR（MRS）之类的paas产品而言，都是将JournalNode和ZooKeeper放置在相同的节点，一般为3个节点，配置一般2C4G 100GB就可以了。
 
 **请注意，在HA集群中，Standby NameNode还执行命名空间状态的检查点，因此不需要在HA集群内运行Secondary NameNode、Checkpoint Node或BackupNode。事实上，这样做是错误的。这也允许正在重新配置非启用HA的HDFS群集以启用HA的用户重新使用以前专用于Secondary NameNode的硬件。？没看懂TODO**
 
-### 部署
+### 2.4.4 部署
 
 与Federation配置类似，HA配置是向后兼容的，并允许现有的单个NameNode配置在没有更改的情况下工作。新配置被设计为使得集群中的所有节点可以具有相同的配置，而不需要基于节点的类型将不同的配置文件部署到不同的机器。?没看懂TODO
 
-#### 配置HDFS HA集群
+#### 2.4.4.1 配置HDFS HA集群
 
 与`HDFS Federation`一样，HA集群重用`nameservice ID`来标识单个HDFS实例，该实例实际上可能由多个HA NameNode组成。此外，HA还添加了名为`NameNode ID`的新抽象。集群中每个不同的NameNode都有一个不同的`NameNode ID`来区分它。为了支持所有NameNode的单个配置文件，相关的配置参数都以`nameservice ID`和`NameNode ID`作为后缀。
 
@@ -179,9 +607,7 @@ MapReduce的JobHistoryServer服务。
 </configuration>
 ```
 
-- **fs.defaultFS**
-
-Hadoop FS客户端在没有指明FS前缀时，使用的默认路径前缀。
+- **fs.defaultFS**: Hadoop FS客户端在没有指明FS前缀时，使用的默认路径前缀。
 
 ##### 配置`hdfs-site.xml`
 
@@ -320,20 +746,7 @@ Hadoop FS客户端在没有指明FS前缀时，使用的默认路径前缀。
 
   是否阻止安全模式中的namenodes变为Active。
 
-
-`yarn-site.xml`
-
-```xml
-
-```
-
-`mapred-site.xml`
-
-```xml
-
-```
-
-#### 启动HDFS HA集群
+#### 2.4.4.2 启动HDFS HA集群
 
 1、在所有`Journal Node`启动`journalnode`服务
 
@@ -457,7 +870,7 @@ hdfs haadmin -transitionToActive nn2
 
 
 
-#### 自动故障转移配置
+#### 2.4.4.3 自动故障转移配置
 
 自动故障转移依赖`ZooKeeper`和`ZKFailoverController`（缩写为ZKFC）。
 
@@ -482,7 +895,7 @@ ZooKeeper主要实现两个作用：**故障检测**和**Active NameNode选举**
 
   如果本地NameNode运行正常，并且ZKFC发现当前没有其他节点持有锁znode，则它自己将尝试获取锁。如果它成功了，那么它就“赢得了选举”，并负责运行故障切换以使其本地NameNode处于Active状态。故障切换过程类似于上述手动故障切换：首先，如果需要，前一个活动状态被隔离，然后本地NameNode转换为Active状态。
 
-##### 部署ZooKeeper
+##### 2.4.4.3.1 部署ZooKeeper
 
 ###### 下载ZooKeeper
 
@@ -572,7 +985,7 @@ java -cp zookeeper.jar:lib/*:conf org.apache.zookeeper.server.quorum.QuorumPeerM
 
 如果要修改ZooKeeper进程的JVM内存大小，请参考：https://www.cnblogs.com/LiuChang-blog/p/15127157.html
 
-##### 配置自动故障转移
+##### 2.4.4.3.2 配置自动故障转移
 
 ***在配置HDFS HA集群自动故障转移之前，需要先关闭HA集群。因为在集群运行时无法从手动故障转移切换至自动故障转移。***
 
@@ -628,7 +1041,7 @@ $HADOOP_HOME/bin/hdfs --daemon start zkfc
 
 **Tip**s：关于自动故障转移的测试见博客：https://blog.csdn.net/m0_37613244/article/details/114504071
 
-#### `In-Progress Edit Log Tailing`
+#### 2.4.4.4 `In-Progress Edit Log Tailing`
 
 在默认设置下，`Standby NameNode`只会应用已完成的edits log，`edits_inprogress_0000000000000000322`之类的未完成的edits log，`Standby NameNode`并不会应用到自身的namespace中。
 
@@ -642,15 +1055,15 @@ $HADOOP_HOME/bin/hdfs --daemon start zkfc
 
   JournalNode上edits的内存缓存的大小。一般情况，每个edit大约需要200字节，因此默认值1048576（1MB）可以容纳大约5000个edit事务。根据实际情况调整。
 
-#### HDFS HA集群支持`Load Balancer`
+#### 2.4.4.5 HDFS HA集群支持`Load Balancer`
 
 在LB的健康检测中，使用[http://NN_HOSTNAME/isActive](http://nn_hostname/isActive)，来检测哪个NN是Acitve的。Active NN会返回200，Standby NN返回405。
 
-#### HDFS HA集群的Upgrade/Finalization/Rollback
+#### 2.4.4.6 HDFS HA集群的Upgrade/Finalization/Rollback
 
 参考：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HDFSHighAvailabilityWithQJM.html
 
-## HA 联邦完全分布式
+## 2.5 HA 联邦完全分布式
 
 参考官方文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HDFSHighAvailabilityWithNFS.html
 
@@ -660,7 +1073,7 @@ https://my.oschina.net/bochs/blog/789612
 
 TODO
 
-## YARN的高可用
+## 2.6 YARN的高可用
 
 官方文档：https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/ResourceManagerHA.html
 
@@ -670,11 +1083,11 @@ YARN HA的架构图如下：
 
 ![Overview of ResourceManager High Availability](Hadoop3.x.assets/rm-ha-overview.png)
 
-### RM故障转移
+### 2.6.1 RM故障转移
 
 RM的HA也是依赖ZooKeeper的，也是Active/Standby的。
 
-#### 手动故障转移
+#### 2.6.1.1 手动故障转移
 
 如果没有开启RM的自动故障转移，我们也可以通过手动故障转移。
 
@@ -686,11 +1099,11 @@ yarn rmadin
 
 
 
-#### 自动故障转移
+#### 2.6.1.2 自动故障转移
 
 RM中可以内嵌`ActiveStandbyElector`，用来做**故障检测**和**leader选举**。因此YARN中不需要类似ZKFC这种独立的服务进程。
 
-#### 配置YARN
+#### 2.6.1.3 配置YARN
 
 `yarn-site.xml`
 
@@ -738,9 +1151,7 @@ RM中可以内嵌`ActiveStandbyElector`，用来做**故障检测**和**leader�
 </property>
 ```
 
-#### 启动YARN
-
-
+#### 2.6.1.4 启动YARN
 
 ```bash
 sbin/start-yarn.sh
@@ -762,7 +1173,7 @@ sbin/start-yarn.sh
 
 <font color="red">**当`Standby RM` 运行时，访问`Standby RM`的`REST API`请求会重定向到`Active RM`。**</font>
 
-### YARN 命令
+### 2.6.2 YARN 命令
 
 查看RM的状态。
 
@@ -790,7 +1201,7 @@ sbin/start-yarn.sh
 
 其它命令见：https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/YarnCommands.html
 
-### 关于RM重启
+### 2.6.3 关于RM重启
 
 参考官方文档：https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/ResourceManagerRestart.html
 
@@ -818,11 +1229,11 @@ RM有两种重启类型：
 
   **不支持fence机制。**
 
-### 配置`Load Balancer`
+### 2.6.4 配置`Load Balancer`
 
 YARN HA集群支持配置LB，通过RM web ui 的`/isAcitve` HTTP请求，可以对RM服务做健康检查。Active RM会返回200状态码，而其它会返回405状态码。
 
-# Hadoop命令
+# 3. Hadoop命令
 
 ## 管理员命令
 
