@@ -447,7 +447,7 @@ yarn-site.xml
   </property>
   <property>
     <name>yarn.log-aggregation-enable</name>
-    <value>false</value>
+    <value>true</value>
   </property>
   <property>
     <name>yarn.nodemanager.aux-services</name>
@@ -1157,6 +1157,16 @@ RM中可以内嵌`ActiveStandbyElector`，用来做**故障检测**和**leader�
   <value>hadoop322-node03</value>
 </property>
 
+<!-- 在YARN HA模式下，下面这两个配置必须显式配置，否则会连不上webapp -->
+<property>
+	<name>yarn.resourcemanager.webapp.address.rm1</name>
+  <value>hadoop322-node01:8088</value>
+</property>
+<property>
+	<name>yarn.resourcemanager.webapp.address.rm2</name>
+  <value>hadoop322-node03:8088</value>
+</property>
+
 <!-- 启动RM后，允许其恢复状态。开启后必须指定yarn.resourcemanager.store.class -->
 <property>
   <name>yarn.resourcemanager.recovery.enabled</name>
@@ -1207,7 +1217,6 @@ sbin/start-yarn.sh
  
  $ yarn rmadmin -getServiceState rm2
  standby
- 
 ```
 
 如果启用了自动故障转移，则不能使用`-transitionTOStandby`，如果一定要使用需要加`-forcemanual`。
