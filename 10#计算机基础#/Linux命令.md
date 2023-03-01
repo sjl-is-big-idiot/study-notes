@@ -315,11 +315,22 @@ cat /etc/redhat-release
 
 ### 用户和用户组相关
 
+参考文章：https://huaweicloud.csdn.net/635611c4d3efff3090b59b01.html
+
 #### 创建用户
 
 ```bash
 # 增加用户
+# -U表示在创建用户时，创建一个与用户名同名的用户组
+# -d表示创建用户时指定的家目录为/home/userName
+# -m表示需要创建用户的家目录
+# -p表示此用户名的密码
+# userName表示用户名
 useradd -U -d /home/userName -m -p 123456 userName
+# 查看创建用户时的默认值
+useradd -D
+# 创建用户时，不创建家目录
+useradd -M username1
 
 adduser userName
 # 增加用户组
