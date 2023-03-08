@@ -48,3 +48,14 @@ set list
 set wildmenu
 set wildmode=longest:list,full
 ```
+
+
+
+Q. tab转为2个空格
+
+```bash
+:set ts=2
+:set expandtab
+:%rerab!
+```
+
