@@ -1,8 +1,8 @@
 尚硅谷最新版Hive教程（基于hive3.x丨hive3.1.2）
 
-## 1. Hive基本概念
+# 1. Hive基本概念
 
-### 1.1 什么事Hive
+## 1.1 什么是Hive
 
 （1）Hive简介
 
@@ -10,7 +10,9 @@
 
 ​	Hive是基于Hadoop的一个==数据仓库工具==，可以将==结构化的数据文件映射为一张表==，并提供==类SQL查询==功能。
 
-（2）Hive本质：将HQL转化成MapReduce程序。
+​	**Hive是什么？**Hive 是数据仓库工具，再具体点就是一个 SQL 解析引擎，因为它即不负责存储数据，也不负责计算数据，只负责解析 SQL，记录元数据。
+
+（2）**Hive本质**：将HQL转化成MapReduce程序。*或者Spark/Tez程序?*
 
 ​	![img](Hive.assets/wps124.png)
 
@@ -20,21 +22,27 @@
 
 <font color=red>注意：Hive可以理解成HDFS的一个客户端，所以没有听说过Hive集群这样的说话。当然是可以安装多台Hive。</font>
 
+hive中三个主要服务的介绍：Hive Metastore、HiveServer2、Hcatalog
+
+https://zhuanlan.zhihu.com/p/473378621
+
+https://zhuanlan.zhihu.com/p/424872101
+
 ### 1.2 Hive的优缺点
 
 #### 1.2.1 优点
 
 1. 操作接口采用类SQL语法，提供快速开发的能力（简单、容易上手）。
 2. 避免去写MapReduce，减少开发人员的学习成本。
-3. Hive的执行延迟比较高，因此Hive常用于数据分析，对实时性要求的场合。
+3. Hive的执行延迟比较高，因此Hive常用于数据分析，对实时性要求不高的场合。
 4. Hive优势在于处理大数据，对于处理小数据没有优势，因为Hive的执行延迟比较高。
-5. Hive支持用户自定义函数，用户可以根据自己的需求来实现自己的函数。
+5. **Hive支持用户自定义函数，用户可以根据自己的需求来实现自己的函数**。UDF
 
 #### 1.2.2 缺点
 
 1. **Hive的HQL表达能力有限**
 
-   （1）迭代式算法无法表达
+   （1）迭代式算法无法表达。向机器学习啥的就搞不了。
 
    （2）数据挖掘方面不擅长，由于`MapReduce`数据处理流程的限制，效率更高的算法却无法实现。
 
@@ -50,13 +58,15 @@
 
 1. 用户接口：Client
 
-   CLI（command-line interfeace）、JDBC/ODBC（JDBC访问Hive）、WEBUI（浏览器访问Hive）
+   CLI（command-line interfeace）、JDBC/ODBC（JDBC访问Hive）、HWI（浏览器访问Hive）
 
 2. 元数据：Metastore
 
-   元数据包括：表明、表所属的数据（默认是default）、表的拥有者、列/分区字段、表的类型（是否有外部表）、表的数据所在目录等；
+   元数据包括：表名、表所属的数据库、表的拥有者、列/分区字段、表的类型（内表or外表）、表的数据所在目录、表的文件格式（parquet、orc、text、sequenceFile等）等；
 
-   <font color=red>默认存储在自带的derby数据库中，推荐使用MySQL存储Metastore。</font>
+   <font color=red>**默认存储在自带的derby数据库中（内嵌），推荐使用MySQL存储Metastore。当时用内嵌模式的Derby时，同时只能有一个用户可以访问Hive的Metastore。**</font>
+
+   Derby支持**内嵌模式**和**server模式**。server模式配置方式见官方文档：https://cwiki.apache.org/confluence/display/Hive/HiveDerbyServerMode
 
 3. Hadoop
 
@@ -80,6 +90,10 @@
 
    ​	把逻辑执行计划转换成可以运行的物理计划，对于Hive来说，就是MR/Spark。
 
+   
+   
+   Hive SQL的编译过程：https://blog.csdn.net/wangshuminjava/article/details/117919202
+   
    ![Hive的运行机制](Hive.assets/wps126.png)
 
 ### 1.4 Hive和数据库比较
@@ -90,19 +104,60 @@
 
 #### 1.4.2 数据更新
 
-由于Hive是针对数据仓库应用设计的，而<font color=red>数据仓库的内容是读多写少的。因此，Hive中不建议对数据的改写，所有的数据都是在加载的时候就确定好了的。</font>而数据库中的数据通常是需要经常进行修改的，因此可以使用`INSERT INTO 表明() VALUES()`添加数据，使用`UPDATE 表明 set id=1`修改数据。
+由于Hive是针对数据仓库应用设计的，而<font color=red>**数据仓库的内容是读多写少的。因此，Hive中不建议对数据的改写，所有的数据都是在加载的时候就确定好了的。**</font>而数据库中的数据通常是需要经常进行修改的，因此可以使用`INSERT INTO 表名() VALUES()`添加数据，使用`UPDATE 表名 set id=1`修改数据。
 
 #### 1.4.3 执行延迟
 
 Hive在查询数据的时候，由于没有索引，需要扫描整个表，因此延迟较高。另外一个导致Hive执行延迟高的因素是MapReduce框架。由于MapReduce本身具有较高的延迟，因此在利用MapReduce进行Hive查询时，也会有较高的延迟。相对的，数据库的执行延迟较低。当然，这个低是有条件的，即数据规模小，当数据规模大到超过数据库的处理能力的时候，Hive的并行计算显然能体现出优势。
 
+**TODO Hive在查询数据时没有索引？？**
+
+> 据我所知，[Hive](https://so.csdn.net/so/search?q=Hive&spm=1001.2101.3001.7020)从0.7.0版本开始加入了索引。目的是提高Hive表指定列的查询速度。没有索引的时候，Hive在执行查询时需要加载整个表或者整个分区，然后处理所有的数据，但当在指定列上存在索引，再通过指定列查询时，那么只会加载和处理部分文件。此外，同传统关系型数据库一样，增加索引在提升查询速度的同时，会额外消耗资源去创建索引和需要更多的磁盘空间存储索引。
+>
+> **Hive索引的原理**
+>
+> Hive的索引其实是一张索引表（Hive的物理表），在表里面存储索引列的值，该值对应的HDFS的文件路径，该值在数据文件中的偏移量。
+>
+> **优点**
+> 可以避免全表扫描和资源浪费
+> 可以加快含有group by的语句的查询速度
+>
+> **缺点**
+> 使用过程繁琐
+> 需用额外Job扫描索引表
+> 不会自动刷新，如果表有数据变动，索引表需要手动刷新。
+
 #### 1.4.4 数据规模
 
-由于Hive简历在集群上并可以利用MR进行并行计算，因此可以支持很大规模的数据；对应的，数据库可以支持的数据规模较小。
+由于Hive建立在集群上并可以利用MR/Tez/Spark等引擎进行并行计算，因此可以支持很大规模的数据；对应的，数据库可以支持的数据规模较小。
 
-## 2. Hive安装
 
-### 2.1 Hive安装地址
+
+## 1.2 主要历史
+
+`hive 0.11` 开始引入了HiveServer2。
+
+`hive 0.14.0`引入了**HiveServer2动态服务发现**特性。
+
+`hive 0.14`之后，还支持特定的hive服务进程配置文件：`hivemetastore-site.xml` 和 `hiveserver2-site.xml`。从`hive 3.X`开始metastore服务的单独配置文件建议为`metastore-site.xml`
+
+`hive 0.14.1`，也称之为`hive 1.0.0`，开始**hiveserver1被移除了**。
+
+`hive 2.0.0`引入了hs2的Web UI。
+
+`hive 2.1.0`引入了命名的`connection URL`。
+
+`hive 2.2.0`开始可以基于`hive-site.xml`和`beeline-hs2-connection.xml`来自动连接到HiveServer2（直接使用beeline即可连接）
+
+
+
+`hive 2.2.20`移除了Hive Web Interface（HWI），HWI是一种简介的图形化用户界面（GUI）。
+
+
+
+# 2. Hive安装
+
+## 2.1 Hive文档地址
 
 1. Hive官网地址
 
@@ -122,11 +177,13 @@ Hive在查询数据的时候，由于没有索引，需要扫描整个表，因�
 
    [ https: //github.com/apache/hive ](https://github.com/apache/hive)
 
-### 2.2 Hive安装部署
+
+
+## 2.2 Hive安装部署
 
 ==注意：由于我这边的Hadoop集群版本为2.x.y，所以下面说的hive-3.1.2的地方都要修改为hive-2.3.9，否则不兼容。==
 
-#### 2.2.1 安装Hive
+### 2.2.1 安装Hive
 
 1. 下载Hive安装包如 `apache-hive-3.1.2-bin.tar.gz`，然后上传到Linux的`/opt/software`目录下。
 
@@ -143,7 +200,7 @@ Hive在查询数据的时候，由于没有索引，需要扫描整个表，因�
    /opt/module/hive
    ```
 
-4. 修改`/etc/profile.d/my_env.sh`或`/etc/profile`添加环境变量。添加如下内容：
+4. 修改`/etc/profile.d/my_env.sh`或`/etc/profile`添加环境变量，建议使用`/etc/profile.d/my_env.sh`。添加如下内容：
 
    ```shell
    #HIVE_HOME
@@ -157,42 +214,50 @@ Hive在查询数据的时候，由于没有索引，需要扫描整个表，因�
    [atguigu@hadoop102 hive-3.1.2]$ mv ./lib/log4j-slf4j-impl-2.10.0.jar ./lib/log4j-slf4j-impl-2.10.0.jar.bak
    ```
 
-6. 初始化元数据库
+## 2.3 配置和启动Hive服务
 
-   查看bin目录下有哪些命令
+**安装Hive -> 配置Hive -> 启动hivemetastore -> 启动hiveserver2 -> hive client 连接Hive进行测试。**
 
-   ```shell
-   [atguigu@hadoop102 hive-3.1.2]$ ll bin/
-   total 44
-   -rwxr-xr-x. 1 atguigu atguigu   881 Aug 23  2019 beeline
-   drwxrwxr-x. 3 atguigu atguigu  4096 Sep 16 15:24 ext
-   -rwxr-xr-x. 1 atguigu atguigu 10158 Aug 23  2019 hive
-   -rwxr-xr-x. 1 atguigu atguigu  1900 Aug 23  2019 hive-config.sh
-   -rwxr-xr-x. 1 atguigu atguigu   885 Aug 23  2019 hiveserver2
-   -rwxr-xr-x. 1 atguigu atguigu   880 Aug 23  2019 hplsql
-   -rwxr-xr-x. 1 atguigu atguigu  3064 Aug 23  2019 init-hive-dfs.sh
-   -rwxr-xr-x. 1 atguigu atguigu   832 Aug 23  2019 metatool
-   -rwxr-xr-x. 1 atguigu atguigu   884 Aug 23  2019 schematool
-   ```
+### 2.2.1 内嵌Derby的Hive配置和启动
 
-   初始化元数据库
+#### 2.2.1.1 初始化元数据库
 
-   ```shell
-   [atguigu@hadoop102 hive-2.3.9]$ bin/schematool -dbType derby -initSchema
-   SLF4J: Class path contains multiple SLF4J bindings.
-   SLF4J: Found binding in [jar:file:/opt/module/hive-2.3.9/lib/log4j-slf4j-impl-2.6.2.jar!/org/slf4j/impl/StaticLoggerBinder.class]
-   SLF4J: Found binding in [jar:file:/opt/module/hadoop-2.7.2/share/hadoop/common/lib/slf4j-log4j12-1.7.10.jar!/org/slf4j/impl/StaticLoggerBinder.class]
-   SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
-   SLF4J: Actual binding is of type [org.apache.logging.slf4j.Log4jLoggerFactory]
-   Metastore connection URL:	 jdbc:derby:;databaseName=metastore_db;create=true
-   Metastore Connection Driver :	 org.apache.derby.jdbc.EmbeddedDriver
-   Metastore connection User:	 APP
-   Starting metastore schema initialization to 2.3.0
-   Initialization script hive-schema-2.3.0.derby.sql
-   
-   ```
+查看bin目录下有哪些命令
 
-#### 2.2.2 启动并使用Hive
+```shell
+[atguigu@hadoop102 hive-3.1.2]$ ll bin/
+total 44
+-rwxr-xr-x. 1 atguigu atguigu   881 Aug 23  2019 beeline
+drwxrwxr-x. 3 atguigu atguigu  4096 Sep 16 15:24 ext
+-rwxr-xr-x. 1 atguigu atguigu 10158 Aug 23  2019 hive
+-rwxr-xr-x. 1 atguigu atguigu  1900 Aug 23  2019 hive-config.sh
+-rwxr-xr-x. 1 atguigu atguigu   885 Aug 23  2019 hiveserver2
+-rwxr-xr-x. 1 atguigu atguigu   880 Aug 23  2019 hplsql
+-rwxr-xr-x. 1 atguigu atguigu  3064 Aug 23  2019 init-hive-dfs.sh
+-rwxr-xr-x. 1 atguigu atguigu   832 Aug 23  2019 metatool
+-rwxr-xr-x. 1 atguigu atguigu   884 Aug 23  2019 schematool
+```
+
+初始化元数据库
+
+```shell
+[atguigu@hadoop102 hive-2.3.9]$ bin/schematool -dbType derby -initSchema verbose
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/opt/module/hive-2.3.9/lib/log4j-slf4j-impl-2.6.2.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/opt/module/hadoop-2.7.2/share/hadoop/common/lib/slf4j-log4j12-1.7.10.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [org.apache.logging.slf4j.Log4jLoggerFactory]
+Metastore connection URL:	 jdbc:derby:;databaseName=metastore_db;create=true
+Metastore Connection Driver :	 org.apache.derby.jdbc.EmbeddedDriver
+Metastore connection User:	 APP
+Starting metastore schema initialization to 2.3.0
+Initialization script hive-schema-2.3.0.derby.sql
+
+Initialization script completed
+schemaTool completed
+```
+
+#### 2.2.1.2 启动并使用Hive
 
 ==默认的Hive日志目录为：`/tmp/用户名/hive.log`==
 
@@ -214,7 +279,7 @@ Caused by: java.net.ConnectException: Call From hadoop102/192.168.1.102 to hadoo
    ==在hive脚本`/usr/lib/hive/bin/hive`中根据`which hadoop`的命令找到hadoop的安装路径，
    则相应的hadoop相关的配置文件也是可以找到的，所以不用写hdfs的路径，也可以找到的。==
 
-所以要解决如上的bug，只需要修改/etc/profile中HADOOP_HOME的路径为`/opt/module/HA/hadoop-2.7.2`即可。
+所以要解决如上的bug，只需要修改`/etc/profile`中HADOOP_HOME的路径为`/opt/module/HA/hadoop-2.7.2`即可。
 
 ```shell
 [atguigu@hadoop102 hive-2.3.9]$ sudo vim /etc/profile
@@ -236,7 +301,7 @@ hive>
 
 ```
 
-<font color=red>注意：`Hive-on-MR is deprecated in Hive 2 and may not be available in the future versions. Consider using a different execution engine (i.e. spark, tez) or using Hive 1.X releases.`</font>意思是，Hive 2.x中不建议使用Hive-on-MR，建议使用spark或tex作为Hive底层的引擎。
+**<font color=red>注意：`Hive-on-MR is deprecated in Hive 2 and may not be available in the future versions. Consider using a different execution engine (i.e. spark, tez) or using Hive 1.X releases.`</font>意思是，Hive 2.x中不建议使用Hive-on-MR，建议使用spark或tez作为Hive底层的引擎。**
 
 （2）使用Hive：
 
@@ -287,9 +352,11 @@ hive>
 
 ![img](Hive.assets/wps128.png)
 
-<font color=red>原因在于 Hive 默认使用的元数据库为 derby，开启 Hive 之后就会占用元数据库，且不与 其他客户端共享数据，所以我们需要将 Hive 的元数据地址改为 MySQL。</font>
+<font color=red>原因在于 Hive 默认使用的元数据库为 `内嵌的derby`，开启 Hive 之后就会占用元数据库，且不与 其他客户端共享数据，所以我们需要将 Hive 的元数据地址改为 MySQL。</font>
 
-### 2.3 MySQL安装
+### 2.2.2 远程Metastore server的配置和启动
+
+#### 2.2.2.1 MySQL安装
 
 1. 检查当前系统是否安装过MySQL
 
@@ -353,7 +420,14 @@ hive>
 
    <font color=red>通过 yum 安装缺少的依赖,然后重新安装 mysql-community-server-5.7.28-1.el7.x86_64 即可</font>
 
-5. 删除/etc/my.cnf文件中datadir指向的目录下的所有内容，如果有内容的情况下：看datadir的值：
+5. 创建用于启动MySQL的用户，如mysql
+
+   ```bash
+   groupadd mysql
+   useradd -M -s /sbin/nologin -g mysql -p mysql123456 mysql 
+   ```
+
+6. 删除/etc/my.cnf文件中datadir指向的目录下的所有内容，如果有内容的情况下：看datadir的值：
 
    ```shell
    [mysqld] 
@@ -367,18 +441,24 @@ hive>
    [atguigu @hadoop102 mysql]# sudo rm -rf ./*	//注意执行命令的位置
    ```
 
-   
-
-6. 初始化数据库
+7. 初始化数据库
 
    ```shell
+   #mysqld --initialize --user=mysql --basedir=/soft/mysql --datadir=/data/mysql/
    [atguigu@hadoop103 software]$ sudo mysqld --initialize --user=mysql
    ```
 
-7. 查看临时生成的root用户的密码
+   也可以直接启动MySQL，启动之后也会有一个临时的root用户密码
+
+   ```bash
+   systemctl start mysqld
+   systemctl status mysqld	
+   ```
+
+8. 查看临时生成的root用户的密码
 
    ```shell
-   [atguigu@hadoop103 software]$ sudo cat /var/log/mysqld.log
+   [atguigu@hadoop103 software]$ sudo grep "password" /var/log/mysqld.log
    2021-09-16T12:00:30.139706Z 0 [Warning] TIMESTAMP with implicit DEFAULT value is deprecated. Please use --explicit_defaults_for_timestamp server option (see documentation for more details).
    2021-09-16T12:00:30.513330Z 0 [Warning] InnoDB: New log files created, LSN=45790
    2021-09-16T12:00:30.568246Z 0 [Warning] InnoDB: Creating foreign key constraint system tables.
@@ -388,15 +468,21 @@ hive>
    2021-09-16T12:00:31.945890Z 1 [Note] A temporary password is generated for root@localhost: k.ckgN_Id0;9
    ```
 
-8. 启动MySQL服务
+9. 启动MySQL服务
 
    mysqld默认是开机自启的。
 
    ```shell
    [atguigu@hadoop103 software]$ sudo systemctl start mysqld
+   # 如果mysqld不是开机自启，则需要手动设置
+   # 设置开机自启
+   systemctl enable mysqld
+    
+   # 查看开机自启是否打开
+   systemctl list-unit-files |grep mysql
    ```
 
-9. 登录MySQL数据库
+10. 登录MySQL数据库
 
    ```shell
    [atguigu@hadoop103 software]$ mysql -uroot -p
@@ -404,14 +490,20 @@ hive>
    Welcome to the MySQL monitor.  Commands end with ; or \g.
    ```
 
-10. 必须先修改root用户的密码，否则执行其他的操作会报错
+11. 必须先修改root用户的密码，否则执行其他的操作会报错
 
     ```mysql
-    mysql> set password=password("000000");
+    -- 查看MySQL的密码策略
+    SHOW VARIABLES LIKE ‘validate_password%’; 
+    -- 设置密码验证强度级别
+    mysql> set global validate_password_policy=LOW;
+    mysql> set password=password("00000000");
     Query OK, 0 rows affected, 1 warning (0.68 sec)
     ```
 
-11. 修改MySQL库下的user表中的root用户允许任意ip连接
+    <font color="red">***注意：再设置密码时，如果报错`ERROR 1819 (HY000): Your password does not satisfy the current policy requirements`，这是因为MySQL有对用户密码的强度要求。要么修改密码以满足强度要求，要么降低mysql的密码强度要求。***</red>
+
+12. 修改MySQL库下的user表中的root用户允许任意ip连接
 
     ```mysql
     mysql> update mysql.user set host='%' where user='root';
@@ -422,11 +514,8 @@ hive>
     Query OK, 0 rows affected (0.01 sec)
     ```
 
-    
 
-### 2.4 Hive元数据配置到MySQL
-
-#### 2.4.1 拷贝驱动
+#### 2.2.2.2 拷贝驱动
 
 将MySQL的JDBC驱动拷贝到Hive的lib目录下：
 
@@ -434,7 +523,9 @@ hive>
 [atguigu@hadoop102 software]$ cp /opt/software/mysql-connector-java- 5.1.37.jar $HIVE_HOME/lib
 ```
 
-#### 2.4.2 配置Metastore到MySQL
+`Hive Client`和`HiveMetastore`服务启动前，需要确保`$HIVE_HOME/lib`目录中有MySQL的jdbc connector lib包。
+
+#### 2.2.2.3 配置Metastore的远程DB为MySQL
 
 1. 在`$HIVE_HOME/conf`目录下新建`hive-site.xml`文件
 
@@ -459,7 +550,7 @@ hive>
          <value>com.mysql.jdbc.Driver</value>
        </propertiy>
     
-   <!-- jdbc连接的username-->
+   		<!-- jdbc连接的username-->
        <property>
          <name>javax.jdo.option.ConnectionUserName</name>
          <value>root</value>
@@ -468,7 +559,7 @@ hive>
        <!-- jdbc连接的password -->
        <property>
          <name>javax.jdo.option.ConnectionPassword</name>
-         <value>000000</value>
+         <value>00000000</value>
        </propertiy>
    
        <!-- Hive元数据存储版本的验证 -->
@@ -509,23 +600,40 @@ hive>
    mysql> quit;
    ```
 
+   ***注意：可以不用建，直接使用如下的初始化命令，会自动创建出此库。***
+
+4. **初始化Hive元数据库**
+
+   hive的`schematool`工具使用说明见文档：https://cwiki.apache.org/confluence/display/Hive/Hive+Schema+Tool
    
-
-4. 初始化Hive元数据库
-
+   > `schematool`工具的作用：
+   >
+   > ​	初始化/升级 为当前Hive版本的metastore schema，即在数据库中（如Derby，MySQL等）创建Hive所需的元数据库、表等信息。
+   
+   Hive中海油一个`metatool`工具，使用见文档：https://cwiki.apache.org/confluence/display/Hive/Hive+MetaTool
+   
+   > 其作用为：
+   >
+   > ​	（1）可以对hive元数据库中的db location、table location、partition location进行批量更新。
+   >
+   > ​	（2）可以命令行的方式执行JDOQL
+   >
+   
    ```shell
    [atguigu@hadoop102 hive-2.3.9]$ bin/schematool -dbType mysql -initSchema -verbose
    Metastore connection URL:	 jdbc:mysql://hadoop103:3306/metastore?userSSL=false
    Metastore Connection Driver :	 com.mysql.jdbc.Driver
-   Metastore connection User:	 root
+Metastore connection User:	 root
    Starting metastore schema initialization to 2.3.0
-   Initialization script hive-schema-2.3.0.mysql.sql
+Initialization script hive-schema-2.3.0.mysql.sql
    Connecting to jdbc:mysql://hadoop103:3306/metastore?userSSL=false
-   Connected to: MySQL (version 5.7.28)
+Connected to: MySQL (version 5.7.28)
    Driver: MySQL Connector Java (version mysql-connector-java-5.1.27 ( Revision: alexander.soklakov@oracle.com-20131021093118-gtm1bh1vb450xipt ))
-   Transaction isolation: TRANSACTION_READ_COMMITTED
+Transaction isolation: TRANSACTION_READ_COMMITTED
    0: jdbc:mysql://hadoop103:3306/metastore> !autocommit on
+   
    # ......省略部分输出......
+   
    0: jdbc:mysql://hadoop103:3306/metastore> !closeall
    Closing: 0: jdbc:mysql://hadoop103:3306/metastore?userSSL=false
    beeline> 
@@ -533,17 +641,18 @@ hive>
    schemaTool completed
    ```
 
+   
    初始化后，发现metastore库下多了很多表，如下图所示：
-
+   
    ![image-20210917094006923](Hive.assets/image-20210917094006923.png)
-
+   
    通过结合`metastore.DBS`和`metastore.TBLS`这两个表就能知道hive中每个表在HDFS上的路径是啥。如下图所示：
-
+   
    ![image-20210917094224013](Hive.assets/image-20210917094224013.png)
-
+   
    ![image-20210917094242834](Hive.assets/image-20210917094242834.png)
 
-#### 2.4.3 再次启动Hive
+#### 2.2.2.4 再次启动Hive
 
 1. 启动Hive
 
@@ -579,7 +688,7 @@ hive>
    hive> 
    ```
 
-   <font color=red>发现，只要我们把元数据创建好，直接就能查到之前的数据了，这是因为数据都是在HDFS上，虽然我们换了元数据库，当时并没有影响到底层的数据，而只是丢失了那部分的元数据而已，也就是丢失了库表和其数据在HDFS上路径的映射关系而已。</font>
+   <font color=red>**发现，只要我们把元数据创建好，直接就能查到之前的数据了，这是因为数据都是在HDFS上，虽然我们换了元数据库，当时并没有影响到底层的数据，而只是丢失了那部分的元数据而已，也就是丢失了库表和其数据在HDFS上路径的映射关系而已。**</font>
 
 2. 使用Hive
 
@@ -599,7 +708,7 @@ hive>
    hive> select * from test;
    ```
 
-<font color=red>注意：使用`bin/hive`方式启动的hive只是一个客户端，并不能让别的人能连接Hive。常用的是要启动Hive的服务端。如下</font>
+<font color=red>**注意：使用`bin/hive`方式启动的hive只是一个客户端（它用不到`hive metastore`和`hiveserver2`），并不能让别人能连接Hive。常用的是要启动Hive的服务端。如下**</font>
 
 创建一个`id.txt`，写入如下内容：
 
@@ -634,7 +743,9 @@ hive>  select * from test;
 
 hive其实就是解析对应HDFS目录的下的文件内容，然后得到表中应有的数据。
 
-### 2.5 使用元数据服务的方式
+#### 2.2.2.5 启动metastore服务
+
+使用元数据服务的方式
 
 1. 在 hive-site.xml 文件中添加如下配置信息
 
@@ -648,15 +759,39 @@ hive其实就是解析对应HDFS目录的下的文件内容，然后得到表中
 
 2. 启动metastore服务
 
+   ***注意：第一次启动metastore服务前，一定要先初始化`bin/schematool -dbType mysql -initSchema -verbose`***
+   
    ```shell
    [atguigu@hadoop202 hive]$ bin/hive --service metastore
    2020-04-24 16:58:08: Starting Hive Metastore Server 
-   # 注意: 启动后窗口不能再操作，需打开一个新的 shell 窗口做别的操作，这是前台启动的
    ```
 
-   这样Hive客户端就会通过thrift协议、9083端口去连接Hive的元数据服务（metastore）
+**注意: 启动后窗口不能再操作，需打开一个新的 shell 窗口做别的操作，这是前台启动的**
 
-### 2.6 使用JDBC方式访问Hive
+```bash
+   [atguigu@hadoop202 hive]$ bin/hive --service metastore -help
+   usage: hivemetastore
+    -h,--help                        Print help information
+       --hiveconf <property=value>   Use value for given property
+    -p <port>                        Hive Metastore port number, default:9083
+    -v,--verbose                     Verbose mode
+```
+
+   这样Hive客户端就可以通过thrift协议、9083端口去连接Hive的元数据服务（metastore）
+
+3. **如何实现hive Metastore服务的HA？**
+
+   > （1）修改hive.metastore.uris=thrift://host1:port,thrift://host2:port
+   >
+   > 修改hive.metastore.uri.selection=RANDOM或SEQUENTIAL，默认值为RANDOM。
+   >
+   > （2） 启动两个及以上的Hive Metastore服务。
+   >
+   > （3）客户端使用hive.metastore.uris=thrift://host1:port,thrift://host2:port此配置来连接Hive Metastore服务。
+
+#### 2.2.2.6 启动hiveserver2
+
+使用JDBC方式访问Hive
 
 1. 在 hive-site.xml 文件中添加如下配置信息
 
@@ -681,6 +816,7 @@ hive其实就是解析对应HDFS目录的下的文件内容，然后得到表中
    ```shell
    [atguigu@hadoop102 hive-2.3.9]$ bin/hive --service metastore
    [atguigu@hadoop102 hive-2.3.9]$ bin/hive --service hiveserver2
+   # 或 bin/hiveserver2
    [atguigu@hadoop102 hive-2.3.9]$ tailf /tmp/atguigu/hive.log
    2021-09-17T10:00:57,137  INFO [main] service.AbstractService: Service:HiveServer2 is started.
    2021-09-17T10:00:57,139  INFO [main] server.Server: jetty-7.6.0.v20120127
@@ -880,7 +1016,23 @@ hive其实就是解析对应HDFS目录的下的文件内容，然后得到表中
 
 
 
-### 2.7 Hive常用交互命令
+## 2.4 Hive客户端
+
+hive有几类客户端：
+
+- 命令行：如Hive CLI，Beeline
+- JDBC client：HiveServer1的DBC driver，HiveServer2的JDBC driver
+- ODBC client：与JDBC client类似。
+- Thrift客户端：如Thrift Java Client、Thrift C++ Client、Thrift Node Clients、Thrift Ruby Client
+- 其他语言的客户端：如Python、Ruby、PHP
+
+
+
+### Hive CLI
+
+官方文档：https://cwiki.apache.org/confluence/display/Hive/LanguageManual+Cli
+
+就是`bin/hive`。
 
 ```shell
 [atguigu@hadoop102 hive-2.3.9]$ bin/hive -help usage: hive
@@ -900,7 +1052,289 @@ commands. e.g. --hivevar A=B
 
 
 
-### 2.8 Hive其他命令
+**主要用法**：
+
+（1）`hive -e` 执行sql。
+
+```bash
+$HIVE_HOME/bin/hive -e 'select a.col from tab1 a'
+```
+
+（2）通过`--hiveconf`指定hive参数。
+
+```bash
+$HIVE_HOME/bin/hive -e 'select a.col from tab1 a' --hiveconf hive.exec.scratchdir=/home/my/hive_scratch  --hiveconf mapred.reduce.tasks=32
+```
+
+（3）以`silent`模式执行sql
+
+```bash
+$HIVE_HOME/bin/hive -S -e 'select a.col from tab1 a' > a.txt
+```
+
+（4）`hive -f `执行文件中的sql。
+
+```bash
+$HIVE_HOME/bin/hive -f /home/my/hive-script.sql
+```
+
+（5）执行hdfs或s3文件系统中的sql文件
+
+```bash
+$HIVE_HOME/bin/hive -f hdfs://<namenode>:<port>/hive-script.sql
+$HIVE_HOME/bin/hive -f s3://mys3bucket/s3-script.sql 
+```
+
+（6）进入交互模式之前运行指定sql
+
+```bash
+$HIVE_HOME/bin/hive -i /home/my/hive-init.sql
+```
+
+***注意：如果没有使用`-i`选项，Hive CLI会尝试将`$HIVE_HOME/bin/.hiverc` 和`$HOME/.hiverc `作为初始化文件。***
+
+***当使用bin/hive -e或者-f时，是以batch mode方式执行SQL。***
+
+**Hive resource**:
+
+在hive中，执行查询时可能需要用到一些资源：如`FILE`、`JAR`、`ARCHIVE`。任何本地可访问的文件都可以add到当前的hive session中。**session关闭后，resource需要重新add，seesion级别的。**
+
+add之后，此hive session的查询就可以引用它，Hive使用Hadoop分布式缓存将add的resource分发给执行查询的机器。
+
+Hive Resource相关命令如下：
+
+从Hive1.2.0，开始add不仅支持本地文件，也可以支持`lvy` URL。
+
+```sql
+ADD { FILE[S] | JAR[S] | ARCHIVE[S] } <filepath1> [<filepath2>]*
+LIST { FILE[S] | JAR[S] | ARCHIVE[S] } [<filepath1> <filepath2> ..]
+DELETE { FILE[S] | JAR[S] | ARCHIVE[S] } [<filepath1> <filepath2> ..] 
+```
+
+- `FILE`
+
+  FILE类Hive资源会被add到Hadoop分布式缓存中。通常为需要执行的脚本类文件。
+
+- `JAR`
+
+  JAR类Hive资源会被add到Java classpath中。通常在UDF中会用到。
+
+- `ARCHIVE`
+
+  ARCHIVE类 Hive资源会在分发时自动unarchive。
+
+### Beeline
+
+官方文档：https://cwiki.apache.org/confluence/display/Hive/HiveServer2+Clients#HiveServer2Clients-PythonClient
+
+HiveServer2的client有如下几种：
+
+- `Beeline`
+- `JDBC`
+- `Python Client`，`Ruby Clien`等
+
+`Beeline`是HiveServer2的CLI，他是一种JDBC Client。`Beeline`支持`embed`和`remote`模式。
+
+Beeline的查询结果的outputFormat有几种格式：
+
+- table
+- vertical
+- xmlattr
+- xmlelement
+- json
+- jsonfile
+- csv、tsv、csv2、tsv2、dsv：csv格式，分隔符有所不同，是否有单引号包裹，选择合适的格式。
+
+
+
+**Beeline连接HiveServer2的几种方式**
+
+方式一：
+
+```bash
+bin/beeline
+Hive version 0.11.0-SNAPSHOT by Apache
+beeline> !connect jdbc:hive2://localhost:10000 scott tiger
+!connect jdbc:hive2://localhost:10000 scott tiger 
+```
+
+方式二：
+
+```bash
+beeline -u jdbc:hive2://localhost:10000/default -n scott -p password
+```
+
+方式三：
+
+```bash
+beeline -u jdbc:hive2://localhost:10000/default -n scott -w password_file
+```
+
+方式四，kerberos的hive
+
+```bash
+TODO
+```
+
+
+
+**后台运行beeline查询**
+
+某些版本的Beeline需要配置如下环境变量才可以，在后台执行Beeline。具体需不要此环境变量，可以先测试下Beeline是否可以后台查询即可。
+
+```bash
+export HADOOP_CLIENT_OPTS="$HADOOP_CLIENT_OPTS -Djline.terminal=jline.UnsupportedTerminal"
+```
+
+使用如下命令在后台执行Beeline查询
+
+```bash
+nohup beeline --silent=true --showHeader=true --outputformat=dsv -f query.hql </dev/null > /tmp/output.log 2> /tmp/error.log &
+```
+
+
+
+HiveServer2的connection URL格式：
+
+```bash
+jdbc:hive2://<host1>:<port1>,<host2>:<port2>/dbName;initFile=<file>;sess_var_list?hive_conf_list#hive_var_list
+```
+
+**注意：当HS2启用了动态服务发现，则可以配置多个HS2的host:port。**
+
+
+
+**HS2动态服务发现**
+
+从hive 01.4.0引入此特性，基于ZooKeeper实现。作用是实现HS2的高可用，利于HS2的滚动升级。
+
+配置了HS动态服务发现之后，HS2的JDBC connection URL格式如下：
+
+```bash
+jdbc:hive2://<zookeeper quorum>/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2
+```
+
+还可以携带HS2的配置参数，如：
+
+```bash
+jdbc:hive2://<zookeeper quorum>/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2?tez.queue.name=hive1&hive.server2.thrift.resultset.serialize.in.tasks=true 
+```
+
+如何开启HS2的动态服务发现呢？
+
+在hive-site.xml中配置hive.zookeeper.quorum。
+
+TODO
+
+**命名的`connection URL`**
+
+从hive 2.1.0引入了命名的connection URL。实现原理：基于环境变量`BEELINE_URL_<name>`实现。
+
+如果`!connect blue`，则Beeline会查找`BEELINE_URL_BLUE`环境变量，来获取connection URL。测试结果如下图所示。
+
+```bash
+beeline> !connect blue;
+```
+
+![image-20230308110700126](Hive.assets/image-20230308110700126.png)
+
+**重连接（reconnect）**
+
+使用`!reconnect`可以用于刷新当前连接，或者连接到上一次的connection URL。
+
+![image-20230308111602179](Hive.assets/image-20230308111602179.png)
+
+执行`!close`之后也可以`!reconnect`。
+
+![image-20230308111654999](Hive.assets/image-20230308111654999.png)
+
+**使用`hive-site.xml`和`beeline-hs2-connection.xml`自动连接到HS2**
+
+`hive 2.2.20`开始Beeline支持使用`hive-site.xml`（**需要添加到classpath中**）和`beeline-hs2-conection.xml`文件来确定connection URL配置，以实现自动连接到HS2。
+
+Beeline依次从如下目录中查找`beeline-hs2-connection.xml`文件:
+
+`${user.name}/.beeline/（windows为${user.home}\beeline\）` -> `${HIVE_CONF_DIR}/` -> `/etc/hive/conf/`
+
+Beeline会结合`beeline-hs2-connection.xml`和classpath中的`hive-site.xml`来确定connection URL配置。
+
+`beeline-hs2-connection.xml`中的connection URL的数据均以`beeline.hs2.connection`开头。若在`beeline-hs2-connection.xml`和`hive-site.xml`中存在相同的属性，`beeline-hs2-connection.xml`的优先级更高。
+
+```xml
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+<property>
+  <name>beeline.hs2.connection.user</name>
+  <value>hive</value>
+</property>
+<property>
+  <name>beeline.hs2.connection.password</name>
+  <value>hive</value>
+</property>
+<property>
+  <name>beeline.hs2.connection.hosts</name>
+  <value>localhost:10000</value>
+</property>
+<property>
+  <name>beeline.hs2.connection.principal</name>
+  <value>hive/dummy-hostname@domain.com</value>
+</property>
+<property>
+  <name>beeline.hs2.connection.user</name>
+  <value>hive</value>
+</property>
+<property>
+  <name>beeline.hs2.connection.hiveconf</name>
+  <value>hive.cli.print.current.db=true, hive.cli.print.header=true</value>
+</property>
+<property>
+  <name>beeline.hs2.connection.hivevar</name>
+  <value>testVarName1=value1, testVarName2=value2</value>
+</property>
+</configuration>
+```
+
+*注意：没实际操作过，具体怎么配置`beeline-hs-connection.xml`需要自己研究下哈。*
+
+***什么情况下是使用此特性？***
+
+（1）指定位置存在`beeline-hs2-connection.xml`文件
+
+（2）beeline命令未携带`-u`,`-n`,`-p`
+
+**使用`beeline-site.xml`自动连接到HS2**
+
+`beeline-site.xml`需要add到classpath。`beeline-site.xml`支持多个命名的connection URL（适用于同一个集群中运行了多个不同参数配置的HS2实例）。使用`beeline -c <named_url>`来指定需要连接的connection URL，否则走默认的connection URL。
+
+测试发现只要将`beeline-site.xml`放到`$HIVE_HOME/conf`目录下即可实现此功能。
+
+```xml
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+<property>
+  <name>beeline.hs2.jdbc.url.tcpUrl</name>
+  <value>jdbc:hive2://localhost:10000/default;user=hive;password=hive</value>
+</property>
+ 
+<property>
+  <name>beeline.hs2.jdbc.url.httpUrl</name>
+  <value>jdbc:hive2://localhost:10000/default;user=hive;password=hive;transportMode=http;httpPath=cliservice</value>
+</property>
+ 
+<property>
+  <name>beeline.hs2.jdbc.url.default</name>
+  <value>tcpUrl</value>
+</property>
+</configuration>
+```
+
+![image-20230308130109385](Hive.assets/image-20230308130109385.png)
+
+**注意：`beeline-site.xml`和`beeline-hs2-connection.xml`也可以结合使用，具体看官方文档吧，我觉得`beeline-site.xml`就够用了**
+
+## 2.5 Hive其他命令
 
 1. 退出hive窗口：
 
@@ -909,13 +1343,23 @@ commands. e.g. --hivevar A=B
    hive(default)>quit; 
    ```
 
-2. 在hivecli命令窗口中如何查看hdfs文件系统
+2. 退出beeline窗口：
+
+   ```bash
+   ctrl+d
+   或者
+   !quit;
+   ```
+
+   
+
+3. 在hivecli命令窗口中如何查看hdfs文件系统
 
    ```sql
    hive(default)>dfs -ls /; 
    ```
 
-3. 查看在hive中输入的所有历史命令
+4. 查看在hive中输入的所有历史命令
 
    （1）进入到当前用户的根目录 /root 或/home/atguigu
 
@@ -929,7 +1373,9 @@ commands. e.g. --hivevar A=B
 
 ### 2.9 Hive常见属性配置
 
-#### 2.9.1 Hive运行日志信息配置
+<font color="red">**Hive的配置优先级**：`set k=v` > `hive --hiveconf k=v` > `hiveserver2-site.xml` > `metastore-site.xml` > `hive-site.xml`</font>
+
+### 2.9.1 Hive运行日志信息配置
 
 1. Hive的log默认存放日志到`/tmp/atguigu/hive.log`（当前用户名下）
 
@@ -960,7 +1406,7 @@ commands. e.g. --hivevar A=B
 
      
 
-#### 2.9.2 打印当前库和标头
+### 2.9.2 打印当前库和标头
 
 在`hive-site.xml`中加入如下配置：
 
@@ -978,7 +1424,7 @@ commands. e.g. --hivevar A=B
 
 ==直接重启客户端就生效，对bin/hive能生效，bin/beeline不能生效。==
 
-#### 2.9.3 参数配置方式
+### 2.9.3 参数配置方式
 
 1. 查看查看当前所有的配置信息
 
@@ -996,47 +1442,51 @@ commands. e.g. --hivevar A=B
 
    ​		用户自定义配置文件：hive-site.xml
 
-   ​		<font color=red>注意：用户自定义配置会覆盖默认配置。另外，Hive 也会读入 Hadoop 的配置，因为 Hive 是作为 Hadoop 的客户端启动的，Hive 的配置会覆盖 Hadoop 的配置。配置文件的设定对本 机启动的所有 Hive 进程都有效。</font>
+   ​		<font color=red>注意：用户自定义配置会覆盖默认配置。另外，Hive 也会读入 Hadoop 的配置，因为 Hive 是作为 Hadoop 的客户端启动的，Hive 的配置会覆盖 Hadoop 的配置。配置文件的设定对本机启动的所有 Hive 进程都有效。</font>
+
+   ​		在hive 0.14之后，还支持特定的hive服务进程配置文件：`hivemetastore-site.xml` 和 `hiveserver2-site.xml`。
+
+   <font color="red">**Hive的配置优先级**：`set k=v` > `hive --hiveconf k=v` > `hiveserver2-site.xml` > `metastore-site.xml` > `hive-site.xml`</font>
 
    （2）命令行参数方式	
 
    ​		启动 Hive 时，可以在命令行添加`-hiveconf param=value` 来设定参数。
-
+   
    例如：
 
    ```shell
-   [atguigu@hadoop103 hive]$ bin/hive -hiveconf mapred.reduce.tasks=10; 
+[atguigu@hadoop103 hive]$ bin/hive -hiveconf mapred.reduce.tasks=10; 
    ```
-
+   
    <font color=red>注意：仅对本次 hive 启动有效 。</font>查看参数设置：
 
    ```shell
-   hive (default)> set mapred.reduce.tasks; 
+hive (default)> set mapred.reduce.tasks; 
    ```
 
    
 
    （3）参数声明方式
-
+   
    ​		可以在 HQL 中使用 SET 关键字设定参数，例如:
 
    ```sql
-   hive (default)> set mapred.reduce.tasks=100; 
+hive (default)> set mapred.reduce.tasks=100; 
    ```
-
-   <font color=red>注意：仅对本次 hive 启动有效 。</font>查看参数设置：
-
+   
+   <font color=red>**注意：仅对本次 hive 启动有效** 。</font>查看参数设置：
+   
    ```shell
    hive (default)> set mapred.reduce.tasks; 
    ```
 
-上述三种设定方式的优先级依次递增。即配置文件<命令行参数<参数声明。注意某些系 统级的参数，例如 log4j 相关的设定，必须用前两种方式设定，因为那些参数的读取在会话 建立以前已经完成了。
+上述三种设定方式的优先级依次递增。即**配置文件<命令行参数<参数声明**。注意某些系统级的参数，例如 log4j 相关的设定，必须用前两种方式设定，因为那些参数的读取在会话 建立以前已经完成了。
 
 
 
-## 3. Hive数据类型
+# 3. Hive数据类型
 
-### 3.1 基本数据类型
+## 3.1 基本数据类型
 
 | Hive 数据类型 | Java 数据类型 | 长度                                                   | 例子                                    |
 | ------------- | ------------- | ------------------------------------------------------ | --------------------------------------- |
@@ -1053,7 +1503,7 @@ commands. e.g. --hivevar A=B
 
 对于 Hive 的 String 类型相当于数据库的 varchar 类型，该类型是一个可变的字符串，不 过它不能声明其中最多能存储多少个字符，理论上它可以存储 2GB 的字符数。
 
-### 3.2 集合数据类型
+## 3.2 集合数据类型
 
 | 数据类型 | 描述                                                         | 语法示例                                               |
 | -------- | ------------------------------------------------------------ | ------------------------------------------------------ |
@@ -1067,7 +1517,7 @@ Hive 有三种复杂数据类型 ARRAY、MAP 和 STRUCT。ARRAY 和 MAP 与 Java
 
 ​		TODO
 
-### 3.3 类型转化
+## 3.3 类型转化
 
 Hive 的原子数据类型是可以进行隐式转换的，类似于 Java 的类型转换，例如某表达式 使用 INT 类型，TINYINT 会自动转换为 INT 类型，但是 Hive 不会进行反向转化，例如，某表 达式使用 TINYINT 类型，INT 不会自动转换为 TINYINT 类型，它会返回错误，除非使用 CAST 操作。
 
@@ -1079,11 +1529,11 @@ Hive 的原子数据类型是可以进行隐式转换的，类似于 Java 的类
 
 ​		TODO
 
-## 4. DDL数据定义
+# 4. DDL数据定义
 
 在hive的客户端中使用help可以查看帮助。
 
-### 4.1 创建数据库
+## 4.1 创建数据库
 
 ```sql
 CREATE DATABASE [IF NOT EXISTS] database_name [COMMENT database_comment]
@@ -1119,9 +1569,9 @@ CREATE DATABASE [IF NOT EXISTS] database_name [COMMENT database_comment]
 
    
 
-### 4.2 查询数据库
+## 4.2 查询数据库
 
-#### 4.2.1 显示数据库
+### 4.2.1 显示数据库
 
 1. 显示数据库
 
@@ -1144,7 +1594,7 @@ Time taken: 0.125 seconds, Fetched: 2 row(s)
 
    
 
-#### 4.2.2 查看数据库详情
+### 4.2.2 查看数据库详情
 
 1. 显示数据库信息
 
@@ -1171,7 +1621,7 @@ Time taken: 0.125 seconds, Fetched: 2 row(s)
 
    
 
-#### 4.2.3 切换当前数据库
+### 4.2.3 切换当前数据库
 
 ```sql
 hive (default)>use db_hive;
@@ -1179,7 +1629,7 @@ hive (default)>use db_hive;
 
 
 
-### 4.3 修改数据库
+## 4.3 修改数据库
 
 用户可以使用ALTER DATABASE命令为某个数据库的DBPROPERTIES设置键-值对属性值，来描述这个数据库的属性信息。
 
@@ -1201,7 +1651,7 @@ Time taken: 0.035 seconds, Fetched: 1 row(s)
 
 
 
-### 4.4 删除数据库
+## 4.4 删除数据库
 
 1. 删除空数据库
 
@@ -1260,7 +1710,7 @@ Time taken: 0.035 seconds, Fetched: 1 row(s)
 
    ==会删除该库在HDFS上的存储路径==
 
-### 4.5 创建表
+## 4.5 创建表
 
 1. 建表语法
 
@@ -1332,7 +1782,7 @@ CREATE [EXTERNAL] TABLE [IF NOT EXISTS] table_name
    
    （12）`TBLPROPERTIES`：表的额外的一些属性。
 
-#### 4.5.1 管理表
+### 4.5.1 管理表
 
 ![image-20210917220212319](Hive.assets/image-20210917220212319.png)
 
@@ -1420,7 +1870,7 @@ CREATE [EXTERNAL] TABLE [IF NOT EXISTS] table_name
 
 3. x
 
-#### 4.5.2 外部表
+### 4.5.2 外部表
 
 1. 理论
 
@@ -1520,7 +1970,7 @@ ename string, job string, mgr int,
 
    外部表删除后，HDFS中的数据还在，但是 metadata 中 dept 的元数据已被删除
 
-#### 4.5.3 管理表与外部表的互相转换
+### 4.5.3 管理表与外部表的互相转换
 
 1. 查询表的类型
 
@@ -1554,9 +2004,9 @@ ename string, job string, mgr int,
 
    
 
-### 4.6 修改表
+## 4.6 修改表
 
-#### 4.6.1 重命名表
+### 4.6.1 重命名表
 
 1. 语法
 
@@ -1574,11 +2024,11 @@ ename string, job string, mgr int,
 
    
 
-#### 4.6.2 增加、修改和删除表分区
+### 4.6.2 增加、修改和删除表分区
 
 见7.1章 分区表的基本操作
 
-#### 4.6.3 增加/修改/替换列信息
+### 4.6.3 增加/修改/替换列信息
 
 1. 语法
 
@@ -1648,7 +2098,7 @@ ename string, job string, mgr int,
 
    
 
-### 4.7 删除表
+## 4.7 删除表
 
 ```sql
 hive (default)> DROP TABLE dept;
@@ -1656,11 +2106,11 @@ hive (default)> DROP TABLE dept;
 
 ==注意：内外部表在删除表时的区别！==
 
-## 5. DML数据操作
+# 5. DML数据操作
 
-### 5.1 数据导入
+## 5.1 数据导入
 
-#### 5.1.1 向表中装载数据（LOAD)
+### 5.1.1 向表中装载数据（LOAD)
 
 1. 语法
 
@@ -1723,7 +2173,7 @@ hive (default)> DROP TABLE dept;
    hive (default)> load data inpath '/user/atguigu/hive/student.txt' overwrite into table default.student;
    ```
 
-#### 5.1.2 通过查询语句向Hive导入数据（Insert）
+### 5.1.2 通过查询语句向Hive导入数据（Insert）
 
 1. 创建一张表
 
@@ -1754,7 +2204,7 @@ hive (default)> DROP TABLE dept;
 
    
 
-#### 5.1.3 查询语句中创建表并加载数据（AS SELECT）
+### 5.1.3 查询语句中创建表并加载数据（AS SELECT）
 
 ==详见4.5.1创建表==
 
@@ -1765,7 +2215,7 @@ CREATE TABLE IF NOT EXISTS student3
 AS SELECT id, name FROM stutent;
 ```
 
-#### 5.1.4 创建表是通过Location指定加载数据路径
+### 5.1.4 创建表是通过Location指定加载数据路径
 
 1. 上传数据到HDFS上
 
@@ -1788,7 +2238,7 @@ AS SELECT id, name FROM stutent;
    hive (default)> select * from student4; 
    ```
 
-#### 5.1.5 Import 数据到指定Hive表中
+### 5.1.5 Import 数据到指定Hive表中
 
 ==注意：先用export导出后，才能用Import将数据导入==
 
@@ -1799,9 +2249,9 @@ hive (default)> IMPORT TABLE student2
 
 
 
-### 5.2 数据导出
+## 5.2 数据导出
 
-#### 5.2.1 Insert导出
+### 5.2.1 Insert导出
 
 1. 将查询结果导出到本地，==如果不用LOCAL就将数据导出到HDFS路径上了。==
 
@@ -1832,7 +2282,7 @@ hive (default)> INSERT OVERWRITE LOCAL DIRECTORY '/opt/module/hive-2.3.9/student
 
 ==这种导出数据的方式相较于`hdfs cp`, `hdfs mv`更慢，因为它会走MR。==
 
-#### 5.2.2 Hadop命令导出到本地
+### 5.2.2 Hadop命令导出到本地
 
 ```sql
 hive (default)> dfs -get /user/hive/warehouse/student/student.txt
@@ -1841,7 +2291,7 @@ hive (default)> dfs -get /user/hive/warehouse/student/student.txt
 
 
 
-#### 5.2.3 Hive Shell命令导出
+### 5.2.3 Hive Shell命令导出
 
 ```sql
 [atguigu@hadoop102 hive]$ bin/hive -e 'select * from default.student;' >
@@ -1850,7 +2300,7 @@ hive (default)> dfs -get /user/hive/warehouse/student/student.txt
 
 
 
-#### 5.2.4 Exporter导出到HDFS上
+### 5.2.4 Exporter导出到HDFS上
 
 ```sql
 hive (default)> export table default.student 
@@ -1859,11 +2309,11 @@ hive (default)> export table default.student
 
 ==export 和 import 主要用于两个 Hadoop 平台集群之间 Hive 表迁移。==
 
-#### 5.2.5 Sqoop导出（可视化）
+### 5.2.5 Sqoop导出（可视化）
 
 TODO
 
-#### 5.2.6 清除表中数据
+### 5.2.6 清除表中数据
 
 ==注意：Truncate 只能删除管理表，不能删除外部表中数据。即trauncate只删除HDFS上的数据而不删除Hive中的表结构！！！==
 
@@ -1873,7 +2323,7 @@ hive (default)> truncate table student;
 
 
 
-## **6.查询（重要）**
+# **6.查询（重要）**
 
 [ https: //cwiki.apache.org /confluence/display/Hive/LanguageManual+Select ](https://cwiki.apache.org/confluence/display/Hive/LanguageManual%2BSelect)
 
@@ -1889,9 +2339,9 @@ FROM table_reference
 [LIMIT number]
 ```
 
-### 6.1 基本查询
+## 6.1 基本查询
 
-#### 6.1.1 全表和特定列查询
+### 6.1.1 全表和特定列查询
 
 1. 数据准备
 
@@ -1996,7 +2446,7 @@ FROM table_reference
 
    （5）使用缩进提高语句的可读性。
 
-#### 6.1.2 列别名
+### 6.1.2 列别名
 
 1. 重命名一个列
 
@@ -2014,7 +2464,7 @@ FROM table_reference
 
    
 
-#### 6.1.3 算术运算符
+### 6.1.3 算术运算符
 
 | 运算符 | 描述              |
 | ------ | ----------------- |
@@ -2038,7 +2488,7 @@ hive (default)> SELECT sal+1 FROM emp;
 
 
 
-#### 6.1.4 常用函数
+### 6.1.4 常用函数
 
 1. 求总行数，COUNT()
 2. 求最大值, MAX()
@@ -2046,11 +2496,11 @@ hive (default)> SELECT sal+1 FROM emp;
 4. 求总和, SUM()
 5. 求平均值,AVG()
 
-#### 6.1.5 LIMIT语句
+### 6.1.5 LIMIT语句
 
-#### 6.1.6 WHERE 语句
+### 6.1.6 WHERE 语句
 
-#### 6.1.7 比较运算符（BETWEEN...IN/IS NULL)
+### 6.1.7 比较运算符（BETWEEN...IN/IS NULL)
 
 | 操作符                     | 支持的数据类型 | 描述                                                         |
 | -------------------------- | -------------- | ------------------------------------------------------------ |
@@ -2068,7 +2518,7 @@ hive (default)> SELECT sal+1 FROM emp;
 | A [NOT] LIKE B             | STRING 类型    | B 是一个 SQL 下的简单正则表达式，也叫通配符模式，如 果 A 与其匹配的话，则返回 TRUE；反之返回 FALSE。B 的表达式 说明如下：‘x%’表示 A 必须以字母‘x’开头，‘%x’表示 A 必须以字母’x’结尾，而‘%x%’表示 A 包含有字母’x’,可以 位于开头，结尾或者字符串中间。如果使用 NOT 关键字则可达到 相反的效果。 |
 | A RLIKE B, A REGEXP B      | STRING 类型    | B  是基于 java 的正则表达式，如果 A 与其匹配，则返回TRUE；反之返回 FALSE。匹配使用的是 JDK 中的正则表达式接口 |
 
-#### 6.1.8 `LIKE`和 `RLIKE`
+### 6.1.8 `LIKE`和 `RLIKE`
 
 1. 使用 `LIKE` 运算选择类似的值
 
@@ -2101,7 +2551,7 @@ hive (default)> SELECT sal+1 FROM emp;
 
    
 
-#### 6.1.9 逻辑运算符（AND/OR/NOT)
+### 6.1.9 逻辑运算符（AND/OR/NOT)
 
 | 操作符 | 含义   |
 | ------ | ------ |
@@ -2109,9 +2559,9 @@ hive (default)> SELECT sal+1 FROM emp;
 | OR     | 逻辑或 |
 | NOT    | 逻辑否 |
 
-### 6.2 分组
+## 6.2 分组
 
-#### 6.2.1 Group By语句
+### 6.2.1 Group By语句
 
 GROUP BY 语句通常会和聚合函数一起使用，按照一个或多个列对结果进行分组，然后对每个组执行聚合操作。
 
@@ -2133,7 +2583,7 @@ GROUP BY 语句通常会和聚合函数一起使用，按照一个或多个列�
 
    
 
-#### 6.2.2 Having语句
+### 6.2.2 Having语句
 
 1. having与where不同点
 
@@ -2151,11 +2601,11 @@ GROUP BY 语句通常会和聚合函数一起使用，按照一个或多个列�
 
    
 
-### 6.3 Join语句
+## 6.3 Join语句
 
 ![img](Hive.assets/sql-join.png)
 
-#### 6.3.1 等值Join
+### 6.3.1 等值Join
 
 Hive支持通常的SQL JOIN 语句。
 
@@ -2167,7 +2617,7 @@ Hive支持通常的SQL JOIN 语句。
    hive (default)> SELECT e.empno, e.ename, d.dname FROM emp e JOIN dept d ON e.deptno=d.deptno;
    ```
 
-#### 6.3.2 表的别名
+### 6.3.2 表的别名
 
 1. 好处
 
@@ -2184,7 +2634,7 @@ Hive支持通常的SQL JOIN 语句。
 
    
 
-#### 6.3.3 内连接
+### 6.3.3 内连接
 
 内连接：只有进行连接的左右两张表中都存在与连接条件相匹配的数据才会被保留下来。
 
@@ -2192,7 +2642,7 @@ Hive支持通常的SQL JOIN 语句。
 hive (default)> select e.empno, e.ename, d.deptno from emp e join dept d on e.deptno = d.deptno;
 ```
 
-#### 6.3.4 左外连接
+### 6.3.4 左外连接
 
 左外连接：JOIN操作符左边表中符合WHERE子句的所有记录将会被返回。
 
@@ -2200,7 +2650,7 @@ hive (default)> select e.empno, e.ename, d.deptno from emp e join dept d on e.de
 hive (default)> select e.empno, e.ename, d.deptno from emp e left join dept d on e.deptno = d.deptno;
 ```
 
-#### 6.3.5 右外连接
+### 6.3.5 右外连接
 
 右外连接：JOIN操作符右边表中符合WHERE子句的所有记录将会被返回。
 
@@ -2208,7 +2658,7 @@ hive (default)> select e.empno, e.ename, d.deptno from emp e left join dept d on
 hive (default)> SELECT e.empno, e.ename, d.deptno FROM emp e RIGHT JOIN dept d ON e.deptno=d.deptno;
 ```
 
-#### 6.3.6 满外连接
+### 6.3.6 满外连接
 
 满外连接：将会放回所有表中符合WHERE语句条件的所有记录。如果任一表的指定字段没有符合条件的值的话，那么就是用NULL值代替。
 
@@ -2218,7 +2668,7 @@ hive (default)> select e.empno, e.ename, d.deptno from emp e full join dept d on
 
 
 
-#### 6.3.7 多表连接
+### 6.3.7 多表连接
 
 ==注意：连接n个表，至少需要n-1个连接条件。例如：连接三个表，至少需要两个连接条件。==
 
@@ -2259,7 +2709,7 @@ hive (default)> select e.empno, e.ename, d.deptno from emp e full join dept d on
 
    ==优化：当对3个或者更多表进行JOIN 连接时，如果每个ON子句都使用相同的连接键的话，那么只会产生一个MapReduce job。==
 
-#### 6.3.8 笛卡尔积
+### 6.3.8 笛卡尔积
 
 1. 笛卡尔会在下面条件下产生
 
@@ -2273,10 +2723,9 @@ hive (default)> select e.empno, e.ename, d.deptno from emp e full join dept d on
    hive (default)> SELECT empno,dname FROM emp,dept;
    ```
 
+## 6.4 排序
 
-### 6.4 排序
-
-#### 6.4.1 全局排序（Order By）
+### 6.4.1 全局排序（Order By）
 
 ==Order By：全局排序，只有一个Reducer。==因为如果是多个Reducer，MapReduce只能做到每个Reducer的各自是有序的（MR自带的是哈希分区，像Spark支持范围分区，则每个分区有序，就能做到全局有序了）。
 
@@ -2287,7 +2736,7 @@ hive (default)> SELECT * FROM emp ORDER BY sal DESC;
 
 
 
-#### 6.4.2 按照别名排序
+### 6.4.2 按照别名排序
 
 按照员工薪水的2倍排序：
 
@@ -2295,7 +2744,7 @@ hive (default)> SELECT * FROM emp ORDER BY sal DESC;
 hive (default)> SELECT ename,sal*2 twosal FROM emp ORDER BY twosal;
 ```
 
-#### 6.4.3 多个列排序
+### 6.4.3 多个列排序
 
 按照部门和工资升序排序
 
@@ -2303,7 +2752,7 @@ hive (default)> SELECT ename,sal*2 twosal FROM emp ORDER BY twosal;
 hive (default)> SELECT ename,dept, sal FROM emp ORDER BY dept,sal ASC;
 ```
 
-#### 6.4.4每个Reduce内部排序（Sort By）
+### 6.4.4每个Reduce内部排序（Sort By）
 
 Sort By：对于大规模的数据集Order by的效率非常低。在很多情况下，并不需要全局排序，此时可以使用sort by。
 
@@ -2336,7 +2785,7 @@ sort by为每个Reducer产生一个排序文件。每个Reducer内部进行排�
 
    
 
-#### 6.4.5 分区（Distribute By）
+### 6.4.5 分区（Distribute By）
 
 Distribute By：在有些情况下，我们需要控制某个特定行应该到哪个reducer，通常是为了进行后续的聚集操作。distribute by子句可以做这件事情。distribute by类似MR中partition（自定义分区），进行分区，结合sort by使用。
 
@@ -2356,7 +2805,7 @@ Distribute By：在有些情况下，我们需要控制某个特定行应该到�
    - ==distribute by的分区规则是根据分区字段的hash值与reduce个数进行求模后，余数相同的分到一个区。==
    - ==Hive要求distribute by 语句要卸载sort by语句之前。==
 
-#### 6.4.6 Cluster By
+### 6.4.6 Cluster By
 
 当distribut by和sort by字段相同的时候，可以直接使用cluster by来代替。
 
@@ -2371,13 +2820,13 @@ hive (default)> SELECT * FROM emp DISTRIBUTE BY deptno SORT BY deptno;
 
 <font color=red>注意：按照部门编号分区，不一定就是固定死的数值，可以是20号和30号部门分到一个分区里面去。</font>
 
-## 7. 分许表和分桶表
+# 7. 分区表和分桶表
 
-### 7.1 分区表
+## 7.1 分区表
 
 分区表实际上就是对应一个HDFS文件系统上的独立的文件夹，该文件夹下是该分区所有的数据文件。<font color=red>Hive中的分区就是分目录</font>，把一个大的数据集根据业务需要分割成小的数据集。在查询时通过WHERE子句中的表达式选择查询所需要的指定的分区，这样的查询效率会提高很多。
 
-#### 7.1.1分区表基本操作
+### 7.1.1分区表基本操作
 
 1. 引入分区表（需要根据日期对日志进行管理，通过部门信息模拟）
 
@@ -2476,7 +2925,7 @@ hive (default)> SELECT * FROM emp DISTRIBUTE BY deptno SORT BY deptno;
 
    
 
-#### 7.1.2 二级分区
+### 7.1.2 二级分区
 
 <font color=red>思考：如果一天的日志数据量也很大，如何再将数据拆分？</font>
 
@@ -2588,7 +3037,7 @@ hive (default)> SELECT * FROM emp DISTRIBUTE BY deptno SORT BY deptno;
    hive (default)> SELECT * FROM dept_par2 WHERE day='2020-10-27' AND hour='14';
    ```
 
-#### 7.1.3 动态分区调整
+### 7.1.3 动态分区调整
 
 关系型数据库中，对分区表insert数据的时候，数据库会自动根据分区字段的值，将数据插入到相应的分区中，Hive中也提供了类似的机制，即动态分区（Dynamic Partition），只不过，使用Hive的动态分区，需要进行相应的配置。
 
@@ -2667,7 +3116,7 @@ hive (default)> SELECT * FROM emp DISTRIBUTE BY deptno SORT BY deptno;
 
    ==思考：目标分区是如何匹配到分区字段的。==
 
-### 7.2 分桶表
+## 7.2 分桶表
 
 分区提供一个隔离数据和优化查询的便利方式。不过，并非所有的数据集都可以形成合理的分区。对于一张表或者分区，Hive可以进一步组织成桶，也就是更为细粒度的数据范围划分。
 
@@ -2731,7 +3180,7 @@ hive (default)> SELECT * FROM emp DISTRIBUTE BY deptno SORT BY deptno;
    insert into table stu_buck select * from student_insert;
    ```
 
-### 7.3 抽样查询
+## 7.3 抽样查询
 
 对于非常大的数据集，有时用户需要使用的是一个具有代表性的查询结果而不是全部结果。Hive可通过对表进行抽样来满足这个需求。
 
@@ -2751,47 +3200,55 @@ FAILED: SemanticException [Error 10061]: Numerator should not be bigger than den
 
 
 
-## 8. 函数
+# 8. 函数
 
-### 8.1 系统内置函数
+## 8.1 系统内置函数
 
-1. 查看系统自带的函数
+1. 查看系统自带的函数，应该显示的是所有函数吧，包括用于自定义的函数 TODO
 
    ```sql
    hive > show functions;
    ```
 
-2. 显示自带的番薯的用法
+2. 查看某些函数
+
+   ```sql
+   hive > show functions like 'u*';
+   ```
+
+   
+
+3. 显示自带函数的用法
 
    ```sql
    hive > desc function upper;
    ```
 
-3. 详细显示自带的函数的用法
+4. 详细显示自带函数的用法
 
    ```sql
    hive > desc function extended upper;
    ```
 
-### 8.2 常用内置函数
+## 8.2 常用内置函数
 
 ==开窗函数？？？==
 
 ### 8.3 自定义函数
 
-### 8.4 自定义UDF函数
+## 8.4 自定义UDF函数
 
-### 8.5 自定义UDTF函数
+## 8.5 自定义UDTF函数
 
 
 
 TODO
 
-## 9. 压缩和存储
+# 9. 压缩和存储
 
-### 9.1 Hive压缩配置
+## 9.1 Hive压缩配置
 
-#### 9.1.1 MR支持的压缩编码
+### 9.1.1 MR支持的压缩编码
 
 | 压缩格式 | 算法    | 文件扩展名 | 是否可切分 |
 | -------- | ------- | ---------- | ---------- |
@@ -2825,7 +3282,7 @@ On a single core of a Core i7 processor in 64-bit mode, Snappy compresses at abo
 
 #### 9.1.2压缩参数配置
 
-要在Hadoop中启用压缩，可以配置如下参数（mapred-site.xml文件中）：
+### 要在Hadoop中启用压缩，可以配置如下参数（mapred-site.xml文件中）：
 
 | 参数                                              | 默认值                                                       | 阶段         | 建议                                              |
 | ------------------------------------------------- | ------------------------------------------------------------ | ------------ | ------------------------------------------------- |
@@ -2836,7 +3293,7 @@ On a single core of a Core i7 processor in 64-bit mode, Snappy compresses at abo
 | mapreduce.output.fileoutput format.compress.codec | org.apache.hadoop.io.compress. DefaultCodec                  | reducer 输出 | 使用标准工具或者编 解码器，如 gzip 和 bzip2       |
 | mapreduce.output.fileoutput format.compress.type  | RECORD                                                       | reducer 输出 | SequenceFile 输出使用 的压缩类型：NONE 和 BLOCK   |
 
-### 9.2 开启Map输出阶段压缩（MR引擎）
+## 9.2 开启Map输出阶段压缩（MR引擎）
 
 开启map输出阶段压缩可以减少job中map和Reduce task间数据传输量。具体配置如下：
 
@@ -2868,7 +3325,7 @@ On a single core of a Core i7 processor in 64-bit mode, Snappy compresses at abo
 
      
 
-### 9.3 开启Reduce输出阶段压缩
+## 9.3 开启Reduce输出阶段压缩
 
 当Hive将输出写入到表中时，输出内容同样可以进行压缩。属性`hive.exec.compress.output`控制着这个功能。用户可能需要保持默认设置文件中的默认值false，这样默认的数据就是非压缩的纯文本文件了。用户可以通过在查询语句或执行脚本中设置这个值为true，来开启结果压缩功能。
 
@@ -2914,11 +3371,15 @@ On a single core of a Core i7 processor in 64-bit mode, Snappy compresses at abo
 
      
 
-### 9.4 文件存储格式
+## 9.4 文件存储格式
 
-Hive支持的存储数据的格式主要有：TEXTFILE、SEQUENCEFILE、ORC、PARQUET。
+参考的官方文档：https://cwiki.apache.org/confluence/display/Hive/FileFormats
 
-#### 9.4.1 列式存储和行式存储
+https://blog.csdn.net/m0_61607827/article/details/124027516
+
+Hive支持的存储数据的格式主要有：TextFile、SequenceFile、RCFile、Avro File、ORC File、Parquet、Json File（Hive 4.0.0及后）。
+
+### 9.4.1 列式存储和行式存储
 
 ![img](Hive.assets/wps2.png)
 
@@ -2932,15 +3393,27 @@ Hive支持的存储数据的格式主要有：TEXTFILE、SEQUENCEFILE、ORC、PA
 
 数据量：每个字段的数据类型一定是相同的，列式存储可以针对性的设计更好的设计压缩算 法。
 
-TEXTFILE 和 SEQUENCEFILE 的存储格式都是基于行存储的；
+TextFile和 SequenceFile的存储格式都是基于行存储的；
 
-ORC 和 PARQUET 是基于列式存储的。
+ORC File和 Parquet是基于列式存储的。
 
-#### 9.4.2 TextFile 格式
+### 9.4.2 TextFile 格式
 
 默认格式，数据不做压缩，磁盘开销大，数据解析开销大。可结合 Gzip、Bzip2 使用， 但使用 Gzip 这种方式，hive 不会对数据进行切分，从而无法对数据进行并行操作。
 
-#### 9.4.3 rc 格式
+### 9.4.3 SequenceFile格式
+
+TODO
+
+### 9.4.4 RCFile格式
+
+TODO
+
+### 9.4.5 Avro 格式
+
+TODO
+
+### 9.4.3 ORC 格式
 
 Orc (Optimized Row Columnar)是 Hive 0.11 版里引入的新的存储格式。 如下图所示可以看到每个 Orc 文件由 1 个或多个 stripe 组成，每个 stripe 一般为 HDFS
 
@@ -2958,7 +3431,7 @@ Orc (Optimized Row Columnar)是 Hive 0.11 版里引入的新的存储格式。 �
 
 
 
-#### 9.4.4 Parquet 格式
+### 9.4.4 Parquet 格式
 
 Parquet 文件是以二进制方式存储的，所以是不可以直接读取的，文件中包括该文件的 数据和元数据，因此==Parquet 格式文件是自解析的==。
 
@@ -2974,7 +3447,7 @@ Parquet 文件是以二进制方式存储的，所以是不可以直接读取的
 
 上图展示了一个 Parquet 文件的内容，一个文件中可以存储多个行组，文件的首位都是 该文件的 Magic Code，用于校验它是否是一个 Parquet 文件，Footer length 记录了文件元数据的大小，通过该值和文件长度可以计算出元数据的偏移量，文件的元数据中包括每一个行 组的元数据信息和该文件存储数据的 Schema 信息。除了文件中每一个行组的元数据，每一 页的开始都会存储该页的元数据，在 Parquet 中，有三种类型的页：==数据页、字典页和索引页==。数据页用于存储当前行组中该列的值，字典页存储该列值的编码字典，每一个列块中最 多包含一个字典页，索引页用来存储当前行组下该列的索引，目前 Parquet 中还不支持索引 页。
 
-#### 9.4.5 主流文件存储格式对比实验
+### 9.4.5 主流文件存储格式对比实验
 
 从存储文件的压缩比和查询速度两个角度对比。 
 
@@ -3115,13 +3588,50 @@ hive (default)> insert overwrite local directory '/opt/module/data/log_parquet' 
 
 ==存储文件的查询速度总结：查询速度相近。==
 
-### 9.5 存储和压缩结合
+## 9.5 存储和压缩结合
 
 TODO
 
-## **10. 企业级调优（重要）**
+## 9.6 `SerDe`
 
-### 10.1 执行计划（Explain）
+### 9.6.1 `SerDe`
+
+`SerDe`是`Serializer/Deserializer`的简称。
+
+### 9.6.2 `Hive SerDe`
+
+hive使用SerDe来读/写record。
+
+读：`HDFS files --> InputFileFormat --> <key, value> --> Deserializer --> Row object`
+
+写：`Row object --> Serializer --> <key, value> --> OutputFileFormat --> HDFS files`
+
+读时忽略"key"，写时"key"为常量，`record对象`存放在"value"中。
+
+目前，Hive使用如下两种FileFormat来读/写HDFS文件（内建的）：
+
+- `TextInputFormat`/`HiveIgnoreKeyTextOutputFormat`: 以plain text file format读/写HDFS文件
+- `SequenceFileInputFormat`/`SequenceFileOutputFormat`: 以Hadoop SequenceFile format读/写HDFS文件。
+
+**Hive中内建的SerDe**：
+
+- `Avro`（`hive 0.9.1`及后）
+- `ORC`（`hive 0.11`及后）
+- `RegEx`
+- `Thrift`
+- `Parquet`（`hive 0.13`及后）
+- `CSV`（`hive 0.14`及后）
+- `JsonSerDe`（`hive 0.12`及后）
+
+自定义SerDe见：https://cwiki.apache.org/confluence/display/Hive/DeveloperGuide#DeveloperGuide-HowtoWriteYourOwnSerDe
+
+`org.apache.hadoop.hive.serde`已经弃用了，新的是`org.apache.hadoop.hive.serde2`。
+
+
+
+# **10. 企业级调优（重要）**
+
+## 10.1 执行计划（Explain）
 
 1. 基本语法
 
@@ -3223,7 +3733,7 @@ hive (default)> explain select * from emp; Explain
 
    
 
-### 10.2 Fetch抓取
+## 10.2 Fetch抓取
 
 Fetch抓取是指，<span style="color:red;">Hive中对某些情况的查询可以不必使用MapReduce计算。</span>例如：`SELECT * FROM employees; `在这种情况下，Hive可以简单的读取employee对应的存储目录下的文件，然后输出查询结果到控制台。
 
@@ -3272,7 +3782,7 @@ Fetch抓取是指，<span style="color:red;">Hive中对某些情况的查询可�
 
    
 
-### 10.3 本地模式
+## 10.3 本地模式
 
 大多数的Hadoop Job是需要Hadoop提供的完整的可扩展性来处理大数据集的。不过，有时Hive的输入数据是非常小的。在这种情况下，为查询触发执行任务消耗的时间可能会比实际Job的执行时间要多得多。对于大多数这种情况，<span style="color:red;">Hive可以通过本地模式在单台机器上处理所有的任务。对于小数据集，执行时间可以明显被缩短。</span>
 
@@ -3305,9 +3815,9 @@ set hive.exec.mode.local.auto.input.files.max=10;
 
    
 
-### 10.4 表的优化
+## 10.4 表的优化
 
-#### 10.4.1 小表大表Join（MapJoin）
+### 10.4.1 小表大表Join（MapJoin）
 
 将key相对分散，并将数据量小的表放在join的左边，可以使用map join让小的维度表先进入内存。在map端完成join。
 
@@ -3408,7 +3918,7 @@ set hive.exec.mode.local.auto.input.files.max=10;
 
    
 
-#### 10.4.2 大表Join大表
+### 10.4.2 大表Join大表
 
 1. 空KEY过滤
 
@@ -3609,7 +4119,7 @@ set hive.exec.mode.local.auto.input.files.max=10;
    on a.id = b.id;
    ```
 
-#### 10.4.3 Group By
+### 10.4.3 Group By
 
 默认情况下，Map阶段同一key数据分发给一个reduce，当一个key数据过大时就倾斜了。
 
@@ -3665,7 +4175,7 @@ set hive.exec.mode.local.auto.input.files.max=10;
    30
    ```
 
-#### 10.4.4 Count(Distinct)去重统计
+### 10.4.4 Count(Distinct)去重统计
 
 数据量小的时候无所谓，数据量大的情况下，由于COUNT DISTINCT操作需要用一个Reduce Task（==只能用一个Reduce，即使设置了mapreduce.job.reduces=5，也没用==）来完成，这一个Reduce需要处理的数据量太大，就会导致整个Job很难完成，一般COUNT DISTINCT使用先GROUP BY再COUNT的方式替换，但是需要注意group by造成的数据倾斜问题。
 
@@ -3727,11 +4237,11 @@ set hive.exec.mode.local.auto.input.files.max=10;
 
    <span style="color:red;">虽然会多用一个Job来完成，但在数据量大的情况下，这个绝对是值得的。</span>
 
-#### 10.4.5 笛卡尔积
+### 10.4.5 笛卡尔积
 
 尽量避免笛卡尔积，join的时候不加on条件，或者无效的on条件，Hive只能使用1个reducer来完成笛卡尔积。
 
-#### 10.4.6 行列过滤
+### 10.4.6 行列过滤
 
 列处理：在SELECT中，只拿需要的列，如果有分区，尽量使用分区过滤，少用`SELECT * `。
 
@@ -3762,15 +4272,15 @@ Time taken: 30.058 seconds, Fetched: 100 row(s)
 
 **谓词下推**
 
-#### 10.4.7 分区
+### 10.4.7 分区
 
 ==详见7.1章节==
 
-#### 10.4.8 分桶
+### 10.4.8 分桶
 
 ==详见7.2章节==
 
-### 10.5 合理设置Map及Reduce数量
+## 10.5 合理设置Map及Reduce数量
 
 1. 通常情况下，作业会通过input的目录产生一个或多个map任务。主要的决定因素有：
 
@@ -3786,7 +4296,7 @@ Time taken: 30.058 seconds, Fetched: 100 row(s)
 
 针对上面的问题2和3，我们需要采取两种方式来解决：即减少map数和增加map数。
 
-#### 10.5.1 复杂文件增加Map数
+### 10.5.1 复杂文件增加Map数
 
 当input的文件都很大，任务逻辑复杂，map执行非常慢的时候，可以考虑增加map数，来使得每个map处理的数据量减少，从而提高任务的执行效率。
 
@@ -3815,7 +4325,7 @@ Hadoop job information for Stage-1: number of mappers: 6; number of reducers: 1
 
 
 
-#### 10.5.2 小文件进行合并
+### 10.5.2 小文件进行合并
 
 （1）在map执行前合并小文件，减少map数：
 
@@ -3853,7 +4363,7 @@ set hive.merge.smallfiles.avgsize = 16777216;
 
 
 
-#### 10.5.3 合理设置Reduce数
+### 10.5.3 合理设置Reduce数
 
 1. 调整reduce个数方法一
 
@@ -3898,7 +4408,7 @@ set hive.merge.smallfiles.avgsize = 16777216;
    - 处理大数据量李用哪个合适的reduce数；
    - 使单个reduce任务处理数据量大小要合适；
 
-### 10.6 并行执行
+## 10.6 并行执行
 
 Hive会将一个查询转化成一个或者多个阶段。这样的阶段可以是MapReduce阶段、抽样阶段、合并阶段、limit阶段。或者Hive执行过程中可能需要的其他阶段。默认情况下，Hive一次只会执行一个阶段。不过某个特定的job可能包含众多的阶段，而这些阶段可能并非完全相互依赖的，也就是说有些阶段是可以并发执行的，这样可能使得整个job的执行时间缩短。不过，如果有更多的阶段可以并行执行，那么job可能就越快完成。
 
@@ -3913,7 +4423,7 @@ set hive.exec.parallel.thread.number=16; -- 同一个sql允许最大并行度，
 
 如：在map阶段还没有100%的情况下，就执行reduce阶段，聚合一部分的数据，节省一定的时间。
 
-### 10.7 严格模式
+## 10.7 严格模式
 
 Hive可以通过设置防止一些危险操作：
 
@@ -3929,17 +4439,41 @@ Hive可以通过设置防止一些危险操作：
 
    将`hive.strict.checks.cartesian.product`设置为true时，<span style="color:red;">会限制笛卡尔积的查询。</span>对于关系型数据库非常了解的用户可能期望在执行JOIN查询的时候不适用ON语句而是使用WHERE语句，这样关系型数据库的执行优化器可以高效地将WHERE语句转化成那个ON语句。不幸的是，Hive并不会执行这种优化，因此，如果表足够大，那么这个查询就会出现不可控的情况。
 
-### 10.8 JVM重用
+## 10.8 JVM重用
 
 ==详见hadoop优化文档中jvm重用==
 
-### 10.9 压缩
+## 10.9 压缩
 
 ==详见第9章==
 
-## 11. Hive实战
+# 11. 配置参数
 
-### 11.1 需求描述
+hive.server2.enable.doAs=true，表示已提交查询的用户来执行查询；否则以运行hs2的用户来执行查询。
+
+fs.hdfs.impl.disable.cache=true，表示可以阻止非安全模式下的缓存泄露
+
+fs.file.impl.disable.cache=true，表示可以阻止非安全模式下的缓存泄露
+
+scratch directory management（暂存目录管理）：存储临时文件和plan文件
+
+hive.scratchdir.lock
+
+hive.exec.scratchdir
+
+hive.scratch.dir.permission
+
+hive.start.cleanup.scratchdir
+
+
+
+#scratchdir/inuse.lck文件表示此scratchdir正在被使用中。`cleandanglingscratchdir`工具尝试写入此文件，如果成功，表示当前scratchdir未被使用，就清空scratchdir下的东西。
+
+
+
+# 12. Hive实战
+
+## 12.1 需求描述
 
 统计硅谷影音视频网站的常规指标，各种 TopN 指标：
 
@@ -3957,7 +4491,7 @@ Hive可以通过设置防止一些危险操作：
 
 - 统计上传视频最多的用户 Top10 以及他们上传的视频观看次数在前 20 的视频
 
-### 11.2 数据结构
+## 12.2 数据结构
 
 1. 视频表
 
@@ -3982,9 +4516,9 @@ Hive可以通过设置防止一些危险操作：
    | videos         | 上传视频数     | int                |
    | friends        | 朋友数量       | int                |
 
-### 11.3 准备工作
+## 12.3 准备工作
 
-#### 11.3.1 准备表
+### 12.3.1 准备表
 
 1. 需要准备的表
 
@@ -4081,7 +4615,7 @@ Hive可以通过设置防止一些危险操作：
 
    
 
-#### 11.3.2 安装Tez引擎（了解）
+### 12.3.2 安装Tez引擎（了解）
 
 Tez是一个Hive的运行引擎，性能优于MR。为什么优于MR呢？如下图：
 
@@ -4157,26 +4691,77 @@ Tez可以将多个有依赖的作业转换为一个作业，这样只需要写�
 
 6. 解决日志Jar包冲突
 
-### 11.4 业务分析
+## 12.4 业务分析
 
 TODO
 
-#### 11.4.1 统计视频观看数TOP10
+### 12.4.1 统计视频观看数TOP10
 
-#### 11.4.2 统计视频类别热度TOP10
+### 12.4.2 统计视频类别热度TOP10
 
-#### 11.4.3 统计出视频观看数最高的20个视频的所属类别以及类别包含TOP20视频的个数
+### 12.4.3 统计出视频观看数最高的20个视频的所属类别以及类别包含TOP20视频的个数
 
-#### 11.4.4 统计视频观看数TOP50所关联视频的所属类别排序
+### 12.4.4 统计视频观看数TOP50所关联视频的所属类别排序
 
-#### 11.4.5 统计每个类别中的视频热度TOP10，以Music为例
+### 12.4.5 统计每个类别中的视频热度TOP10，以Music为例
 
-#### 11.4.6 统计每个类别视频观看数TOP10
+### 12.4.6 统计每个类别视频观看数TOP10
 
-#### 11.4.7 统计上传视频最多的用户TOP10以及他们上传的视频观看次数在前20的视频
+### 12.4.7 统计上传视频最多的用户TOP10以及他们上传的视频观看次数在前20的视频
 
 TODO
 
-## 附录：常见错误及解决方案
+# 13. Hive集成
+
+## Hive On MapReduce
+
+TODO
+
+## Hive On Spark
+
+TODO
+
+## Hive On Tez
+
+TODO
+
+## 13.1 Hive集成Accumulo
+
+https://cwiki.apache.org/confluence/display/Hive/AccumuloIntegration
+
+TODO
+
+## Hive集成HBase
+
+https://cwiki.apache.org/confluence/display/Hive/HBaseIntegration
+
+TODO
+
+## Hive集成Druid
+
+https://cwiki.apache.org/confluence/display/Hive/Druid+Integration
+
+TODO
+
+## Hive集成Kudu
+
+https://cwiki.apache.org/confluence/display/Hive/Kudu+Integration
+
+TODO
+
+
+
+# 附录：常见错误及解决方案
 
 ### 1. SELECT COUNT(*) 不执行MR任务的说明。
+
+
+
+### Hive的临时目录
+
+在hive client和HDFS（或其他文件系统）会使用临时目录。目的是用于存储查询过程中的临时/中间数据集。当query完成之后，hive client会清除这些临时/中间数据集。但是，如果hive client的本次query异常终止，则会保留这些临时/中间文件。
+
+- 在HDFS集群中，默认的Hive的临时目录为`/tmp/hive/<username>`，对应的Hive配置项为`hive.exec.scratchdir`
+- 在Hive client中，临时目录是硬编码为`/tmp/<username>`
+
+**注意：将数据写入表/分区，实际是（1）先将数据写入临时位置（`hive.exec.scratchdir`）；（2）将数据移动到目标表/分区目录下。**
