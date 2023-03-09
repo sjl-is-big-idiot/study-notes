@@ -660,5 +660,3 @@ setenforce 0
 setenforce 1
 ```
 
-
-
