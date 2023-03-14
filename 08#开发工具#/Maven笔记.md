@@ -881,6 +881,45 @@ mvn clean 清除 项目目录/target目录及其内容
 mvn package 将项目源码打包为jar
 mvn install 将项目jar安装嗷maven本地仓库
 
+# 2. 安装Maven
+
+## 2.1 tar包安装
+
+参考文章：https://blog.csdn.net/michaelcc00/article/details/127259659
+
+### 2.1.1 下载Maven
+
+下载地址：https://repo.huaweicloud.com/apache/maven/
+
+### 2.1.2 安装Maven
+
+```bash
+tar -zxvf apache-maven-3.6.3-bin.tar.gz -C /opt/modules
+```
+
+### 2.1.3 配置环境变量
+
+```bash
+vim /etc/profile
+#添加以下内容
+export MAVEN_HOME=/opt/modules/apache-maven-3.6.3
+export PATH=$PATH:$MAVEN_HOME/bin
+
+source /etc/profile
+```
+
+### 2.1.4 验证
+
+```bash
+mvn -v
+```
+
+
+
+## 源码安装
+
+TODO
+
 # Maven中的archetype是什么？
 
 archetype（原型）是项目模板，使用后会创建一个指定项目结构的项目。
