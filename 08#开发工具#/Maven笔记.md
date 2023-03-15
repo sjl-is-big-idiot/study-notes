@@ -1,8 +1,8 @@
-# Maven
+# 1. Maven概述
 
 [Maven官网](https://maven.apache.org/)
 
-## Maven是什么？
+## 1.1 Maven是什么？
 
 Maven是一个项目管理工具。
 
@@ -28,14 +28,16 @@ Maven是一个项目管理工具。
 
 - `SBT`：SBT是 Scala 的构建工具，全称是 `Simple Build Tool`， 类似 Maven 或 Gradle。 SBT 的野心很大，采用Scala编程语言本身编写配置文件，这使得它稍显另类，虽然增强了灵活性，但是对于初学者来说同时也增加了上手难度。
 
-## Maven的好处是什么？
+## 1.2 Maven的好处是什么？
 
 采用标准管理和实践来加快开发周期
 
-## 怎么配置Maven？
+## 1.3 怎么配置Maven？
+
 Maven有专门的配置文件进行配置，具体见 https://maven.apache.org/guides/mini/guide-configuring-maven.html
 
-## 如何创建一个Maven项目？
+## 1.4 如何创建一个Maven项目？
+
 使用archetype为maven-archetype-quickstart来创建一个Maven项目
 
 gruopId 为 com.mycompany.app
@@ -120,7 +122,7 @@ my-app
 
 根据此archetype创建的Maven项目，有一个POM，`${basedir}/src/main/java`源码目录，`${basedir}/src/test/java` 测试源码目录。这是Maven项目的[标准目录布局](https://maven.apache.org/guides/introduction/introduction-to-the-standard-directory-layout.html)。
 
-## 如何编译Maven项目
+## 1.5 如何编译Maven项目
 
 cd到项目根目录（即pom.xml所在的目录），执行如下命令来编译项目源码。
 
@@ -157,8 +159,8 @@ mvn compile
 
 当第一次执行此命令时，Maven下载所有的项目依赖和需要的插件，因此第一次执行的时间相对较长。
 
+## 1.6 如何编译测试源码并运行单元测试
 
-## 如何编译测试源码并运行单元测试
 编译测试源码并执行单元测试
 
 ```shell
@@ -217,7 +219,7 @@ mvn test-compile
 
 
 
-## 如何创建一个jar，并且在本地仓库中安装它
+## 1.7 如何创建一个jar，并且在本地仓库中安装它
 
 创建jar，生成在`${basedir}/target`目录下
 
@@ -315,7 +317,7 @@ mvn clean
 
 ![image-20230116105845966](Maven笔记.assets/image-20230116105845966.png)
 
-## 版本号中的SNAPSHOT是什么意思？
+## 1.8 版本号中的SNAPSHOT是什么意思？
 
 ```xml
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -330,7 +332,7 @@ mvn clean
 
 `SNAPSHOT`：表示项目代码还处于开发阶段，不能保证代码是稳定不变的。例如，开发过程中版本为`x.y-SNAPSHOT`，发布稳定版时版本为`x.y`，然后下一个开发版本为`x.${y+1}-SNAPSHOT`。
 
-## 如何使用Maven插件？
+## 1.9 如何使用Maven插件？
 
 在build项目时，通常需要用到插件。
 
@@ -382,7 +384,7 @@ mvn clean
 
 配置Maven插件：https://maven.apache.org/guides/mini/guide-configuring-plugins.html
 
-## 如何向jar包中添加资源？
+## 1.10 如何向jar包中添加资源？
 
 Maven的规则是：`${basedir}/src/main/resources`目录中的任何目录或文件都打包在JAR中。
 
@@ -478,7 +480,7 @@ InputStream is = getClass().getResourceAsStream( "/test.properties" );
 
 
 
-## 如何过滤资源文件？
+## 1.11 如何过滤资源文件？
 
 `Filtering`主要用来替换项目中的资源文件（`*.xml`、`*.properties`）当中的`${...}`，比如`${db.url}`，那么如果配置了db.url=aaa的话，在项目编译的时候，就会自动的把`${db.url}`替换为aaa。详细解释可参考：https://lucky.blog.csdn.net/article/details/50411962
 
@@ -658,7 +660,7 @@ mvn process-resources "-Dcommand.line.prop=hello again"
 
 
 
-## 如何使用外部依赖？
+## 1.12 如何使用外部依赖？
 
 [Maven的依赖机制](https://maven.apache.org/guides/introduction/introduction-to-dependency-mechanism.html)
 
@@ -763,7 +765,7 @@ Maven在`本地Maven仓库`（默认为`${user.home}/.m2/repostory`）中查找�
 
 当执行`mvn compile`命令时，Maven就会下载log4j的依赖到本地Maven仓库了。
 
-## 如何在远程仓库中部署我的jar包？
+## 1.13 如何在远程仓库中部署我的jar包？
 
 如果你写了比较好jar也可以部署到Maven的远程仓库，这样别人就能复用此jar的功能了，而不用重复造轮子了。
 
@@ -847,11 +849,11 @@ Maven在`本地Maven仓库`（默认为`${user.home}/.m2/repostory`）中查找�
 
 
 
-## 如何创建文档？
+## 1.14 如何创建文档？
 
 见：https://maven.apache.org/guides/mini/guide-site.html
 
-## 如何构建其他类型的项目？
+## 1.15 如何构建其他类型的项目？
 
 使用如下命令：
 
@@ -867,37 +869,53 @@ mvn archetype:generate \
 
 
 
-## 如何一次构建多个项目？
+## 1.16 如何一次构建多个项目？
 
 参考POM中的项目继承和项目聚合。
 
-## Maven常用命令
+## 1.17 Maven中的archetype是什么？
 
-mvn compile 编辑项目源码
-mvn test 编译项目测试源码并运行测试代码
-mvn test-compile 编译项目测试源码不运行测试代码
-mvn site 生成项目站点文件（html、css等）
-mvn clean 清除 项目目录/target目录及其内容
-mvn package 将项目源码打包为jar
-mvn install 将项目jar安装嗷maven本地仓库
+archetype（原型）是项目模板，使用后会创建一个指定项目结构的项目。
+
+Maven中的goal是什么？
+
+如何搭建Maven远程仓库？
+
+
+
+Q. Maven：mirror和repository 区别
+
+**答**：参考文章：https://blog.csdn.net/gaoshan12345678910/article/details/117652178
+
+> mirror相当于一个拦截器，它会拦截maven对remote repository的相关请求，把请求里的remote repository地址，重定向到mirror里配置的地址。
+>
+> 没有配置mirror
+>
+> ![img](Maven笔记.assets/db67f45b5c30d0869af6b6579b79b4fb.png)
+>
+> 配置了mirror
+>
+> ![img](Maven笔记.assets/e7127d0d1d7a1226a16cb890dfbb6538.png)
 
 # 2. 安装Maven
 
-## 2.1 tar包安装
+## 2.1 Linux系统安装
+
+### 2.1.1 tar包安装
 
 参考文章：https://blog.csdn.net/michaelcc00/article/details/127259659
 
-### 2.1.1 下载Maven
+#### 2.1.1.1 下载Maven
 
 下载地址：https://repo.huaweicloud.com/apache/maven/
 
-### 2.1.2 安装Maven
+#### 2.1.1.2 安装Maven
 
 ```bash
 tar -zxvf apache-maven-3.6.3-bin.tar.gz -C /opt/modules
 ```
 
-### 2.1.3 配置环境变量
+#### 2.1.1.3 配置环境变量
 
 ```bash
 vim /etc/profile
@@ -908,46 +926,99 @@ export PATH=$PATH:$MAVEN_HOME/bin
 source /etc/profile
 ```
 
-### 2.1.4 验证
+#### 2.1.1.4 验证
 
 ```bash
 mvn -v
 ```
 
+### 2.1.1.5 配置为国内镜像源
+
+```bash
+vim /opt/modules/apache-maven-3.6.3/conf/settings.xml
+```
+
+添加如下内容。
+
+**<font color="red">注意：多个mirror只有第一个会生效。</font>**
+
+```xml
+<!-- 阿里云仓库 -->
+	<mirror>
+     <id>aliyunmaven</id>
+     <mirrorOf>*</mirrorOf>
+     <name>阿里云公共仓库</name>
+     <url>https://maven.aliyun.com/repository/public</url>
+    </mirror>
+    
+     <mirror>
+     <id>aliyunmaven</id>
+     <mirrorOf>*</mirrorOf>
+     <name>阿里云谷歌仓库</name>
+     <url>https://maven.aliyun.com/repository/google</url>
+    </mirror>
+    
+    <mirror>
+     <id>aliyunmaven</id>
+     <mirrorOf>*</mirrorOf>
+     <name>阿里云阿帕奇仓库</name>
+     <url>https://maven.aliyun.com/repository/apache-snapshots</url>
+    </mirror>
+    
+    <mirror>
+     <id>aliyunmaven</id>
+     <mirrorOf>*</mirrorOf>
+     <name>阿里云spring仓库</name>
+     <url>https://maven.aliyun.com/repository/spring</url>
+    </mirror>
+    
+    <mirror>
+     <id>aliyunmaven</id>
+     <mirrorOf>*</mirrorOf>
+     <name>阿里云spring插件仓库</name>
+     <url>https://maven.aliyun.com/repository/spring-plugin</url>
+    </mirror>
+```
 
 
-## 源码安装
+
+### 2.1.2 源码安装
 
 TODO
 
-# Maven中的archetype是什么？
+# 3. Maven命令
 
-archetype（原型）是项目模板，使用后会创建一个指定项目结构的项目。
+```bash
+## Maven常用命令
 
-Maven中的goal是什么？
+mvn compile 编辑项目源码
+mvn test 编译项目测试源码并运行测试代码
+mvn test-compile 编译项目测试源码不运行测试代码
+mvn site 生成项目站点文件（html、css等）
+mvn clean 清除 项目目录/target目录及其内容
+mvn package 将项目源码打包为jar
+mvn install 将项目jar安装嗷maven本地仓库
+```
 
-如何搭建Maven远程仓库？
 
 
-
-
-
-# POM简介
+# 4. POM
 
 https://maven.apache.org/guides/introduction/introduction-to-the-pom.html
-## 什么是POM
+## 4.1 什么是POM
+
 POM 是 Maven 中的基本工作单元。它是一个XML文件，名为`pom.xml`，包含有关Maven用于构建此项目的项目信息和配置信息。pom.xml有许多默认值，如
 `build directory`：target
 `source directory`：src/main/java
 `test source directory`：src/test/java
 
 pom.xml有项目依赖、插件、build配置等，还可以指定项目版本、项目描述等信息
-## `super POM`
+## 4.2 `super POM`
 
 https://maven.apache.org/ref/3.6.3/maven-model-builder/super-pom.html
 `Super POM`是Maven的默认POM，默认情况下所有POM都继承`Super POM`。会使用Super POM中的配置项作为项目的配置信息。（当然可以在此项目`pom.xml`中覆盖Super POM中 配置）
 
-## 最小化POM
+## 4.3 最小化POM
 
 POM必须有如下几项：
 `project`：`<project></project>`
@@ -975,7 +1046,8 @@ POM必须有如下几项：
 
 使用此POM来构建项目时，会从默认的repository去下载项目所需的依赖。
 
-## 项目继承
+## 4.4 项目继承
+
 未显式指定时，POM都继承自super POM。我们也可以显示地指定此POM的父POM。
 
 POM通常含有如下几项：
@@ -986,7 +1058,8 @@ POM通常含有如下几项：
 `plugin configuration`
 `resources`
 
-### 示例1
+### 4.4.1 示例1
+
 创建个Maven项目：
 
 ```shell
@@ -1058,7 +1131,8 @@ mvn -B archetype:generate -DgroupId=com.mycompany.app -DartifactId=my-app -Darch
 
 则无法继承此父POM中的配置属性。
 
-### 示例2
+### 4.4.2 示例2
+
 假设此时项目目录结构为：
 
 ```shell
@@ -1088,7 +1162,7 @@ mvn -B archetype:generate -DgroupId=com.mycompany.app -DartifactId=my-app -Darch
 </project>
 ```
 
-## 项目聚合
+## 4.5 项目聚合
 
 类似于项目继承，不过正好相反，
 `项目继承`：在子POM中指定父POM的位置
@@ -1099,7 +1173,8 @@ mvn -B archetype:generate -DgroupId=com.mycompany.app -DartifactId=my-app -Darch
 
 1. 修改父POM中`<packaging>`标签的值为pom
 2. 在父POM中指定子POM所在的目录位置
-### 示例3
+### 4.5.1 示例3
+
 `com.mycompany.app:my-app:1`'s POM
 
 ```xml
@@ -1154,7 +1229,8 @@ com.mycompany.app:my-module:1's POM
 按照上述的POM配置（增加了`<packing>`和`<modules>`，则将my-module聚合到my-app中了。
 `<module>`指定了子POM相对于父POM的相对位置。
 
-### 示例4
+### 4.5.2 示例4
+
 假设目录结构如下：
 
 ```shell
@@ -1183,14 +1259,15 @@ com.mycompany.app:my-module:1's POM
 </project>
 ```
 
-## 项目继承 VS 项目聚合
+## 4.6 项目继承 VS 项目聚合
+
 目的都是一样的，最好是在项目结构上就能分出父POM和子POM。这样可以简化写配置。
 项目继承和项目聚合可以同时使用，同时使用时需要遵守如下3个规则：
 
 1. 在每个子POM中指定每个子POM的父POM是谁
 2. 修改父POM的`<packaging>`为pom
 3. 在父POM需要指定每个子POM的`<module>`
-### 示例5
+### 4.6.1 示例5
 
 `com.mycompany.app:my-app:1`'s POM
 
@@ -1261,7 +1338,7 @@ com.mycompany.app:my-module:1's POM
 
 
 
-## 项目插值和变量
+## 4.7 项目插值和变量
 
 在某些情况下，在POM中可能会重复使用某些值，Maven为了避免重复定义（一次定义，多次使用），且方便维护，Maven允许在POM中使用自定义和Maven预定义的变量。
 例如，要访问project.version变量，应按如下方式使用：  
@@ -1270,12 +1347,13 @@ com.mycompany.app:my-module:1's POM
 <version>${project.version}</version>
 ```
 
-### 可用变量
+### 4.7.1 可用变量
 
-#### Project Module variable
+#### 4.7.1.1 Project Module variable
+
 模型中作为单个值元素的任何字段都可以作为变量引用。例如，`${project.groupId}`、​`${project.version}`、`$｛project.build.sourceDirectory}`等。请参阅POM参考以查看属性的完整列表。
 
-#### 特殊变量
+#### 4.7.1.2 特殊变量
 
 `project.basedir` 当前项目所在的目录
 `project.baseUri` 当前项目所在的目录，表示为URI
@@ -1322,12 +1400,13 @@ com.mycompany.app:my-module:1's POM
 
 
 
-# POM详细
+## 4.8 POM详细
+
 POM详细文档
 https://maven.apache.org/pom.html
 
+# 5. Maven配置文件
 
-# Maven配置文件
 https://maven.apache.org/settings.html
 
 Maven配置文件名为`settings.xml`，它决定了Maven应该如何运行，常用的配置有本地仓库的位置等。
@@ -1361,13 +1440,13 @@ settings.xml的内容可以使用以下表达式进行插值：
 
 *<font color="red">注意：在settings.xml中的配置文件中定义的属性不能用于插值。</font>*
 
-## settings的细节
+## 5.1 settings的细节
 
 `localRepository`：本地Maven仓库，默认值为`${user.home}/.m2/repository`
 `interactiveMode`：Maven是否可与用户交互以获取输入，默认值为true
 `offline`：是否能在离线模式下进行build，默认值为false。由于网络或安全原因无法连接到远程仓库时有用。
 
-### Plugin Groups
+### 5.1.1 Plugin Groups
 
 当Maven命令使用插件，且未在命令行显示指定时，会在settings.xml中的`<pluginGroups>`元素中去查找插件，
 
@@ -1382,7 +1461,7 @@ settings.xml的内容可以使用以下表达式进行插值：
 </settings>
 ```
 
-### Servers
+### 5.1.2 Servers
 
 ```xml
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -1411,7 +1490,7 @@ settings.xml的内容可以使用以下表达式进行插值：
 
 *<font color="red">注意：若使用privateKey方式进行身份验证，则`<password>`不能配置，否则`<privateKey>`配置不生效</font>*
 
-### Mirrors
+### 5.1.3 Mirrors
 
 ```xml
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -1434,7 +1513,8 @@ settings.xml的内容可以使用以下表达式进行插值：
 `url`：镜像的url，build时会连接到此远程镜像仓库，而不是连接到原始的仓库。
 `mirrorOf`：`<mirrorOf>`元素表示当前mirror是哪个仓库的镜像，任何对于此仓库的请求都会转到此镜像。
 
-### Proxies
+### 5.1.4 Proxies
+
 ```xml
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
@@ -1463,8 +1543,10 @@ settings.xml的内容可以使用以下表达式进行插值：
 `username`, `password`: 成对使用，表示连接到该proxy服务器时进行身份认证所需的用户名、密码
 `nonProxyHosts`: 不可作为proxy的主机列表
 
-### Profiles
+### 5.1.5 Profiles
+
 TODO
 
-### Active Profiles
+### 5.1.6 Active Profiles
+
 TODO
