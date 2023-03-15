@@ -1513,6 +1513,8 @@ settings.xml的内容可以使用以下表达式进行插值：
 `url`：镜像的url，build时会连接到此远程镜像仓库，而不是连接到原始的仓库。
 `mirrorOf`：`<mirrorOf>`元素表示当前mirror是哪个仓库的镜像，任何对于此仓库的请求都会转到此镜像。
 
+**<font color="red">注意：多个mirror只有第一个会生效。</font>**
+
 ### 5.1.4 Proxies
 
 ```xml
