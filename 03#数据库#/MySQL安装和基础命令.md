@@ -2,12 +2,36 @@
 
 # 2. 安装
 
+https://blog.csdn.net/xhmico/article/details/125197747
+
+https://blog.csdn.net/bhegi_seg/article/details/126081041
+
+https://blog.csdn.net/bai_shuang/article/details/122939884
+
+安装方式：
+
+- yum 安装
+- rpm安装
+- tar包解压？
+
 安装mysql客户端
+
+```bash
 yum install mysql  -y
+```
 
 # 3. 配置
 
 # 4. 启停
+
+创建mysql用户，用于启动MySQL服务
+
+```bash
+groupadd mysql
+useradd -M mysql -g mysql -p mysql123456
+```
+
+
 
 # 5. 常用命令
 
