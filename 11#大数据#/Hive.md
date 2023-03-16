@@ -153,7 +153,7 @@ Hive在查询数据的时候，由于没有索引，需要扫描整个表，因�
 
 `hive 2.2.20`移除了Hive Web Interface（HWI），HWI是一种简介的图形化用户界面（GUI）。
 
-
+`hive 4.0.0`开始可以基于`ZooKeeper`实现Hive Metastore的动态服务发现。配置方式见文档：https://cwiki.apache.org/confluence/display/Hive/AdminManual+Metastore+Administration
 
 # 2. Hive安装
 
@@ -183,7 +183,7 @@ Hive在查询数据的时候，由于没有索引，需要扫描整个表，因�
 
 ==注意：由于我这边的Hadoop集群版本为2.x.y，所以下面说的hive-3.1.2的地方都要修改为hive-2.3.9，否则不兼容。==
 
-### 2.2.1 安装Hive
+### 2.2.1 tar包安装
 
 1. 下载Hive安装包如 `apache-hive-3.1.2-bin.tar.gz`，然后上传到Linux的`/opt/software`目录下。
 
@@ -213,6 +213,132 @@ Hive在查询数据的时候，由于没有索引，需要扫描整个表，因�
    ```shell
    [atguigu@hadoop102 hive-3.1.2]$ mv ./lib/log4j-slf4j-impl-2.10.0.jar ./lib/log4j-slf4j-impl-2.10.0.jar.bak
    ```
+   
+6. 通常`$HIVE_HOME/lib`中还有guava这个包和`$HADOOP_HOME/share/hadoop/common/lib`中的guava版本不一致。
+
+   保留高版本的guava。这里是删除`$HIVE_HOME/lib`中的guava。
+
+### 2.2.2 源码编译
+
+官方文档：https://cwiki.apache.org/confluence/display/Hive/GettingStarted#GettingStarted-BuildingHivefromSource
+
+推荐参考：https://blog.csdn.net/weixin_52918377/article/details/117123969
+
+#### 2.2.2.1 下载Hive源码包
+
+由于墙的原因，访问国外官方网站比较慢，因此从华为的镜像源进行下载，网址：https://repo.huaweicloud.com/apache/hive
+
+#### 2.2.2.2 解压Hive源码包
+
+```bash
+tar -zxvf /opt/softwares/apache-hive-3.1.2-src.tar.gz -C ./
+```
+
+
+
+![image-20230314102143046](Hive.assets/image-20230314102143046.png)
+
+源码包中目录结构如下：
+
+![image-20230314102317672](Hive.assets/image-20230314102317672.png)
+
+
+
+#### 修改pom.xml
+
+```xml
+<spark.version>2.3.0</spark.version>
+<scala.binary.version>2.11</scala.binary.version>
+<scala.version>2.11.8</scala.version>
+<guava.version>19.0</guava.version>
+```
+
+修改为
+
+```xml
+<spark.version>2.3.0</spark.version>
+<scala.binary.version>2.11</scala.binary.version>
+<scala.version>2.11.8</scala.version>
+<guava.version>27.0-jre</guava.version>
+```
+
+再将Maven仓库设置为国内镜像仓库，如：
+
+```xml
+TODO
+```
+
+#### 编译
+
+```bash
+mvn clean package -Pdist -DskipTests -Dmaven.javadoc.skip=true
+```
+
+**报错一**：could not find artifact org.pentaho:pentaho-aggdesigner-algorithm:jar:5.1.5-jhyde
+
+```bash
+INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal on project hive-upgrade-acid: Could not resolve dependencies for project org.apache.hive:hive-upgrade-acid:jar:3.1.2: Could not find artifact org.pentaho:pentaho-aggdesigner-algorithm:jar:5.1.5-jhyde in nexus-aliyun (http://maven.aliyun.com/nexus/content/groups/public) -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/DependencyResolutionException
+```
+
+**问题原因**：从`http://maven.aliyun.com/nexus/content/groups/public`这个Maven镜像仓库中没有找到pentaho-aggdesigner-algorithm:jar:5.1.5-jhyde
+
+**解决方法**：`$MAVEN_HOME/conf/settings.xml`中将如下mirror放在mirrors的开头。**maven中只有第一个mirror会起作用**
+
+```xml
+    <mirror>
+      <id>aliyunmaven</id>
+      <mirrorOf>*</mirrorOf>
+      <name>spring-plugin</name>
+      <url>https://maven.aliyun.com/repository/spring-plugin</url>
+    </mirror>
+```
+
+当pentaho-aggdesigner-algorithm下载到本地Maven仓库之后，再`$MAVEN_HOME/conf/settings.xml`中将如下mirror放在mirrors的开头。
+
+```xml
+    <mirror>
+     <id>aliyunmaven</id>
+     <mirrorOf>*</mirrorOf>
+     <name>阿里云公共仓库</name>
+     <url>https://maven.aliyun.com/repository/public</url>
+    </mirror>
+```
+
+**报错二**： /opt/softwares/apache-hive-3.1.2-src/llap-common/src/java/org/apache/hadoop/hive/llap/AsyncPbRpcProxy.java:[173,16] method addCallback in class com.google.common.util.concurrent.Futures cannot be applied to given types;
+
+```bash
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.6.1:compile (default-compile) on project hive-llap-common: Compilation failure: Compilation failure: 
+[ERROR] /opt/softwares/apache-hive-3.1.2-src/llap-common/src/java/org/apache/hadoop/hive/llap/AsyncPbRpcProxy.java:[173,16] method addCallback in class com.google.common.util.concurrent.Futures cannot be applied to given types;
+[ERROR]   required: com.google.common.util.concurrent.ListenableFuture<V>,com.google.common.util.concurrent.FutureCallback<? super V>,java.util.concurrent.Executor
+[ERROR]   found: com.google.common.util.concurrent.ListenableFuture<U>,org.apache.hadoop.hive.llap.AsyncPbRpcProxy.ResponseCallback<U>
+[ERROR]   reason: cannot infer type-variable(s) V
+```
+
+**解决方法**：修改hive源码，参考文章：https://blog.csdn.net/weixin_52918377/article/details/117123969
+
+**报错三**：[ERROR] /opt/softwares/apache-hive-3.1.2-src/spark-client/src/main/java/org/apache/hive/spark/counter/SparkCounter.java:[22,24] cannot find symbol
+
+```bash
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.6.1:compile (default-compile) on project hive-spark-client: Compilation failure: Compilation failure: 
+[ERROR] /opt/softwares/apache-hive-3.1.2-src/spark-client/src/main/java/org/apache/hive/spark/counter/SparkCounter.java:[22,24] cannot find symbol
+[ERROR]   symbol:   class Accumulator
+[ERROR]   location: package org.apache.spark
+```
+
+**解决方法**：修改hive源码，参考文章：https://blog.csdn.net/weixin_52918377/article/details/117123969
+
+按照https://blog.csdn.net/weixin_52918377/article/details/117123969的步骤，最终编译成功。
+
+![image-20230314164636508](Hive.assets/image-20230314164636508.png)
+
+
 
 ## 2.3 配置和启动Hive服务
 
@@ -747,24 +873,15 @@ hive其实就是解析对应HDFS目录的下的文件内容，然后得到表中
 
 使用元数据服务的方式
 
-1. 在 hive-site.xml 文件中添加如下配置信息
-
-   ```xml
-   <!-- 指定存储元数据要连接的地址 -->
-   <property>
-       <name>hive.metastore.uris</name>
-       <value>thrift://hadoop102:9083</value>
-   </property>
-   ```
-
-2. 启动metastore服务
+1. 启动metastore服务
 
    ***注意：第一次启动metastore服务前，一定要先初始化`bin/schematool -dbType mysql -initSchema -verbose`***
-   
+
    ```shell
    [atguigu@hadoop202 hive]$ bin/hive --service metastore
    2020-04-24 16:58:08: Starting Hive Metastore Server 
    ```
+
 
 **注意: 启动后窗口不能再操作，需打开一个新的 shell 窗口做别的操作，这是前台启动的**
 
@@ -779,23 +896,36 @@ hive其实就是解析对应HDFS目录的下的文件内容，然后得到表中
 
    这样Hive客户端就可以通过thrift协议、9083端口去连接Hive的元数据服务（metastore）
 
-3. **如何实现hive Metastore服务的HA？**
+2. **如何实现hive Metastore服务的HA？**
 
-   > （1）修改hive.metastore.uris=thrift://host1:port,thrift://host2:port
-   >
-   > 修改hive.metastore.uri.selection=RANDOM或SEQUENTIAL，默认值为RANDOM。
-   >
-   > （2） 启动两个及以上的Hive Metastore服务。
-   >
-   > （3）客户端使用hive.metastore.uris=thrift://host1:port,thrift://host2:port此配置来连接Hive Metastore服务。
+> （1）修改hive.metastore.uris=thrift://host1:port,thrift://host2:port
+>
+> 修改hive.metastore.uri.selection=RANDOM或SEQUENTIAL，默认值为RANDOM。
+>
+> （2） 启动两个及以上的Hive Metastore服务。
+>
+> （3）客户端使用hive.metastore.uris=thrift://host1:port,thrift://host2:port此配置来连接Hive Metastore服务。
+
+<font color="red">**注意：从`hive 4.0.0`开始`Hive Metastore`支持基于`ZooKeeper`的动态服务发现，配置方式见文档：https://cwiki.apache.org/confluence/display/Hive/AdminManual+Metastore+Administration**</font>
 
 #### 2.2.2.6 启动hiveserver2
 
 使用JDBC方式访问Hive
 
+
+
 1. 在 hive-site.xml 文件中添加如下配置信息
 
    ```xml
+   <!-- 指定存储元数据要连接的地址 -->
+   <property>
+       <name>hive.metastore.uris</name>
+       <value>thrift://hadoop102:9083</value>
+   </property>
+   <property>
+       <name>hive.metastore.port</name>
+       <value>9083</value>
+   </property>
    <!-- 指定连接hiveserver2 的 host -->
    <property>
    <name>hive.server2.thrift.bind.host</name>
@@ -834,6 +964,43 @@ hive其实就是解析对应HDFS目录的下的文件内容，然后得到表中
    <font color=red>从日志中我们知道了，hiveserver2的web界面地址为host:10002</font>,
 
    ![image-20210917101635182](Hive.assets/image-20210917101635182.png)
+
+   <font color="red">**注意：从hive 0.14.0开始可以基于ZooKeeper（ZooKeeper Service Discovery）实现HS2的HA。**</font>配置方式如下：
+
+   在`hive-site.xml`中。
+
+   ```xml
+   <property>
+   <name>hive.server2.support.dynamic.service.discovery</name>
+   <value>true</value>
+   </property>
+    
+   <property>
+   <name>hive.server2.zookeeper.namespace</name>
+   <value>hiveserver2_zk</value>
+   </property>
+    
+   <property>
+   <name>hive.zookeeper.quorum</name>
+   <value>hadoop322-node01:2181,hadoop322-node02:2181,hadoop322-node03:2181</value>
+   </property> 
+   <property>
+   <name>hive.zookeeper.client.port</name>
+   <value>2181</value>
+   </property> 
+   <property>
+   <name>hive.server2.thrift.bind.host</name>
+   <value>0.0.0.0</value>
+   </property> 
+   <property>
+   <name>hive.server2.thrift.port</name>
+   <value>10000</value> //两个HiveServer2实例的端口号要一致
+   </property>
+   ```
+
+   添加如上配置后，重启HS2，通过zkCli.sh连接ZooKeeper集群，发现多出了hiveserver2_zk这个znode。如下图所示：
+
+   ![image-20230310140323745](Hive.assets/image-20230310140323745.png)
 
 3. 启动beeline客户端
 
@@ -927,10 +1094,10 @@ hive其实就是解析对应HDFS目录的下的文件内容，然后得到表中
 
    （1）前台启动的方式导致需要打开多个shell窗口，可以使用如下方式后台启动。
 
-   - nohup：放在命令开头，表示不挂起，也就是关闭终端，进程仍保持运行状态
-   - /dev/null：是Linux文件系统中的一个文件，被称为黑洞，所有写入该文件的内容都会被自动丢弃。
-   - 2>&1：表示将标准错误重定向到标准输出
-   - &：放在命令结尾，表示后台运行。
+   - `nohup`：放在命令开头，表示不挂起，也就是关闭终端，进程仍保持运行状态
+   - `/dev/null`：是Linux文件系统中的一个文件，被称为黑洞，所有写入该文件的内容都会被自动丢弃。
+   - `2>&1`：表示将标准错误重定向到标准输出
+   - `&`：放在命令结尾，表示后台运行。
 
    一般会组合使用`nohup [xxx命令操作] >file 2>&1 &`，表示将xxx命令运行的结果输出到file中，并保持命令启动的进程在后台运行。
 
@@ -1014,7 +1181,23 @@ hive其实就是解析对应HDFS目录的下的文件内容，然后得到表中
    [atguigu@hadoop102 hive-2.3.9]$ hiveservices.sh start 
    ```
 
+**注意：个人建议将`Hive Metastore`的配置信息存放在`$HIVE_HOME/conf`目录下的`metastore-site.xml`中，关于`HiveServer2`的配置放在`hiveserver2-site.xml`或者`hive-site.xml`**
 
+**最终的配置**：
+
+`metastore-site.xml`
+
+```xml
+TODO
+```
+
+
+
+`hive-site.xml`
+
+```bash
+TODO
+```
 
 ## 2.4 Hive客户端
 
@@ -1220,7 +1403,7 @@ jdbc:hive2://<zookeeper quorum>/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespa
 jdbc:hive2://<zookeeper quorum>/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2?tez.queue.name=hive1&hive.server2.thrift.resultset.serialize.in.tasks=true 
 ```
 
-如何开启HS2的动态服务发现呢？
+<font color="red">如何开启HS2的动态服务发现呢？</font>font
 
 在hive-site.xml中配置hive.zookeeper.quorum。
 
@@ -4713,37 +4896,251 @@ TODO
 
 # 13. Hive集成
 
-## Hive On MapReduce
+## 13.1 Hive On MapReduce
 
 TODO
 
-## Hive On Spark
+## 13.2 Hive On Spark
+
+官方文档：https://cwiki.apache.org/confluence/display/Hive/Hive+on+Spark%3A+Getting+Started
+
+> - `Hive on Spark`：Hive既作为存储元数据又负责SQL的解析优化，语法是HQL语法，执行引擎变成了Spark，Spark负责采用RDD执行。
+> - `Spark on Hive`: Hive只作为存储元数据，Spark负责SQL解析优化，语法是Spark SQL语法，Spark负责采用RDD执行。
+>
+
+Spark上的Hive仅使用特定版本的Spark进行测试，因此给定版本的Hive只能保证与特定版本的Spark一起使用。其他版本的Spark可以与给定版本的Hive一起使用，但这并不能保证。下面是Hive版本及其相应的兼容Spark版本的列表。
+
+| Hive Version | Spark Version |
+| :----------- | :------------ |
+| master       | 2.3.0         |
+| 3.0.x        | 2.3.0         |
+| 2.3.x        | 2.0.0         |
+| 2.2.x        | 1.6.0         |
+| 2.1.x        | 1.6.0         |
+| 2.0.x        | 1.5.0         |
+| 1.2.x        | 1.3.1         |
+| 1.1.x        | 1.2.0         |
+
+<font color="red">**注意：`hive 3.0.X`以后，预编译好的Hive3.1.2默认支持Spark2.3.0，因此从官网下载的 Hive3.1.2 和 Spark3.0.0 默认是不兼容的。默认支持的意思是Hive在调用Spark的Api时，使用的是2.3.0版本的Api，这些Api在Spark3时可能已经被移除了，或者签名变了。如果Hive运行在Spark3的环境中，必然出现ClassNotFound或者NoMethodDef之类的异常。
+如果要让Hive兼容`Spark 2.3.0`以后版本，则需要重新编译Hive 3.1.2。**</font>
+
+<font color="red">**编译步骤：官网下载Hive3.1.2源码，修改pom文件中引用的Spark版本为3.0.0，如果编译通过，直接打包获取jar包。如果报错，就根据提示，修改相关方法，直到不报错，打包获取jar包。**</font>
+
+
+
+准备：
+
+- hive 3.1.2 源码编译 
+- hadoop 3.2.2 预编译好的
+- spark 3.0.2 预编译好的/源码编译均可。
+
+### 13.2.1 YARN配置
+
+官方建议使用YARN的`fair scheduler`，而不是`capacity scheduler`。这里我还没有配置呢。
+
+### 13.2.2 Hive配置
+
+注意：上面提到的jar包（slf4j和guava这两个包与hadoop的冲突）冲突要解决，要不然配置之后也会发现Hive on Spark无法提交创建spark session。
+
+#### 13.2.2.1 在Hive中添加Spark的依赖
+
+`Hive 2.2.0` 之前，需要将spark-assembly jar链接到`$HIVE_HOME/lib`。
+
+从`Hive 2.2.0`开始，Hive on Spark运行的Spark版本为Spark 2.0.0及以上，不需要任何assembly jar了。
+
+以YARN 模式（yarn-client或yarn-cluster）运行时，需要将如下jar拷贝到`$HIVE_HOME/lib`
+
+- `scala-library`
+- `spark-core`
+- `spark-network-common`
+
+如：
+
+```bash
+cp $SPARK_HOME/jars/scala-library-2.12.10.jar $HIVE_HOME/lib
+cp /$SPARK_HOME/jars/spark-core_2.12-3.0.2.jar $HIVE_HOME/lib
+cp $SPARK_HOME/jars/spark-network-common_2.12-3.0.2.jar $HIVE_HOME/lib
+```
+
+以LOCAL模式运行时，需要将如下jar拷贝到`$HIVE_HOME/lib`
+
+- `scala-library`
+- `spark-core`
+- `spark-network-common`
+
+- chill-java  chill  jackson-module-paranamer  jackson-module-scala  jersey-container-servlet-core
+- jersey-server  json4s-ast  kryo-shaded  minlog  scala-xml  spark-launcher
+- spark-network-shuffle  spark-unsafe  xbean-asm5-shaded
+
+#### 13.2.2.2 配置执行引擎为Spark
+
+```bash
+set hive.execution.engine=spark;
+```
+
+#### 13.2.2.3配置Spark application相关的配置
+
+可以将`spark-defaults.conf`复制到Hive的classpath，也可以将如下的配置参数添加到`hive-site.xml`中：
+
+在`spark-defaults.conf`中为
+
+```bash
+spark.master	yarn
+spark.eventLog.enabled	true
+spark.eventLog.dir	hdfs://mycluster/spark-history
+spark.executor.memory	512m 
+spark.driver.memory	512m
+spark.serializer	org.apache.spark.serializer.KryoSerializer
+```
+
+在`hive-site.xml`中为
+
+```xml
+<property>
+<name>spark.master</name>
+<value>yarn</value> 
+</property>
+<property>
+<name>spark.eventLog.enabled</name>
+<value>true</value> 
+</property>
+<property>
+<name>spark.eventLog.dir</name>
+<value>hdfs://mycluster/spark-history</value> 
+</property>
+<property>
+  <name>spark.executor.memory</name>
+  <value>512m</value>
+</property>
+<property>
+  <name>spark.driver.memory</name>
+  <value>512m</value>
+</property>
+<property>
+<name>spark.serializer</name>
+<value>org.apache.spark.serializer.KryoSerializer</value> 
+</property>
+```
+
+#### 13.2.2.4 允许Yarn在节点上缓存必要的spark依赖jar，这样在应用程序运行时就不需要每次分发它。
+
+`Hive 2.2.0`之前，需要将`spark-assembly.jar`上传到hdfs中，上传的位置为`hive-site.xml`中的`spark.yarn.jar`配置项所决定。
+
+将`spark.yarn.jar`配置项添加到`hive-site.xml`
+
+```xml
+<property>
+  <name>spark.yarn.jar</name>
+  <value>hdfs://xxxx:8020/spark-assembly.jar</value>
+</property>
+```
+
+`Hive 2.2.0`及之后，需要将`$SPARK_HOME/jars`中的所有jar包上传到hdfs目录，目录路径由决定`hive-site.xml`中的`spark.yarn.jars`配置项决定。
+
+```xml
+<property>
+  <name>spark.yarn.jars</name>
+  <value>hdfs://xxxx:8020/spark-jars/*</value>
+</property>
+```
+
+### 13.2.3 Spark配置
+
+若要使用自己编译的spark，可以先去下载对应版本的spark源码。然后使用如下命令进行编译：
+
+```bash
+# 增加maven进程的内存，避免编译中由于内存问题被kill
+export MAVEN_OPTS="-Xmx2g -XX:MaxPermSize=512M -XX:ReservedCodeCacheSize=512m"
+./dev/make-distribution.sh --name "hadoop3.2-without-hive" --tgz "-Pyarn,hadoop-provided,hadoop-3.2,parquet-provided,orc-provided"
+
+# 官方提供的命令
+./dev/make-distribution.sh --name "hadoop2-without-hive" --tgz "-Pyarn,hadoop-provided,hadoop-2.7,parquet-provided,orc-provided"
+
+
+# 如果官方命令编译出来的spark集成到Hive on Spark有问题的话，可能是因为"hadoop-provided"这个配置导致编译之后没有yarn的包。
+# 那么可以使用如下的命令重新进行编译。
+./dev/make-distribution.sh --name "hadoop3.2-without-hive" --tgz "-Pyarn,hadoop-3.2,parquet-provided,orc-provided"
+
+# 重新编译了35min后，亲测可用了。
+```
+
+
+
+Hive on Spark 应用程序中，常见的需要调整的spark配置如下：
+
+```bash
+spark.executor.cores 建议5-7个
+spark.executor.memory	建议yarn.nodemanager.resource.memory-mb * (spark.executor.cores / yarn.nodemanager.resource.cpu-vcores) 
+spark.yarn.executor.memoryOverhead	建议15-20% of spark.executor.memory
+spark.executor.instances 依赖于spark.executor.memory + spark.yarn.executor.memoryOverhead
+```
+
+**Hive on Spark的推荐配置**
+
+```bash
+mapreduce.input.fileinputformat.split.maxsize=750000000
+hive.vectorized.execution.enabled=true
+
+hive.cbo.enable=true
+hive.optimize.reducededuplication.min.reducer=4
+hive.optimize.reducededuplication=true
+hive.orc.splits.include.file.footer=false
+hive.merge.mapfiles=true
+hive.merge.sparkfiles=false
+hive.merge.smallfiles.avgsize=16000000
+hive.merge.size.per.task=256000000
+hive.merge.orcfile.stripe.level=true
+hive.auto.convert.join=true
+hive.auto.convert.join.noconditionaltask=true
+hive.auto.convert.join.noconditionaltask.size=894435328
+hive.optimize.bucketmapjoin.sortedmerge=false
+hive.map.aggr.hash.percentmemory=0.5
+hive.map.aggr=true
+hive.optimize.sort.dynamic.partition=false
+hive.stats.autogather=true
+hive.stats.fetch.column.stats=true
+hive.vectorized.execution.reduce.enabled=false
+hive.vectorized.groupby.checkinterval=4096
+hive.vectorized.groupby.flush.percent=0.1
+hive.compute.query.using.stats=true
+hive.limit.pushdown.memory.usage=0.4
+hive.optimize.index.filter=true
+hive.exec.reducers.bytes.per.reducer=67108864
+hive.smbjoin.cache.rows=10000
+hive.exec.orc.default.stripe.size=67108864
+hive.fetch.task.conversion=more
+hive.fetch.task.conversion.threshold=1073741824
+hive.fetch.task.aggr=false
+mapreduce.input.fileinputformat.list-status.num-threads=5
+spark.kryo.referenceTracking=false
+spark.kryo.classesToRegister=org.apache.hadoop.hive.ql.io.HiveKey,org.apache.hadoop.io.BytesWritable,org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch
+```
+
+
+
+## 13.3 Hive On Tez
 
 TODO
 
-## Hive On Tez
-
-TODO
-
-## 13.1 Hive集成Accumulo
+## 13.4 Hive集成Accumulo
 
 https://cwiki.apache.org/confluence/display/Hive/AccumuloIntegration
 
 TODO
 
-## Hive集成HBase
+## 13.5 Hive集成HBase
 
 https://cwiki.apache.org/confluence/display/Hive/HBaseIntegration
 
 TODO
 
-## Hive集成Druid
+## 13.6 Hive集成Druid
 
 https://cwiki.apache.org/confluence/display/Hive/Druid+Integration
 
 TODO
 
-## Hive集成Kudu
+## 13.7 Hive集成Kudu
 
 https://cwiki.apache.org/confluence/display/Hive/Kudu+Integration
 
