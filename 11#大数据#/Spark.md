@@ -14,6 +14,32 @@ https://spark.apache.org/docs/3.0.2/sql-programming-guide.html
 
 注意，默认情况下Spark的security是关闭的。这意味着容易受到攻击。参考：https://spark.apache.org/docs/3.0.2/security.html
 
+**术语表**
+
+https://blog.csdn.net/u013603364/article/details/124207781
+
+| Term                           | Meaning                                                      |
+| :----------------------------- | :----------------------------------------------------------- |
+| Application                    | 基于Spark构建的用户程序。由集群上的*驱动程序*和*执行器*组成。Driver和Executor |
+| Application jar                | 包含用户的应用程序的JAR包，在某些情况下，用户会希望创建一个包含其应用程序及其依赖项的“uber jar”。用户的jar不应包含Hadoop或Spark库，这些库将在运行时从集群中获取。因为把这些包都加上的话，打的jar包会比较大。 |
+| Driver program                 | 运行应用程序中main()方法的进程，此进程会创建一个SparkContext对象。 |
+| Cluster manager                | 指的是在集群上获取资源的外部服务，常用的有 (e.g. standalone manager, Mesos, YARN) |
+| Deploy mode                    | cluster模式下，在集群内部运行Driver；client模式下，在集群外部运行client。以YARN为例，cluster模式会启动一个容器来运行Driver（对应YARN中的AM），client模式会在提交应用程序的节点启动一个进程来运行Driver。 |
+| Worker node                    | 集群中的计算节点，用于执行应用程序的代码。类似于Yarn中的NodeManager节点。 |
+| Executor                       | Application运行在Worker节点上的一个进程，该进程负责运行Task，并且负责将数据存在内存或者磁盘上， 每个Application都有各自独立的一批Executor |
+| Task                           | 工作单元，SparkContext会将task发给对应的executor，由executor来执行这些task。一个partition需要一个task来处理。 |
+| Job                            | 由一个或多个调度阶段Stage所组成的一次计算作业。job包含多个stage，stage包含多个task。 |
+| Stage                          | job会被划分为更小的任务集，称之为stage，包含多个task。通常stage之间被spark shuffle所隔开。 |
+| RDD：弹性分布式数据集          | Resillient Distributed Dataset，Spark的基本计算单元，可以通过一系列算子进行操作(主要有Transformation和Action操作)， |
+| NarrowDependency窄依赖         | 子RDD的分区只依赖父RDD的一个分区                             |
+| ShuffleDependency宽依赖        | 子RDD的分区只依赖父RDD的多个分区                             |
+| DAG：有向无环图                | Directed Acycle graph，反应RDD之间的依赖关系，<br/>  DAG其实就是一个JOB(会根据依赖关系被划分成多个Stage)<br/>  注意:一个Spark程序会有1~n个DAG,调用一次Action就会形成一个DAG |
+| DAGScheduler：有向无环图调度器 | 基于DAG划分Stage 并以TaskSet的形式提交Stage给TaskScheduler;<br/>  负责将作业拆分成不同阶段的具有依赖关系的多批任务;<br/>  最重要的任务之一就是：计算作业和任务的依赖关系，制定调度逻辑。<br/>  在SparkContext初始化的过程中被实例化，一个SparkContext对应创建一个DAGScheduler。 |
+| TaskScheduler：任务调度器      | 将Taskset提交给worker(集群)运行并回报结果;<br/><br/>  负责每个具体任务的实际物理调度。 |
+| SHS Web UI                     | Spark History Server                                         |
+
+
+
 ## 1.1 交互式命令行
 
 Spark提供了交互式命令行以便用户可以学习Spark的API。目前（2023.01.29）Spark提供了2种交互式命令行：
@@ -824,548 +850,9 @@ TODO
 
 
 
-## 1.10 集群模式（Cluster Mode）
 
-Spark应用程序其实就是运行在集群中的一系列独立的进程，这些进程由Driver进程中的SparkContext对象来协调。
 
-SparkContext可以连接到多种集群管理器，Standalone、Mesos、YARN、Kubernetes。
-
-1. SparkContext连接上集群管理器
-2. SparkContext发送应用程序代码（通常为JAR或Python文件）给executor
-3. SparkContext发送task给executor，executor运行task。
-
-![Spark cluster components](Spark.assets/cluster-overview.png)
-
-需要注意的是：
-
-- 每个应用程序都属于自己的executor进程。每个应用程序的executor运行在不同的jvm中，每个executor可以通过多线程运行多个task。如果不将数据写入外部存储系统，则无法在不同的Spark应用程序（SparkContext实例）之间共享数据。
-- 在此应用程序的生命周期内，Driver程序必须要监听和接收executor的连接。
-- 因为Driver进程需要调度task到executor上，因此Driver进程最好与worker节点距离近。一般在同一局域网中。
-
-### 集群管理器分类
-
-截止到Spark 3.3.X，目前支持如下几种集群管理器。
-
-- [Standalone](https://spark.apache.org/docs/3.0.2/spark-standalone.html) Spark自带的一个简单的集群管理器，配置使用较简单。
-- [Mesos](https://spark.apache.org/docs/3.0.2/running-on-mesos.html) 一个通用的集群管理器，也可以运行Hadoop MapReduce
-- [YARN](https://spark.apache.org/docs/3.0.2/running-on-yarn.html) Hadoop2中的资源管理器
-- [Kubernetes](https://spark.apache.org/docs/3.0.2/running-on-kubernetes.html) 一个用于自动容器化应用程序的部署、扩展和管理的开源系统。
-
-#### Spark Standalone模式
-
-参考：https://spark.apache.org/docs/3.0.2/spark-standalone.html
-
-##### 在集群中安装Spark Standalone
-
-将编译好的Spark放置到集群中的每个节点就行了。
-
-##### 手动启动Spark Standalone集群
-
-启动一个standalone的master服务。
-
-```shell
-./sbin/start-master.sh
-```
-
-启动成功后，会在控制台打印出`spark://HOST:PORT`，这就是mater的URL，也可以在`http://localhost:8080`（默认）查看master的URL。在创建SparkContext时，传递此master的URL给SparkContext。
-
-启动一个或多个worker服务，并让worker连接到master。
-
-```shell
-./sbin/start-slave.sh <master-spark-URL>
-```
-
-worker启动之后，可以在master的Spark web ui `http://localhost:8080`（默认）中查看有哪些worker。
-
-启动master和worker时支持的配置项：
-
-| Argument                    | Meaning                                                      |
-| :-------------------------- | :----------------------------------------------------------- |
-| `-h HOST`, `--host HOST`    | Hostname to listen on                                        |
-| `-i HOST`, `--ip HOST`      | Hostname to listen on (**deprecated**, use -h or --host)     |
-| `-p PORT`, `--port PORT`    | Port for service to listen on (default: 7077 for master, random for worker) |
-| `--webui-port PORT`         | Port for web UI (default: 8080 for master, 8081 for worker)  |
-| `-c CORES`, `--cores CORES` | Total CPU cores to allow Spark applications to use on the machine (default: all available); **only on worker** |
-| `-m MEM`, `--memory MEM`    | Total amount of memory to allow Spark applications to use on the machine, in a format like 1000M or 2G (default: your machine's total RAM minus 1 GiB); **only on worker** |
-| `-d DIR`, `--work-dir DIR`  | Directory to use for scratch space and job output logs (default: SPARK_HOME/work); **only on worker** |
-| `--properties-file FILE`    | Path to a custom Spark properties file to load (default: conf/spark-defaults.conf) |
-
-在使用集群启停脚本之前，需要一个`${SPARK_HOME}/conf/salves`文件，表示每行一个worker的主机名，我们需要启停这些worker。`conf/slaves`文件不存在时，则只在本机启动一个worker，主要用于测试。
-
-master通过`ssh`去访问每个worker。可以配置master免密访问所有worker，也可以在环境变量中配置`SPARK_SSH_FOREGROUN`来让master可以根据账/密来访问每个worker。
-
-下述脚本在`${SPARK_HOME}`目录下。
-
-- `sbin/start-master.sh` - 在本机启动一个master服务。
-- `sbin/start-slaves.sh` - 在`conf/slaves`中的机器上分别启动一个worker服务。
-- `sbin/start-slave.sh` - 在本机启动一个worker服务。
-- `sbin/start-all.sh` - 在本机启动master服务，根据`conf/slaves`中的机器上启动worker服务。
-- `sbin/stop-master.sh` - 停止已启动的master服务。TODO不确定是否一定要去master所在机器执行。
-- `sbin/stop-slave.sh` - 停止本机上的worker服务。
-- `sbin/stop-slaves.sh` - 停止`conf/slaves`中机器上的worker服务。
-- `sbin/stop-all.sh` - 停止所有master和worker服务。
-
-**TODO某些脚本必须在运行Spark Standalone的master服务的机器上执行。**
-
-可以通过`${SPARK_HOME}/conf/spark-env.sh`中配置环境变量来进一步配置Standalone集群。
-
-具体配置方法参考：https://spark.apache.org/docs/3.0.2/spark-standalone.html
-
-***注意：目前，集群启停脚本在windows系统中是不支持的。要在windows系统中运行Spark Standalone集群，需要手动启动master和worker服务。***
-
-##### 资源分配和配置
-
-分为两部分：配置worker的资源和给应用程序分配的资源。
-
- `spark.worker.resource.{resourceName}.amount` 控制分配给每个worker的资源。用户还必须指定`spark.worker.resourcesFile`或`spark.workr.resource.{resourceName}.discoveryScript`。
-
-当提交哒Spark Standalone的应用程序使用的是client模式时，需要通过`spark.Driver.resourcesFile`或`spark.driveer.resource.{resourceName}.discoveryScript`来指定driver所使用的资源。
-
-运行交互式`spoark-shell`
-
-```shell
-./bin/spark-shell --master spark://IP:PORT
-```
-
-在Spark Standalone集群中运行应用程序
-
-```scala
-val conf = new SparkConf()
-  .setMaster("spark://IP:PORT")
-  .setAppName("application11")
-val sc = new SparkContext(conf
-```
-
-##### 运行Spark应用程序
-
-Spark Standalone有两种部署模式：client和cluster。
-
-- client模式。driver运行在`spark-submit`这个进程中，提交完应用程序，这个进程仍然不会退出，因为driver还需要。
-- cluster模式。driver运行在集群中的某个worker节点的进程中，`spark-submit`的进程在提交完应用程序之后就退出来。
-
-Spark Standalone使用`--supervise`可以自动重启退出状态码为非零的应用程序。使用刚如下命令可以kill某应用程序。
-
-```shell
-./bin/spark-class org.apache.spark.deploy.Client kill <master url> <driver ID>
-```
-
-`http://<master url>:8080`可以查看到driver的id是多少。
-
-##### 资源调度
-
-目前（Spark 3.3.X），Spark Standalone支持持FIFO调度。（我理解所有应用程序都在一个队列中运行，不像YARN有资源和租户隔离）。
-
-通过 `spark.cores.max`可以控制应用程序所用的core数。
-
-通过配置master进程中的`SPARK_MASTER_OPTS`参数，可以设置应用程序默认使用的core数。
-
-```bash
-export SPARK_MASTER_OPTS="-Dspark.deploy.defaultCores=<value>"
-```
-
-
-
-##### executor调度
-
-`spark.executor.cores`可控制每个executor的core数量。
-
-##### 监控和日志
-
-master和worker服务都有自己的web ui，展示集群和job的统计信息。
-
-每个job的详细日志写入了每个工作节点的工作目录（默认为`${SPARK_HOME}/work`）。每个job会有两个目录：`stdout`和`stderr`
-
-##### 和Hadoop一起运行
-
-在集群内的节点上都部署上Spark，然后作为单独的服务来运行，Spark服务可以通过`hdfs://<namenode>:9000/<path>`来方法hdfs。
-
-也可以在局域网内，单独搞几个节点专门安装Spark，运行Spark Standalone集群。
-
-##### 配置端口已保证网络安全
-
-通常而言，Spark集群不会部署在公网，而是部署在企业内部的局域网中。通过防火墙、安全组更配置可以限制哪些主机可以访问集群，保证集群的网络安全。
-
-##### 高可用
-
-Spark Standalone集群可以识别出故障的worker，然后将job转移到其他worker。前面配置的都是单点的master，存在单点故障，需要实现高可用来解决单点故障问题。
-
-###### 通过Zookeeper实现Standby Master
-
-利用ZK提供的leader选举和状态存储功能，我们就可以在集群中运行多个master，这些master需要连接到同一个ZK集群。利用ZK的leader选举，一个master为active，其他master为standby。当active挂了，之后standby进行选举，选举出新的active，并恢复前active的状态，保证状态数据一致。
-
-ha的故障恢复过程可能要花费1-2分钟，已经提价的应用程序不影响的，新提交的应用程序在这1-2分钟，应该是提不了的。
-
-要启用恢复模式，在`spark-env.sh`中使用如下参数来配置`SPARK_DAEMON_JAVA_OPTS`：
-
-| Property Name                | Default | Meaning                                                      | Since Version |
-| :--------------------------- | :------ | :----------------------------------------------------------- | :------------ |
-| `spark.deploy.recoveryMode`  | NONE    | The recovery mode setting to recover submitted Spark jobs with cluster mode when it failed and relaunches. This is only applicable for cluster mode when running with Standalone or Mesos. | 0.8.1         |
-| `spark.deploy.zookeeper.url` | None    | When `spark.deploy.recoveryMode` is set to ZOOKEEPER, this configuration is used to set the zookeeper URL to connect to. | 0.8.1         |
-| `spark.deploy.zookeeper.dir` | None    | When `spark.deploy.recoveryMode` is set to ZOOKEEPER, this configuration is used to set the zookeeper directory to store recovery state. | 0.8.1         |
-
-配置好高可用之后，Spark的客户端（如`spark-shell`或`SparkContext`）需要指定amster 的URL为此格式： `spark://host1:port1,host2:port2`。依次尝试与master建立连接，直到遇到active的master。
-
-###### 通过本地文件系统实现单节点故障恢复
-
-ZooKeeper是实现生产级高可用性的最佳方法，但如果你只想在master进程停止时重新启动它，FILESYSTEM模式可以处理它。当应用程序和Workers注册时，它们有足够的状态写入到提供的目录中，以便在master进程重新启动时恢复它们。
-
-要启用FILESYSTEM的恢复模式，在`spark-env.sh`中使用如下参数来配置`SPARK_DAEMON_JAVA_OPTS`：
-
-| System property                  | Meaning                                                      | Since Version |
-| :------------------------------- | :----------------------------------------------------------- | :------------ |
-| `spark.deploy.recoveryMode`      | Set to FILESYSTEM to enable single-node recovery mode (default: NONE). | 0.8.1         |
-| `spark.deploy.recoveryDirectory` | The directory in which Spark will store recovery state, accessible from the Master's perspective. | 0.8.1         |
-
-#### Spark on Mesos模式
-
-TODO
-
-#### Spark on YARN模式
-
-参考：https://spark.apache.org/docs/3.0.2/running-on-yarn.html
-
-从Spark 0.6.0开始，支持YARN作为集群管理器了。
-
-##### 运行Spark on YARN
-
-确保`HADOOP_CONF_DIR`或`YARN_CONF_DIR`指向包含HADOOP集群（客户端）配置文件的目录。这些配置在Spar写入HDFS，并连接到YARN ResourceManager时会用到。此目录中包含的配置将分发到YARN集群，以便应用程序使用的所有容器都使用相同的配置。如果引用了非YARN的配置文件，那么这些配置应该在Spark 应用程序的配置文件中配置好。（当以client模式部署时，driver、executor和AM的一些配置）。
-
-Spark on YARN有两种部署模式：cluster和client。
-
-- cluster。Spark的driver运行在application master（AM）中，由YARN所管理。`spark-submit`作为YARN的客户端提交完应用程序之后就结束了。
-
-- client。Spark的driver运行在`spark-submit`同一个进程中，而AM只是用来向YARN请求资源的。
-
-  使用Spark on YARN，`--master yarn`而不用指定具体的master的URL，因为YARN的Resource Manager的地址是从Hadoop的配置文件中获取。
-
-以cluster模式运行一个Spark应用程序的格式应如下：
-
-```shell
-$ ./bin/spark-submit \
---class path.to.your.Class \
---master yarn \
---deploy-mode cluster \
-[options] \
-<app jar> \
-[app options]
-```
-
-例如：
-
-```shell
-$ ./bin/spark-submit --class org.apache.spark.examples.SparkPi \
-    --master yarn \
-    --deploy-mode cluster \
-    --driver-memory 4g \
-    --executor-memory 2g \
-    --executor-cores 1 \
-    --queue thequeue \
-    examples/jars/spark-examples*.jar \
-    10
-```
-
-`spark-submit`会启动一个YARN的客户端，向YARN提交作业。提交之后YARN会分配一个container用来运行AM。而SparkPi程序作为AM的子线程运行在其中。
-
-client模式则将`--deploy-mode`设置为`client`即可。
-
-##### 准备
-
-https://blog.csdn.net/penriver/article/details/116158249
-
-为了保证Spark能够获取到其运行时所需的jar包，我们需要设置`spark.yarn.archive`或`spark.yarn.jars`。如果两个都配置`spark.yarn.archive`的优先级更高。
-
-如果这两个参数都没有指定，则Spark会把`${SPARK_HOME}/jars`下的所有jar包打成个`.zip`包，并上传到HDFS中，这个过程非常耗时。
-
-参考：https://spark.apache.org/docs/3.0.2/configuration.html
-
-##### debugging你的应用程序
-
-在YARN中，executor和AM都是运行在container中的。YARN有两种处理container日志的方式：
-
-- 开启日志聚合。
-
-  如果开启了日志聚合(`yarn.log-aggregation-enable`设置为true)，container的日志会被复制到HDFS，并且从worker节点本地中删除这些日志文件。
-
-  方式一、通过`yarn logs --applicationId <应用程序ID> >> /tmp/<应用程序ID>.log`可以查看应用程序的所有日志了。
-
-  方式二、通过查看YARN配置中的`yarn.nodemanager.remote-app-log-dir`和`yarn.nodemanager.remote-app-log-dir-suffix`可知道日志在HDFS中的哪个路径下。
-
-  方式三、通过Spark Web UI在的Exectuors页面查看。需要同时运行`Spark历史服务器`和`MapReduce历史服务器`。需要配置好`yarn-site.xml`中的`yarn.log.server.url`配置项。`Spark历史服务器`Web UI上的日志URL会重定向到`MapReduce历史服务器`，进而可以查看聚合之后的日志。
-
-- 未开启日志聚合。
-
-  若没开启日志聚合，则应用程序的日志会保留在执行作业的节点的本地目录（`YARN_APP_LOGS_DIR`）中。`YARN_APP_LOGS_DIR`的子目录按照`application ID`和container ID`来组织日志文件。
-
-  方式一、可以登录对应的节点查看每个container的日志。
-
-  方式二、Spark Web UI中的Executors页面查看应用程序的日志（不需要运行`MapReduce历史服务器`）。
-
-  `yarn.nodemanager.local-dir`目录中存放了应用存储缓存在本地目录中的一些文件。如启动脚本、JAR包、用于启动每个container的所有环境变量。
-
-我们还可以使用自定义的`log4j`配置项来修改AM或executor的日志记录格式：
-
-- 使用`spark-submit --files log4j.properties`，随应用程序上传时，上传自定义的`log4j.properties`文件。
-- 添加配置项`-Dlog4j.configuration=<日志配置文件位置>`到`spark.driver.extraJavaOptions`或`spark.executor.extraJavaOptions`，此日志配置文件必须在所有节点都存在。
-- 修改`${SPARK_CONF_DIR}/log4j.properties`文件，会自动被上传
-
-YARN 3.1.0中增加了YARN上的资源调度。理想情况下，资源被隔离设置，以便执行者只能看到分配的资源。如果未启用隔离，则用户负责创建一个发现脚本，以确保执行者之间不共享资源。
-
-
-
-##### 注意事项
-
-- Whether core requests are honored in scheduling decisions depends on which scheduler is in use and how it is configured.
-- 在cluster模式下，`Spark executor`和`Spark driver`使用的本地目录是YARN配置的 `YARN.nodemanager.local dirs`。cluster模式会忽略`spark.local.dir`的配置。client模式下，Spark执行器将使用为YARN配置的本地目录，而`Spark driver`将使用`spark.local.dir`的配置。这是因为在client模式中，`driver`不会在YARN集群上运行，只有`executor`会运行在YARN集群中。
-- The `--files` and `--archives` options support specifying file names with the # similar to Hadoop. For example, you can specify: `--files localtest.txt#appSees.txt` and this will upload the file you have locally named `localtest.txt` into HDFS but this will be linked to by the name `appSees.txt`, and your application should use the name as `appSees.txt` to reference it when running on YARN.
-- The `--jars` option allows the `SparkContext.addJar` function to work if you are using it with local files and running in `cluster` mode. It does not need to be used if you are using it with HDFS, HTTP, HTTPS, or FTP files.
-- 4
-
-##### Keberos
-
-参考：https://spark.apache.org/docs/3.0.2/security.html#kerberos
-
-Spark on YARN的keberos相关配置。
-
-| Property Name                        | Default | Meaning                                                      | Since Version |
-| :----------------------------------- | :------ | :----------------------------------------------------------- | :------------ |
-| `spark.kerberos.keytab`              | (none)  | The full path to the file that contains the keytab for the principal specified above. This keytab will be copied to the node running the YARN Application Master via the YARN Distributed Cache, and will be used for renewing the login tickets and the delegation tokens periodically. Equivalent to the `--keytab` command line argument. (Works also with the "local" master.) | 3.0.0         |
-| `spark.kerberos.principal`           | (none)  | Principal to be used to login to KDC, while running on secure clusters. Equivalent to the `--principal` command line argument. (Works also with the "local" master.) | 3.0.0         |
-| `spark.yarn.kerberos.relogin.period` | 1m      | How often to check whether the kerberos TGT should be renewed. This should be set to a value that is shorter than the TGT renewal period (or the TGT lifetime if TGT renewal is not enabled). The default value should be enough for most deployments. | 2.3           |
-
-##### 配置外部shuffle服务（External Shuffle Service）
-
-如何在YARN集群中的每个NodeManager张都启动`Spark Shuffle Service`呢？
-
-1. 编译Spark，使用预编译好的Spark可跳过此步骤
-2. 找到`spark-<version>-yarn-shuffle.jar`。如果您自己构建spark，它应该位于`$spark_HOME/common/networkyarn/target/scala-<version>`之下，如果您使用的是发行版，它应该在`yarn目录`TODO之下。
-3. 将此jar添加到YARN集群中所有NodeManager的classpath中。
-4. 在所有节点的`yarn-site.xml`文件中添加`spark_shuffle=yarn.nodemanager.aux-services`，添加`yarn.nodemanager.aux-services.spark_shuffle.clas=org.apache.spark.network.yarn.YarnShuffleService`
-5. 增大NodeManager的堆大小，避免shuffle期间频繁GC，修改`etc/hadoop/yarn-env.sh`文件中的`YARN_HEAPSIZE`配置项。
-6. 重启集群中的所有NodeManager。
-
-`Spark Shuffle Servie`还有如下额外配置。
-
-
-
-| Property Name                      | Default | Meaning                                                      |
-| :--------------------------------- | :------ | :----------------------------------------------------------- |
-| `spark.yarn.shuffle.stopOnFailure` | `false` | 当初始化Spark Shuffle服务失败时，是否停止此`NodeManager`。此配置可以避免因Spark Shuffle服务未运行而导致应用程序失败。 |
-
-##### 使用Oozie运行你的应用程序
-
-`Apache Oozie`支持以工作流（workflow）的形式运行Spark 应用程序。
-
-##### 使用Spark历史服务器，而不是Spark Web UI
-
-可以设置`Spark历史服务器`作为应用程序的跟踪URL（还记得YARN界面跳转到哪儿吗，就是这个）。
-
-- 在应用程序侧，在spark的配置中设置`spark.yarn.historyServer.allowTracking=true`。如果application的UI被禁用，Spark便会使用`Spark历史服务器`的URL作为跟踪URL。
-- 在`Spark历史服务器`上，将`org.apache.Spark.deploy.yarn.YarnProxyRedirectFilter`添加到`spark.ui.filter`配置中的列表中。 
-
-####  Spark on Kubernetes模式
-
-TODO
-
-### 提交应用
-
-使用`${SPARK_HOME}/bin/spark-submit`脚本来提交应用程序
-
-参考：https://spark.apache.org/docs/3.0.2/submitting-applications.html
-
-#### 绑定应用程序的依赖项
-
-如果您的代码依赖于其他项目，则需要将它们与应用程序一起打包，以便将代码分发到Spark集群。为此，需要创建一个包含代码及其依赖项的jar（或“uber”jar）。sbt和Maven都有相应插件。创建jar时，将Spark和Hadoop的依赖级别设置为`proviede`，因为它们是由集群管理器在运行时提供的，不需要打包进jar中。
-
-如果应用程序是由Python编写的，可以使用`--py-files`参数指定需要提交的`.py`或`.zip`或`.egg`文件。
-
-#### 使用`spark-submit`运行应用程序
-
-
-
-```shell
-./bin/spark-submit \
-  --class <main-class> \
-  --master <master-url> \
-  --deploy-mode <deploy-mode> \
-  --conf <key>=<value> \
-  ... # other options
-  <application-jar> \
-  [application-arguments]
-```
-
-其中的`<application-jar>` 表示我们要提交运行的jar包路径，支持`hdfs://path`或`file://path`。
-
-`[application-arguments]` 表示传递给应用程序的主类的参数，多个参数空格分隔。
-
-常用的选项：
-
-- `--class` 应用程序的主类（应用程序的入口类），需要全路径。Java/Scala
-- `--master` 集群的Master URL。
-- `--deploy-mode` 默认为client。cluster/client。在本地运行driver，还是在集群中的某worker中运行。
-- `--conf` 任意的Spark配置参数。格式为key=value。多个配置参数格式为`--conf<key>=<value>--conf<key 2>=<value 2>`。若value中含有空格，使用双引号包裹"key=value 1"
-- `--jars` 需要添加到driver和executor的classpath中的jar包，逗号分隔。
-- `--packages` 需要添加到driver和executor的classpath的maven依赖。逗号分隔。格式为`groupId:artifactId:version`。配置之后，会依次从本地maven仓库、maven中央仓库、`--repositories`配置的远程maven仓库中获取此依赖。
-- `--py-files` 支持`.py`, `.zip`, `.egg`格式，需要添加到PYTHONPATH的文件，逗号分隔。
-- `--files` 需要放到每个executor的工作目录的文件，逗号分隔。可以通过SparkFiles.get(fileName)获取这些文件。
-- `--name` 默认为TODO。应用程序的名称
-- `--driver-memory` 默认为1024M。dirver进程的内存大小，如1000M，2G。
-- `--driver-cores` 默认为1。`--deploy-mode`=`cluster`时有效。
-- `--executor-moemry` 默认为1G。executor的内存，如1000M，2G。
-- `--num-executors` 默认为2。此应用程序总的executor的数量。如果启用了spark资源动态调度，则初始的executor数量>=此值。
-- `--properties-file` 应用程序用到的配置文件，若未指定，则默认读取`${SPARK_HOME}/conf/spark-defaults.conf`中的配置项。
-- 其他选项，`spark-submit --help`
-
-当通过网关服务器（例如CDH的gateway，腾旭云的Router节点）来提交应用程序，那么可以使用`--deploy-mode`=`client`，因为driver和executor的距离很近。
-
-但是，如果提交应用程序的机器与集群距离很远，那么最好使用`--deploy-mode=client`，这样可以大大减小driver和executor通信时的网络延迟和开销。
-
-目前（Spark 3.3.X），针对Python应用程序standalone模式不支持`--deploy-mode`=`cluster`。
-
-要提交Python应用程序，只需在`<application-jar>`出替换为你的py文件即可。`--py-files` 提供此py文件所用到的python包或者模块。
-
-`spark-submit`使用示例：
-
-```shell
-# Run application locally on 8 cores
-./bin/spark-submit \
-  --class org.apache.spark.examples.SparkPi \
-  --master local[8] \
-  /path/to/examples.jar \
-  100
-
-# Run on a Spark standalone cluster in client deploy mode
-./bin/spark-submit \
-  --class org.apache.spark.examples.SparkPi \
-  --master spark://207.184.161.138:7077 \
-  --executor-memory 20G \
-  --total-executor-cores 100 \
-  /path/to/examples.jar \
-  1000
-
-# Run on a Spark standalone cluster in cluster deploy mode with supervise
-./bin/spark-submit \
-  --class org.apache.spark.examples.SparkPi \
-  --master spark://207.184.161.138:7077 \
-  --deploy-mode cluster \
-  --supervise \
-  --executor-memory 20G \
-  --total-executor-cores 100 \
-  /path/to/examples.jar \
-  1000
-
-# Run on a YARN cluster
-export HADOOP_CONF_DIR=XXX
-./bin/spark-submit \
-  --class org.apache.spark.examples.SparkPi \
-  --master yarn \
-  --deploy-mode cluster \  # can be client for client mode
-  --executor-memory 20G \
-  --num-executors 50 \
-  /path/to/examples.jar \
-  1000
-
-# Run a Python application on a Spark standalone cluster
-./bin/spark-submit \
-  --master spark://207.184.161.138:7077 \
-  examples/src/main/python/pi.py \
-  1000
-
-# Run on a Mesos cluster in cluster deploy mode with supervise
-./bin/spark-submit \
-  --class org.apache.spark.examples.SparkPi \
-  --master mesos://207.184.161.138:7077 \
-  --deploy-mode cluster \
-  --supervise \
-  --executor-memory 20G \
-  --total-executor-cores 100 \
-  http://path/to/examples.jar \
-  1000
-
-# Run on a Kubernetes cluster in cluster deploy mode
-./bin/spark-submit \
-  --class org.apache.spark.examples.SparkPi \
-  --master k8s://xx.yy.zz.ww:443 \
-  --deploy-mode cluster \
-  --executor-memory 20G \
-  --num-executors 50 \
-  http://path/to/examples.jar \
-  1000
-```
-
-
-
-#### Master URLs
-
-目前Spark支持如下几种Master URL：
-
-| Master URL                        | Meaning                                                      |
-| :-------------------------------- | :----------------------------------------------------------- |
-| `local                            | 在本地运行Spark，单线程，无并发。                            |
-| `local[K]`                        | 在本地运行Spark，K个线程                                     |
-| `local[K,F]`                      | Run Spark locally with K worker threads and F maxFailures (see [spark.task.maxFailures](https://spark.apache.org/docs/3.0.2/configuration.html#scheduling) for an explanation of this variable) |
-| `local[*]`                        | 在本地运行Spark，线程数为cpu核数。                           |
-| `local[*,F]`                      | Run Spark locally with as many worker threads as logical cores on your machine and F maxFailures. |
-| `spark://HOST:PORT`               | 连接到指定的[Spark standalone cluster](https://spark.apache.org/docs/3.0.2/spark-standalone.html) |
-| `spark://HOST1:PORT1,HOST2:PORT2` | 连接到指定的 [Spark standalone cluster with standby masters with Zookeeper](https://spark.apache.org/docs/3.0.2/spark-standalone.html#standby-masters-with-zookeeper). 需要列出所有master |
-| `mesos://HOST:PORT`               | 连接到Mesos集群。若Mesos集群使用了Zookeeper，则使用`mesos://zk://...` |
-| `yarn`                            | 连接到YARN集群                                               |
-| `k8s://HOST:PORT`                 | 连接到Kubernetes集群，目前仅支持--deploy-mode=cluster。默认使用TLS加密，若要不使用加密，则使用`k8s://http://HOST:PORT`。 |
-
-#### 从文件中加载配置
-
-`spark-submit`命令可以从文件中读取Spark配置项，并传递给你的应用程序。默认从`${SPARK_HOME}/conf/spark-defaults.conf`读取。
-
-参考：https://spark.apache.org/docs/3.0.2/configuration.html#loading-default-configurations
-
-
-
-#### 高级依赖管理
-
-`spark-submit`命令行选项中的`--jars`
-
-- `file://` 每个executor会从driver的http文件服务器拉取JARS
-- `hdfs://`,`http://`,`https://`,`ftp://` 从此URL拉取JARS
-- `local://` 从每个worker节点的本地获取JARS
-
-### 监控
-
-每个驱动程序都有一个web UI，通常在端口4040上，显示该job正在运行的task、executor和storage使用情况的信息。只需在web浏览器中转到`http://<driver node>:4040`即可访问此UI。
-
-参考：https://spark.apache.org/docs/3.0.2/monitoring.html
-
-### job调度
-
-Spark可以在应用程序之间（在集群管理器级别）和应用程序内部（如果在同一SparkContext上进行多个计算）控制资源分配。
-
-参考：https://spark.apache.org/docs/3.0.2/job-scheduling.html
-
-### 术语表
-
-https://blog.csdn.net/u013603364/article/details/124207781
-
-| Term                           | Meaning                                                      |
-| :----------------------------- | :----------------------------------------------------------- |
-| Application                    | 基于Spark构建的用户程序。由集群上的*驱动程序*和*执行器*组成。Driver和Executor |
-| Application jar                | 包含用户的应用程序的JAR包，在某些情况下，用户会希望创建一个包含其应用程序及其依赖项的“uber jar”。用户的jar不应包含Hadoop或Spark库，这些库将在运行时从集群中获取。因为把这些包都加上的话，打的jar包会比较大。 |
-| Driver program                 | 运行应用程序中main()方法的进程，此进程会创建一个SparkContext对象。 |
-| Cluster manager                | 指的是在集群上获取资源的外部服务，常用的有 (e.g. standalone manager, Mesos, YARN) |
-| Deploy mode                    | cluster模式下，在集群内部运行Driver；client模式下，在集群外部运行client。以YARN为例，cluster模式会启动一个容器来运行Driver（对应YARN中的AM），client模式会在提交应用程序的节点启动一个进程来运行Driver。 |
-| Worker node                    | 集群中的计算节点，用于执行应用程序的代码。类似于Yarn中的NodeManager节点。 |
-| Executor                       | Application运行在Worker节点上的一个进程，该进程负责运行Task，并且负责将数据存在内存或者磁盘上， 每个Application都有各自独立的一批Executor |
-| Task                           | 工作单元，SparkContext会将task发给对应的executor，由executor来执行这些task。一个partition需要一个task来处理。 |
-| Job                            | 由一个或多个调度阶段Stage所组成的一次计算作业。job包含多个stage，stage包含多个task。 |
-| Stage                          | job会被划分为更小的任务集，称之为stage，包含多个task。通常stage之间被spark shuffle所隔开。 |
-| RDD：弹性分布式数据集          | Resillient Distributed Dataset，Spark的基本计算单元，可以通过一系列算子进行操作(主要有Transformation和Action操作)， |
-| NarrowDependency窄依赖         | 子RDD的分区只依赖父RDD的一个分区                             |
-| ShuffleDependency宽依赖        | 子RDD的分区只依赖父RDD的多个分区                             |
-| DAG：有向无环图                | Directed Acycle graph，反应RDD之间的依赖关系，<br/>  DAG其实就是一个JOB(会根据依赖关系被划分成多个Stage)<br/>  注意:一个Spark程序会有1~n个DAG,调用一次Action就会形成一个DAG |
-| DAGScheduler：有向无环图调度器 | 基于DAG划分Stage 并以TaskSet的形式提交Stage给TaskScheduler;<br/>  负责将作业拆分成不同阶段的具有依赖关系的多批任务;<br/>  最重要的任务之一就是：计算作业和任务的依赖关系，制定调度逻辑。<br/>  在SparkContext初始化的过程中被实例化，一个SparkContext对应创建一个DAGScheduler。 |
-| TaskScheduler：任务调度器      | 将Taskset提交给worker(集群)运行并回报结果;<br/><br/>  负责每个具体任务的实际物理调度。 |
-| SHS Web UI                     | Spark History Server                                         |
-
-
-
-## 1.11 作业调度
+## 1.10 作业调度
 
 参考：https://spark.apache.org/docs/3.0.2/job-scheduling.html
 
@@ -1554,7 +1041,7 @@ SET spark.sql.thriftserver.scheduler.pool=accounting;
 
 
 
-## 1.12 Spark相关的硬件资源配置
+## 1.11 Spark相关的硬件资源配置
 
 参考：https://spark.apache.org/docs/3.0.2/hardware-provisioning.html
 
@@ -1953,7 +1440,415 @@ Scala下载地址：https://www.scala-lang.org/download/all.html
 添加本地的scala 地址
 `Project Structure --> Global Libraries -> 添加`
 
-加入后, 你可以发现IDEA已经能加载scala Library了.
+加入后, 你可以发现IDEA已经能加载scala Library了
+
+## 2.2 local模式（local mode）
+
+当解压完Spark二进制包之后，无需做任何配置，就可以使用local模式来使用spark了。
+
+**单线程数运行**
+
+```bash
+./bin/spark-shell --master local
+```
+
+**2个线程数运行**
+
+```bash
+./bin/spark-shell --master local[2]
+```
+
+**与CPU核数相同的线程数运行**
+
+```bash
+./bin/spark-shell --master local[*]
+```
+
+**运行pyspark**
+
+```bash
+./bin/pyspark --master local[2]
+```
+
+**运行sparkR**
+
+```bash
+./bin/sparkR --master local[2]
+```
+
+使用**spark-submit**来提交application
+
+```bash
+./bin/spark-submit examples/src/main/python/pi.py 10
+# 或
+./bin/spark-submit examples/src/main/r/dataframe.R
+```
+
+**运行提供的样例**
+
+```bash
+./bin/run-example SparkPi 10
+```
+
+## 2.3 集群模式（Cluster Mode）
+
+Spark应用程序其实就是运行在集群中的一系列独立的进程，这些进程由Driver进程中的`SparkContext对象`来协调。
+
+SparkContext可以连接到多种集群管理器，`Standalone`、`Mesos`、`YARN`、`Kubernetes`。
+
+1. SparkContext连接上集群管理器
+2. SparkContext发送应用程序代码（通常为JAR或Python文件）给executor
+3. SparkContext发送task给executor，executor运行task。
+
+![Spark cluster components](Spark.assets/cluster-overview.png)
+
+需要注意的是：
+
+- 每个应用程序都属于自己的executor进程。每个应用程序的executor运行在不同的jvm中，每个executor可以通过多线程运行多个task。如果不将数据写入外部存储系统，则无法在不同的Spark应用程序（SparkContext实例）之间共享数据。
+- 在此应用程序的生命周期内，Driver程序必须要监听和接收executor的连接。
+- 因为Driver进程需要调度task到executor上，因此Driver进程最好与worker节点距离近。一般在同一局域网中。
+
+**集群管理器分类**
+
+截止到Spark 3.3.X，目前支持如下几种集群管理器。
+
+- [Standalone](https://spark.apache.org/docs/3.0.2/spark-standalone.html) Spark自带的一个简单的集群管理器，配置使用较简单。
+- [Mesos](https://spark.apache.org/docs/3.0.2/running-on-mesos.html) 一个通用的集群管理器，也可以运行Hadoop MapReduce
+- [YARN](https://spark.apache.org/docs/3.0.2/running-on-yarn.html) Hadoop2中的资源管理器
+- [Kubernetes](https://spark.apache.org/docs/3.0.2/running-on-kubernetes.html) 一个用于自动容器化应用程序的部署、扩展和管理的开源系统。
+
+### 2.3.1 Spark Standalone模式
+
+参考：https://spark.apache.org/docs/3.0.2/spark-standalone.html
+
+#### 2.3.1.1 在集群中安装Spark Standalone
+
+将编译好的Spark放置到集群中的每个节点就行了。
+
+#### 2.3.1.2 手动启动Spark Standalone集群
+
+启动一个standalone的master服务。
+
+```shell
+./sbin/start-master.sh
+```
+
+启动成功后，会在控制台打印出`spark://HOST:PORT`，这就是mater的URL，也可以在`http://localhost:8080`（默认）查看master的URL。在创建SparkContext时，传递此master的URL给SparkContext。
+
+启动一个或多个worker服务，并让worker连接到master。
+
+```shell
+./sbin/start-slave.sh <master-spark-URL>
+```
+
+worker启动之后，可以在master的Spark web ui `http://localhost:8080`（默认）中查看有哪些worker。
+
+启动master和worker时支持的配置项：
+
+| Argument                    | Meaning                                                      |
+| :-------------------------- | :----------------------------------------------------------- |
+| `-h HOST`, `--host HOST`    | Hostname to listen on                                        |
+| `-i HOST`, `--ip HOST`      | Hostname to listen on (**deprecated**, use -h or --host)     |
+| `-p PORT`, `--port PORT`    | Port for service to listen on (default: 7077 for master, random for worker) |
+| `--webui-port PORT`         | Port for web UI (default: 8080 for master, 8081 for worker)  |
+| `-c CORES`, `--cores CORES` | Total CPU cores to allow Spark applications to use on the machine (default: all available); **only on worker** |
+| `-m MEM`, `--memory MEM`    | Total amount of memory to allow Spark applications to use on the machine, in a format like 1000M or 2G (default: your machine's total RAM minus 1 GiB); **only on worker** |
+| `-d DIR`, `--work-dir DIR`  | Directory to use for scratch space and job output logs (default: SPARK_HOME/work); **only on worker** |
+| `--properties-file FILE`    | Path to a custom Spark properties file to load (default: conf/spark-defaults.conf) |
+
+在使用集群启停脚本之前，需要一个`${SPARK_HOME}/conf/salves`文件，表示每行一个worker的主机名，我们需要启停这些worker。`conf/slaves`文件不存在时，则只在本机启动一个worker，主要用于测试。
+
+master通过`ssh`去访问每个worker。可以配置master免密访问所有worker，也可以在环境变量中配置`SPARK_SSH_FOREGROUN`来让master可以根据账/密来访问每个worker。
+
+下述脚本在`${SPARK_HOME}`目录下。
+
+- `sbin/start-master.sh` - 在本机启动一个master服务。
+- `sbin/start-slaves.sh` - 在`conf/slaves`中的机器上分别启动一个worker服务。
+- `sbin/start-slave.sh` - 在本机启动一个worker服务。
+- `sbin/start-all.sh` - 在本机启动master服务，根据`conf/slaves`中的机器上启动worker服务。
+- `sbin/stop-master.sh` - 停止已启动的master服务。TODO不确定是否一定要去master所在机器执行。
+- `sbin/stop-slave.sh` - 停止本机上的worker服务。
+- `sbin/stop-slaves.sh` - 停止`conf/slaves`中机器上的worker服务。
+- `sbin/stop-all.sh` - 停止所有master和worker服务。
+
+**TODO某些脚本必须在运行Spark Standalone的master服务的机器上执行。**
+
+可以通过`${SPARK_HOME}/conf/spark-env.sh`中配置环境变量来进一步配置Standalone集群。
+
+具体配置方法参考：https://spark.apache.org/docs/3.0.2/spark-standalone.html
+
+***注意：目前，集群启停脚本在windows系统中是不支持的。要在windows系统中运行Spark Standalone集群，需要手动启动master和worker服务。***
+
+#### 2.3.1.3 资源分配和配置
+
+分为两部分：配置worker的资源和给应用程序分配的资源。
+
+ `spark.worker.resource.{resourceName}.amount` 控制分配给每个worker的资源。用户还必须指定`spark.worker.resourcesFile`或`spark.workr.resource.{resourceName}.discoveryScript`。
+
+当提交哒Spark Standalone的应用程序使用的是client模式时，需要通过`spark.Driver.resourcesFile`或`spark.driveer.resource.{resourceName}.discoveryScript`来指定driver所使用的资源。
+
+运行交互式`spoark-shell`
+
+```shell
+./bin/spark-shell --master spark://IP:PORT
+```
+
+在Spark Standalone集群中运行应用程序
+
+```scala
+val conf = new SparkConf()
+  .setMaster("spark://IP:PORT")
+  .setAppName("application11")
+val sc = new SparkContext(conf
+```
+
+#### 2.3.1.4 运行Spark应用程序
+
+Spark Standalone有两种部署模式：client和cluster。
+
+- client模式。driver运行在`spark-submit`这个进程中，提交完应用程序，这个进程仍然不会退出，因为driver还需要。
+- cluster模式。driver运行在集群中的某个worker节点的进程中，`spark-submit`的进程在提交完应用程序之后就退出来。
+
+Spark Standalone使用`--supervise`可以自动重启退出状态码为非零的应用程序。使用刚如下命令可以kill某应用程序。
+
+```shell
+./bin/spark-class org.apache.spark.deploy.Client kill <master url> <driver ID>
+```
+
+`http://<master url>:8080`可以查看到driver的id是多少。
+
+#### 2.3.1.5 资源调度
+
+目前（Spark 3.3.X），Spark Standalone支持持FIFO调度。（我理解所有应用程序都在一个队列中运行，不像YARN有资源和租户隔离）。
+
+通过 `spark.cores.max`可以控制应用程序所用的core数。
+
+通过配置master进程中的`SPARK_MASTER_OPTS`参数，可以设置应用程序默认使用的core数。
+
+```bash
+export SPARK_MASTER_OPTS="-Dspark.deploy.defaultCores=<value>"
+```
+
+
+
+#### 2.3.1.6 executor调度
+
+`spark.executor.cores`可控制每个executor的core数量。
+
+#### 2.3.1.7 监控和日志
+
+master和worker服务都有自己的web ui，展示集群和job的统计信息。
+
+每个job的详细日志写入了每个工作节点的工作目录（默认为`${SPARK_HOME}/work`）。每个job会有两个目录：`stdout`和`stderr`
+
+#### 2.3.1.8 和Hadoop一起运行
+
+在集群内的节点上都部署上Spark，然后作为单独的服务来运行，Spark服务可以通过`hdfs://<namenode>:9000/<path>`来方法hdfs。
+
+也可以在局域网内，单独搞几个节点专门安装Spark，运行Spark Standalone集群。
+
+#### 2.3.1.9 配置端口以保证网络安全
+
+通常而言，Spark集群不会部署在公网，而是部署在企业内部的局域网中。通过防火墙、安全组更配置可以限制哪些主机可以访问集群，保证集群的网络安全。
+
+#### 2.3.1.10 高可用
+
+Spark Standalone集群可以识别出故障的worker，然后将job转移到其他worker。前面配置的都是单点的master，存在单点故障，需要实现高可用来解决单点故障问题。
+
+###### 通过Zookeeper实现Standby Master
+
+利用ZK提供的leader选举和状态存储功能，我们就可以在集群中运行多个master，这些master需要连接到同一个ZK集群。利用ZK的leader选举，一个master为active，其他master为standby。当active挂了，之后standby进行选举，选举出新的active，并恢复前active的状态，保证状态数据一致。
+
+ha的故障恢复过程可能要花费1-2分钟，已经提价的应用程序不影响的，新提交的应用程序在这1-2分钟，应该是提不了的。
+
+要启用恢复模式，在`spark-env.sh`中使用如下参数来配置`SPARK_DAEMON_JAVA_OPTS`：
+
+| Property Name                | Default | Meaning                                                      | Since Version |
+| :--------------------------- | :------ | :----------------------------------------------------------- | :------------ |
+| `spark.deploy.recoveryMode`  | NONE    | The recovery mode setting to recover submitted Spark jobs with cluster mode when it failed and relaunches. This is only applicable for cluster mode when running with Standalone or Mesos. | 0.8.1         |
+| `spark.deploy.zookeeper.url` | None    | When `spark.deploy.recoveryMode` is set to ZOOKEEPER, this configuration is used to set the zookeeper URL to connect to. | 0.8.1         |
+| `spark.deploy.zookeeper.dir` | None    | When `spark.deploy.recoveryMode` is set to ZOOKEEPER, this configuration is used to set the zookeeper directory to store recovery state. | 0.8.1         |
+
+配置好高可用之后，Spark的客户端（如`spark-shell`或`SparkContext`）需要指定amster 的URL为此格式： `spark://host1:port1,host2:port2`。依次尝试与master建立连接，直到遇到active的master。
+
+###### 通过本地文件系统实现单节点故障恢复
+
+ZooKeeper是实现生产级高可用性的最佳方法，但如果你只想在master进程停止时重新启动它，FILESYSTEM模式可以处理它。当应用程序和Workers注册时，它们有足够的状态写入到提供的目录中，以便在master进程重新启动时恢复它们。
+
+要启用FILESYSTEM的恢复模式，在`spark-env.sh`中使用如下参数来配置`SPARK_DAEMON_JAVA_OPTS`：
+
+| System property                  | Meaning                                                      | Since Version |
+| :------------------------------- | :----------------------------------------------------------- | :------------ |
+| `spark.deploy.recoveryMode`      | Set to FILESYSTEM to enable single-node recovery mode (default: NONE). | 0.8.1         |
+| `spark.deploy.recoveryDirectory` | The directory in which Spark will store recovery state, accessible from the Master's perspective. | 0.8.1         |
+
+### 2.3.2 Spark on Mesos模式
+
+TODO
+
+### 2.3.3 Spark on YARN模式
+
+参考：https://spark.apache.org/docs/3.0.2/running-on-yarn.html
+
+从`Spark 0.6.0`开始，支持YARN作为集群管理器了。
+
+#### 2.3.3.1 运行Spark on YARN
+
+最简单的`Spark On YARN`就是在`spark-env.sh`中配置`HADOOP_CONF_DIR`或`YARN_CONF_DIR`环境变量即可。如下所示：
+
+```bash
+HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+```
+
+确保`HADOOP_CONF_DIR`或`YARN_CONF_DIR`指向包含HADOOP集群（客户端）配置文件的目录。这些配置在Spark写入HDFS，并连接到YARN `ResourceManager`时会用到。此目录中包含的配置将分发到YARN集群，以便应用程序使用的所有容器都使用相同的配置。如果引用了非YARN的配置文件，那么这些配置应该在Spark 应用程序的配置文件中配置好。（当以client模式部署时，driver、executor和AM的一些配置）。
+
+然后运行一个Spark On YARN的程序试试：
+
+![image-20230309152758421](Spark.assets/image-20230309152758421.png)
+
+打开我们的YARN Web UI，发现这个application已经提交到YARN集群中了。
+
+![image-20230309152727459](Spark.assets/image-20230309152727459.png)
+
+
+
+`Spark on YARN`有两种部署模式：`cluster`和`client`。
+
+- `cluster`。Spark的driver运行在`application master（AM）`中，由YARN所管理。`spark-submit`作为YARN的客户端提交完应用程序之后就结束了。
+
+- `client`。Spark的driver运行在`spark-submit`同一个进程中，而`AM`只是用来向YARN请求资源的。
+
+  使用`Spark on YARN`，`--master yarn`而不用指定具体的master的URL，因为YARN的`Resource Manager`的地址是从Hadoop的配置文件中获取。
+
+以cluster模式运行一个Spark应用程序的格式应如下：
+
+```shell
+$ ./bin/spark-submit \
+--class path.to.your.Class \
+--master yarn \
+--deploy-mode cluster \
+[options] \
+<app jar> \
+[app options]
+```
+
+例如：
+
+```shell
+$ ./bin/spark-submit --class org.apache.spark.examples.SparkPi \
+    --master yarn \
+    --deploy-mode cluster \
+    --driver-memory 4g \
+    --executor-memory 2g \
+    --executor-cores 1 \
+    --queue thequeue \
+    examples/jars/spark-examples*.jar \
+    10
+```
+
+`spark-submit`会启动一个YARN的客户端，向YARN提交作业。提交之后YARN会分配一个container用来运行AM。而SparkPi程序作为AM的子线程运行在其中。
+
+client模式则将`--deploy-mode`设置为`client`即可。
+
+#### 2.3.3.2 准备
+
+https://blog.csdn.net/penriver/article/details/116158249
+
+为了保证Spark能够获取到其运行时所需的jar包，我们需要设置`spark.yarn.archive`或`spark.yarn.jars`。如果两个都配置`spark.yarn.archive`的优先级更高。
+
+如果这两个参数都没有指定，则Spark会把`${SPARK_HOME}/jars`下的所有jar包打成个`.zip`包，并上传到HDFS中，这个过程非常耗时。
+
+参考：https://spark.apache.org/docs/3.0.2/configuration.html
+
+#### 2.3.3.3 debugging你的应用程序
+
+在YARN中，executor和AM都是运行在container中的。YARN有两种处理container日志的方式：
+
+- 开启日志聚合。
+
+  如果开启了日志聚合(`yarn.log-aggregation-enable`设置为true)，container的日志会被复制到HDFS，并且从worker节点本地中删除这些日志文件。
+
+  方式一、通过`yarn logs --applicationId <应用程序ID> >> /tmp/<应用程序ID>.log`可以查看应用程序的所有日志了。
+
+  方式二、通过查看YARN配置中的`yarn.nodemanager.remote-app-log-dir`和`yarn.nodemanager.remote-app-log-dir-suffix`可知道日志在HDFS中的哪个路径下。
+
+  方式三、通过Spark Web UI在的Exectuors页面查看。需要同时运行`Spark历史服务器`和`MapReduce历史服务器`。需要配置好`yarn-site.xml`中的`yarn.log.server.url`配置项。`Spark历史服务器`Web UI上的日志URL会重定向到`MapReduce历史服务器`，进而可以查看聚合之后的日志。
+
+- 未开启日志聚合。
+
+  若没开启日志聚合，则应用程序的日志会保留在执行作业的节点的本地目录（`YARN_APP_LOGS_DIR`）中。`YARN_APP_LOGS_DIR`的子目录按照`application ID`和container ID`来组织日志文件。
+
+  方式一、可以登录对应的节点查看每个container的日志。
+
+  方式二、Spark Web UI中的Executors页面查看应用程序的日志（不需要运行`MapReduce历史服务器`）。
+
+  `yarn.nodemanager.local-dir`目录中存放了应用存储缓存在本地目录中的一些文件。如启动脚本、JAR包、用于启动每个container的所有环境变量。
+
+我们还可以使用自定义的`log4j`配置项来修改AM或executor的日志记录格式：
+
+- 使用`spark-submit --files log4j.properties`，随应用程序上传时，上传自定义的`log4j.properties`文件。
+- 添加配置项`-Dlog4j.configuration=<日志配置文件位置>`到`spark.driver.extraJavaOptions`或`spark.executor.extraJavaOptions`，此日志配置文件必须在所有节点都存在。
+- 修改`${SPARK_CONF_DIR}/log4j.properties`文件，会自动被上传
+
+YARN 3.1.0中增加了YARN上的资源调度。理想情况下，资源被隔离设置，以便执行者只能看到分配的资源。如果未启用隔离，则用户负责创建一个发现脚本，以确保执行者之间不共享资源。
+
+
+
+#### 2.3.3.4 注意事项
+
+- Whether core requests are honored in scheduling decisions depends on which scheduler is in use and how it is configured.
+- 在cluster模式下，`Spark executor`和`Spark driver`使用的本地目录是YARN配置的 `YARN.nodemanager.local dirs`。cluster模式会忽略`spark.local.dir`的配置。client模式下，Spark执行器将使用为YARN配置的本地目录，而`Spark driver`将使用`spark.local.dir`的配置。这是因为在client模式中，`driver`不会在YARN集群上运行，只有`executor`会运行在YARN集群中。
+- The `--files` and `--archives` options support specifying file names with the # similar to Hadoop. For example, you can specify: `--files localtest.txt#appSees.txt` and this will upload the file you have locally named `localtest.txt` into HDFS but this will be linked to by the name `appSees.txt`, and your application should use the name as `appSees.txt` to reference it when running on YARN.
+- The `--jars` option allows the `SparkContext.addJar` function to work if you are using it with local files and running in `cluster` mode. It does not need to be used if you are using it with HDFS, HTTP, HTTPS, or FTP files.
+- 4
+
+#### 2.3.3.5 Keberos
+
+参考：https://spark.apache.org/docs/3.0.2/security.html#kerberos
+
+Spark on YARN的keberos相关配置。
+
+| Property Name                        | Default | Meaning                                                      | Since Version |
+| :----------------------------------- | :------ | :----------------------------------------------------------- | :------------ |
+| `spark.kerberos.keytab`              | (none)  | The full path to the file that contains the keytab for the principal specified above. This keytab will be copied to the node running the YARN Application Master via the YARN Distributed Cache, and will be used for renewing the login tickets and the delegation tokens periodically. Equivalent to the `--keytab` command line argument. (Works also with the "local" master.) | 3.0.0         |
+| `spark.kerberos.principal`           | (none)  | Principal to be used to login to KDC, while running on secure clusters. Equivalent to the `--principal` command line argument. (Works also with the "local" master.) | 3.0.0         |
+| `spark.yarn.kerberos.relogin.period` | 1m      | How often to check whether the kerberos TGT should be renewed. This should be set to a value that is shorter than the TGT renewal period (or the TGT lifetime if TGT renewal is not enabled). The default value should be enough for most deployments. | 2.3           |
+
+#### 2.3.3.6 配置外部shuffle服务（External Shuffle Service）
+
+如何在YARN集群中的每个NodeManager张都启动`Spark Shuffle Service`呢？
+
+1. 编译Spark，使用预编译好的Spark可跳过此步骤
+2. 找到`spark-<version>-yarn-shuffle.jar`。如果您自己构建spark，它应该位于`$spark_HOME/common/networkyarn/target/scala-<version>`之下，如果您使用的是发行版，它应该在`yarn目录`TODO之下。
+3. 将此jar添加到YARN集群中所有NodeManager的classpath中。
+4. 在所有节点的`yarn-site.xml`文件中添加`spark_shuffle=yarn.nodemanager.aux-services`，添加`yarn.nodemanager.aux-services.spark_shuffle.clas=org.apache.spark.network.yarn.YarnShuffleService`
+5. 增大NodeManager的堆大小，避免shuffle期间频繁GC，修改`etc/hadoop/yarn-env.sh`文件中的`YARN_HEAPSIZE`配置项。
+6. 重启集群中的所有NodeManager。
+
+`Spark Shuffle Servie`还有如下额外配置。
+
+
+
+| Property Name                      | Default | Meaning                                                      |
+| :--------------------------------- | :------ | :----------------------------------------------------------- |
+| `spark.yarn.shuffle.stopOnFailure` | `false` | 当初始化Spark Shuffle服务失败时，是否停止此`NodeManager`。此配置可以避免因Spark Shuffle服务未运行而导致应用程序失败。 |
+
+#### 2.3.3.7 使用Oozie运行你的应用程序
+
+`Apache Oozie`支持以工作流（workflow）的形式运行Spark 应用程序。
+
+#### 2.3.3.8 使用Spark历史服务器，而不是Spark Web UI
+
+可以设置`Spark历史服务器`作为应用程序的跟踪URL（还记得YARN界面跳转到哪儿吗，就是这个）。
+
+- 在应用程序侧，在spark的配置中设置`spark.yarn.historyServer.allowTracking=true`。如果application的UI被禁用，Spark便会使用`Spark历史服务器`的URL作为跟踪URL。
+- 在`Spark历史服务器`上，将`org.apache.Spark.deploy.yarn.YarnProxyRedirectFilter`添加到`spark.ui.filter`配置中的列表中。 
+
+###  2.3.4 Spark on Kubernetes模式
+
+TODO
+
+
 
 # 3. spark常用命令
 
@@ -1971,6 +1866,167 @@ spark自带的示例
 # For R examples, use spark-submit directly:
 ./bin/spark-submit examples/src/main/r/dataframe.R
 ```
+
+### 提交应用
+
+使用`${SPARK_HOME}/bin/spark-submit`脚本来提交应用程序
+
+参考：https://spark.apache.org/docs/3.0.2/submitting-applications.html
+
+#### 绑定应用程序的依赖项
+
+如果您的代码依赖于其他项目，则需要将它们与应用程序一起打包，以便将代码分发到Spark集群。为此，需要创建一个包含代码及其依赖项的jar（或“uber”jar）。sbt和Maven都有相应插件。创建jar时，将Spark和Hadoop的依赖级别设置为`proviede`，因为它们是由集群管理器在运行时提供的，不需要打包进jar中。
+
+如果应用程序是由Python编写的，可以使用`--py-files`参数指定需要提交的`.py`或`.zip`或`.egg`文件。
+
+#### 使用`spark-submit`运行应用程序
+
+
+
+```shell
+./bin/spark-submit \
+  --class <main-class> \
+  --master <master-url> \
+  --deploy-mode <deploy-mode> \
+  --conf <key>=<value> \
+  ... # other options
+  <application-jar> \
+  [application-arguments]
+```
+
+其中的`<application-jar>` 表示我们要提交运行的jar包路径，支持`hdfs://path`或`file://path`。
+
+`[application-arguments]` 表示传递给应用程序的主类的参数，多个参数空格分隔。
+
+常用的选项：
+
+- `--class` 应用程序的主类（应用程序的入口类），需要全路径。Java/Scala
+- `--master` 集群的Master URL。
+- `--deploy-mode` 默认为client。cluster/client。在本地运行driver，还是在集群中的某worker中运行。
+- `--conf` 任意的Spark配置参数。格式为key=value。多个配置参数格式为`--conf<key>=<value>--conf<key 2>=<value 2>`。若value中含有空格，使用双引号包裹"key=value 1"
+- `--jars` 需要添加到driver和executor的classpath中的jar包，逗号分隔。
+- `--packages` 需要添加到driver和executor的classpath的maven依赖。逗号分隔。格式为`groupId:artifactId:version`。配置之后，会依次从本地maven仓库、maven中央仓库、`--repositories`配置的远程maven仓库中获取此依赖。
+- `--py-files` 支持`.py`, `.zip`, `.egg`格式，需要添加到PYTHONPATH的文件，逗号分隔。
+- `--files` 需要放到每个executor的工作目录的文件，逗号分隔。可以通过SparkFiles.get(fileName)获取这些文件。
+- `--name` 默认为TODO。应用程序的名称
+- `--driver-memory` 默认为1024M。dirver进程的内存大小，如1000M，2G。
+- `--driver-cores` 默认为1。`--deploy-mode`=`cluster`时有效。
+- `--executor-moemry` 默认为1G。executor的内存，如1000M，2G。
+- `--num-executors` 默认为2。此应用程序总的executor的数量。如果启用了spark资源动态调度，则初始的executor数量>=此值。
+- `--properties-file` 应用程序用到的配置文件，若未指定，则默认读取`${SPARK_HOME}/conf/spark-defaults.conf`中的配置项。
+- 其他选项，`spark-submit --help`
+
+当通过网关服务器（例如CDH的gateway，腾旭云的Router节点）来提交应用程序，那么可以使用`--deploy-mode`=`client`，因为driver和executor的距离很近。
+
+但是，如果提交应用程序的机器与集群距离很远，那么最好使用`--deploy-mode=client`，这样可以大大减小driver和executor通信时的网络延迟和开销。
+
+目前（Spark 3.3.X），针对Python应用程序standalone模式不支持`--deploy-mode`=`cluster`。
+
+要提交Python应用程序，只需在`<application-jar>`出替换为你的py文件即可。`--py-files` 提供此py文件所用到的python包或者模块。
+
+`spark-submit`使用示例：
+
+```shell
+# Run application locally on 8 cores
+./bin/spark-submit \
+  --class org.apache.spark.examples.SparkPi \
+  --master local[8] \
+  /path/to/examples.jar \
+  100
+
+# Run on a Spark standalone cluster in client deploy mode
+./bin/spark-submit \
+  --class org.apache.spark.examples.SparkPi \
+  --master spark://207.184.161.138:7077 \
+  --executor-memory 20G \
+  --total-executor-cores 100 \
+  /path/to/examples.jar \
+  1000
+
+# Run on a Spark standalone cluster in cluster deploy mode with supervise
+./bin/spark-submit \
+  --class org.apache.spark.examples.SparkPi \
+  --master spark://207.184.161.138:7077 \
+  --deploy-mode cluster \
+  --supervise \
+  --executor-memory 20G \
+  --total-executor-cores 100 \
+  /path/to/examples.jar \
+  1000
+
+# Run on a YARN cluster
+export HADOOP_CONF_DIR=XXX
+./bin/spark-submit \
+  --class org.apache.spark.examples.SparkPi \
+  --master yarn \
+  --deploy-mode cluster \  # can be client for client mode
+  --executor-memory 20G \
+  --num-executors 50 \
+  /path/to/examples.jar \
+  1000
+
+# Run a Python application on a Spark standalone cluster
+./bin/spark-submit \
+  --master spark://207.184.161.138:7077 \
+  examples/src/main/python/pi.py \
+  1000
+
+# Run on a Mesos cluster in cluster deploy mode with supervise
+./bin/spark-submit \
+  --class org.apache.spark.examples.SparkPi \
+  --master mesos://207.184.161.138:7077 \
+  --deploy-mode cluster \
+  --supervise \
+  --executor-memory 20G \
+  --total-executor-cores 100 \
+  http://path/to/examples.jar \
+  1000
+
+# Run on a Kubernetes cluster in cluster deploy mode
+./bin/spark-submit \
+  --class org.apache.spark.examples.SparkPi \
+  --master k8s://xx.yy.zz.ww:443 \
+  --deploy-mode cluster \
+  --executor-memory 20G \
+  --num-executors 50 \
+  http://path/to/examples.jar \
+  1000
+```
+
+
+
+#### Master URLs
+
+目前Spark支持如下几种Master URL：
+
+| Master URL                        | Meaning                                                      |
+| :-------------------------------- | :----------------------------------------------------------- |
+| `local                            | 在本地运行Spark，单线程，无并发。                            |
+| `local[K]`                        | 在本地运行Spark，K个线程                                     |
+| `local[K,F]`                      | Run Spark locally with K worker threads and F maxFailures (see [spark.task.maxFailures](https://spark.apache.org/docs/3.0.2/configuration.html#scheduling) for an explanation of this variable) |
+| `local[*]`                        | 在本地运行Spark，线程数为cpu核数。                           |
+| `local[*,F]`                      | Run Spark locally with as many worker threads as logical cores on your machine and F maxFailures. |
+| `spark://HOST:PORT`               | 连接到指定的[Spark standalone cluster](https://spark.apache.org/docs/3.0.2/spark-standalone.html) |
+| `spark://HOST1:PORT1,HOST2:PORT2` | 连接到指定的 [Spark standalone cluster with standby masters with Zookeeper](https://spark.apache.org/docs/3.0.2/spark-standalone.html#standby-masters-with-zookeeper). 需要列出所有master |
+| `mesos://HOST:PORT`               | 连接到Mesos集群。若Mesos集群使用了Zookeeper，则使用`mesos://zk://...` |
+| `yarn`                            | 连接到YARN集群                                               |
+| `k8s://HOST:PORT`                 | 连接到Kubernetes集群，目前仅支持--deploy-mode=cluster。默认使用TLS加密，若要不使用加密，则使用`k8s://http://HOST:PORT`。 |
+
+#### 从文件中加载配置
+
+`spark-submit`命令可以从文件中读取Spark配置项，并传递给你的应用程序。默认从`${SPARK_HOME}/conf/spark-defaults.conf`读取。
+
+参考：https://spark.apache.org/docs/3.0.2/configuration.html#loading-default-configurations
+
+
+
+#### 高级依赖管理
+
+`spark-submit`命令行选项中的`--jars`
+
+- `file://` 每个executor会从driver的http文件服务器拉取JARS
+- `hdfs://`,`http://`,`https://`,`ftp://` 从此URL拉取JARS
+- `local://` 从每个worker节点的本地获取JARS
 
 ## Spark日志查看方法
 
@@ -2220,8 +2276,8 @@ Spark使用log4j来记录日志，通过`$SPARK_HOME/conf/log4j.properties`配�
 
 要让Spark能够从HDFS中读取和写入数据，那么要保证在Spark的classpath中存在如下两个配置文件：
 
-- core-site.xml
-- hdfs-site.xml
+- `core-site.xml`
+- `hdfs-site.xml`
 
 要使这些文件对Spark可见，请将`$spark_HOME/CONF/Spark-env.sh`中的`HADOOP_CONF_DIR`设置为`$HADOOP_HOME/etc/hadoop/conf`。
 
@@ -2507,6 +2563,8 @@ Spark通常做的是等待一段时间，希望繁忙的CPU能够释放出来。
 # 6. Spark监控
 
 参考：https://spark.apache.org/docs/3.0.2/monitoring.html
+
+每个驱动程序都有一个web UI，通常在端口4040上，显示该job正在运行的task、executor和storage使用情况的信息。只需在web浏览器中转到`http://<driver node>:4040`即可访问此UI。
 
 TODO
 
