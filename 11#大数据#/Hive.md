@@ -2906,6 +2906,28 @@ hive (default)> select e.empno, e.ename, d.deptno from emp e full join dept d on
    hive (default)> SELECT empno,dname FROM emp,dept;
    ```
 
+**笛卡尔积和FULL JOIN和INNER JOIN的区别**
+
+**答**：参考：https://www.likecs.com/show-148374.html
+
+> cross join（笛卡尔积） 象征着返回所有的情况，默认不使用 where进行过滤的，因为筛选之后就失去了”所有可能性“这种意义了，而 inner join默认使用on进行”匹配“，如果不使用on返回的是 cross join的所有可能性，也就失去了意义了
+>
+> 集合a(1,2,3),集合b(1,2,3)
+>
+> 1.笛卡尔积——返回3 * 3 =9 条记录，默认不用where
+>
+> 2.内连接——返回3条记录，默认使用on
+>
+> 
+
+**既然”连接条件“可以写在where字句里面，为什么还要用on关键字？**
+
+**答**：这是因为有两个原因
+
+> a. 更加清晰的把表与表之间”做连接”的条件，与其他条件区分开来，这好比小工的人力资源和行政是一体的，但公司大了，两者就可以分开，分工更清晰
+>
+> b. 在 ”inner join 内连接“ 中，on和where虽然意义不同，但结果相同，但在 outer join 中，结果就不一样了,**匹配条件放在where中是不会产生NULL值的**
+
 ## 6.4 排序
 
 ### 6.4.1 全局排序（Order By）
