@@ -2,7 +2,96 @@ Hadoop3.x和Hadoop2.x的区别
 
 # 1. Hadoop概念
 
-TODO
+## 机架感知
+
+**机架感知的目的**：为了实现容错，HDFS的block management使用机架感知，将block的副本放置在不同的机架。
+
+Hadoop的主守护进程（我理解就是NameNode）能够通过`core-site.xml`配置文件中配置的脚本或java类来获取worker节点的机架id。
+
+- 外部脚本文件
+
+  如果使用外部脚本，则将在`core-site.xml`配置文件中使用`net.topology.script.file.name`参数指定。与java类不同，Hadoop发行版中不包含外部拓扑脚本，而是由管理员提供。`net.topology.script.number.args`，默认为100，决定每次获取多少个IP的机架id。拓扑脚本的参数就为节点的IP，此配置限制了参数个数。
+
+- java类
+
+  如果使用java类进行拓扑映射，类名由`core-site.xml`配置文件中的`net.topology.node.switch.mapping.impl`参数指定。hadoop发行版中包含一个示例NetworkTopology.java，hadoop管理员可以对其进行自定义。使用Java类而不是外部脚本具有性能优势，因为Hadoop在新的工作节点注册时不需要派生外部进程。
+
+如果未设置`net.topology.script.file.name`或`net.topologi.node.switch.maping.impl`，则任何IP地址返回的机架id都为`/default rack`。
+
+python脚本示例：
+
+```python
+#!/usr/bin/python3
+# this script makes assumptions about the physical environment.
+#  1) each rack is its own layer 3 network with a /24 subnet, which
+# could be typical where each rack has its own
+#     switch with uplinks to a central core router.
+#
+#             +-----------+
+#             |core router|
+#             +-----------+
+#            /             \
+#   +-----------+        +-----------+
+#   |rack switch|        |rack switch|
+#   +-----------+        +-----------+
+#   | data node |        | data node |
+#   +-----------+        +-----------+
+#   | data node |        | data node |
+#   +-----------+        +-----------+
+#
+# 2) topology script gets list of IP's as input, calculates network address, and prints '/network_address/ip'.
+
+import netaddr
+import sys
+sys.argv.pop(0)                                                  # discard name of topology script from argv list as we just want IP addresses
+
+netmask = '255.255.255.0'                                        # set netmask to what's being used in your environment.  The example uses a /24
+
+for ip in sys.argv:                                              # loop over list of datanode IP's
+    address = '{0}/{1}'.format(ip, netmask)                      # format address string so it looks like 'ip/netmask' to make netaddr work
+    try:
+        network_address = netaddr.IPNetwork(address).network     # calculate and print network address
+        print("/{0}".format(network_address))
+    except:
+        print("/rack-unknown")                                   # print catch-all value if unable to calculate network address
+```
+
+shell脚本示例
+
+```bash
+#!/usr/bin/env bash
+# Here's a bash example to show just how simple these scripts can be
+# Assuming we have flat network with everything on a single switch, we can fake a rack topology.
+# This could occur in a lab environment where we have limited nodes,like 2-8 physical machines on a unmanaged switch.
+# This may also apply to multiple virtual machines running on the same physical hardware.
+# The number of machines isn't important, but that we are trying to fake a network topology when there isn't one.
+#
+#       +----------+    +--------+
+#       |jobtracker|    |datanode|
+#       +----------+    +--------+
+#              \        /
+#  +--------+  +--------+  +--------+
+#  |datanode|--| switch |--|datanode|
+#  +--------+  +--------+  +--------+
+#              /        \
+#       +--------+    +--------+
+#       |datanode|    |namenode|
+#       +--------+    +--------+
+#
+# With this network topology, we are treating each host as a rack.  This is being done by taking the last octet
+# in the datanode's IP and prepending it with the word '/rack-'.  The advantage for doing this is so HDFS
+# can create its 'off-rack' block copy.
+# 1) 'echo $@' will echo all ARGV values to xargs.
+# 2) 'xargs' will enforce that we print a single argv value per line
+# 3) 'awk' will split fields on dots and append the last field to the string '/rack-'. If awk
+#    fails to split on four dots, it will still print '/rack-' last field value
+
+echo $@ | xargs -n 1 | awk -F '.' '{print "/rack-"$NF}'
+```
+
+
+
+
 
 # 2. Hadoop安装和配置
 
