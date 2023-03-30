@@ -2,6 +2,8 @@ Hadoop3.x和Hadoop2.x的区别
 
 # 1. Hadoop概念
 
+hdfs知识详解：https://www.codenong.com/cs106154575/
+
 ## 机架感知
 
 **机架感知的目的**：为了实现容错，HDFS的block management使用机架感知，将block的副本放置在不同的机架。
@@ -662,6 +664,11 @@ MapReduce的JobHistoryServer服务。
 有两种HA的方案：
 
 - `NameNode HA with QJM`。使用`the Quorum Journal Manager (QJM)`在`Active NameNode`和`Standby NameNode`之前共享edit logs。
+
+  可参考文章：https://www.jianshu.com/p/eb077c9d0f1e
+
+  ![img](Hadoop3.x.assets/10599976-08e40bac019540c4.PNG)
+
 - `NameNode HA with NFS`。使用`NFS`在`Active NameNode`和`Standby NameNode`之前共享edit logs。
 
 ### 2.4.1 `NameNode HA with QJM`
@@ -1357,7 +1364,126 @@ YARN HA集群支持配置LB，通过RM web ui 的`/isAcitve` HTTP请求，可以
 
 # 3. Hadoop命令
 
+## Offline Image Viewer
+
+参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsImageViewer.html
+
+`Offline Image Viewer`是一种工具，用于将hdfs fsimage文件的内容转储为人类可读的格式，并提供只读的WebHDFS API，以便对Hadoop集群的命名空间进行离线分析和检查。该工具能够相对快速地处理非常大的image文件。该工具处理Hadoop 2.4及更高版本中包含的布局格式。如果您想处理较旧的布局格式，可以使用Hadoop 2.3的`Offline Image Viewer`或[oiv_legacy](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsImageViewer.html#oiv_legacy_Command)命令。如果该工具无法处理图像文件，它将干净地退出。**Offline Image Viewer不需要运行Hadoop集群；它在运行中完全离线。**
+
+**注意：如果要使用`oiv_legacy`命令，需要`dfs.namenode.legacy-oiv-image.dir`，这样standby Namenode或secondary Namenode才会在checkpoint的时候保存旧格式的fsimage到此配置项的目录中。**
+
+`Offline Image Viewer`提供了如下几种输出processor：
+
+- `Web Processor`。默认。它启动一个HTTP服务器，该服务器暴露只读的WebHDFS API。用户可以通过使用HTTP REST API以交互方式查看命名空间。它不支持安全模式，也不支持HTTPS。
+
+  使用方式：
+
+  第一步，启动HTTP服务器，用来暴露只读的WebHDFS API。
+
+  ```bash
+   bash$ bin/hdfs oiv -i fsimage
+     14/04/07 13:25:14 INFO offlineImageViewer.WebImageViewer: WebImageViewer
+     started. Listening on /127.0.0.1:5978. Press Ctrl+C to stop the viewer.
+  ```
+
+  第二步，通过如下命令获取namespace的image信息。
+
+  ```bash
+     bash$ bin/hdfs dfs -ls webhdfs://127.0.0.1:5978/
+     Found 2 items
+     drwxrwx--* - root supergroup          0 2014-03-26 20:16 webhdfs://127.0.0.1:5978/tmp
+     drwxr-xr-x   - root supergroup          0 2014-03-31 14:08 webhdfs://127.0.0.1:5978/user
+  ```
+
+  HTTP接口形式访问：
+
+  ```bash
+     bash$ curl -i http://127.0.0.1:5978/webhdfs/v1/?op=liststatus
+     HTTP/1.1 200 OK
+     Content-Type: application/json
+     Content-Length: 252
+  
+     {"FileStatuses":{"FileStatus":[
+     {"fileId":16386,"accessTime":0,"replication":0,"owner":"theuser","length":0,"permission":"755","blockSize":0,"modificationTime":1392772497282,"type":"DIRECTORY","group":"supergroup","childrenNum":1,"pathSuffix":"user"}
+     ]}}
+  ```
+
+- `XML Processor`。创建fsimage的XML文档，包含fsimage中的所有信息。
+
+  ```bash
+  bash$ bin/hdfs oiv -p XML -i fsimage -o fsimage.xml
+  ```
+
+- `ReverseXML Processor`。这与XML处理器相反；它从一个XML文件重建一个fsimage。该处理器可以轻松创建用于测试的fsimage，并在出现损坏时手动编辑fsimage。
+
+  ```bash
+  bash$ bin/hdfs oiv -p ReverseXML -i fsimage.xml -o fsimage
+  ```
+
+- `FileDistribution Processor`。是**用于分析命名空间image中的文件大小的工具**。分析fsimage中指定大小范围的文件个数。范围为[0, maxSize]，步长为`-step`。
+
+  ```bash
+  bash$ bin/hdfs oiv -p FileDistribution -maxSize maxSize -step size -i fsimage -o output
+        Size	NumFiles
+     4	1
+     12	1
+     16	1
+     20	1
+     totalFiles = 4
+     totalDirectories = 2
+     totalBlocks = 4
+     totalSpace = 48
+     maxFileSize = 21
+  ```
+
+  通过`-format`进行输出格式化
+
+  ```bash
+  bash$ bin/hdfs oiv -p FileDistribution -maxSize maxSize -step size -format -i fsimage -o output
+     Size Range	NumFiles
+     (0 B, 4 B]	1
+     (8 B, 12 B]	1
+     (12 B, 16 B]	1
+     (16 B, 21 B]	1
+     totalFiles = 4
+     totalDirectories = 2
+     totalBlocks = 4
+     totalSpace = 48
+     maxFileSize = 21
+  ```
+
+- `Delimited Processor`。生成一个文本文件，其中包含正在构建的inode和inode共有的所有元素，并用分隔符分隔。默认的分隔符是`\t`，但这可以通过`-demitter`参数进行更改。
+
+  ```bash
+  bash$ bin/hdfs oiv -p Delimited -delimiter delimiterString -i fsimage -o output
+     Path	Replication	ModificationTime	AccessTime	PreferredBlockSize	BlocksCount	FileSize	NSQUOTA	DSQUOTA	Permission	UserName	GroupName
+     /	0	2017-02-13 10:39	1970-01-01 08:00	0	0	0	9223372036854775807	-1	drwxr-xr-x	root	supergroup
+     /dir0	0	2017-02-13 10:39	1970-01-01 08:00	0	0	0	-1	-1	drwxr-xr-x	root	supergroup
+     /dir0/file0	1	2017-02-13 10:39	2017-02-13 10:39	134217728	1	1	0	0	-rw-r--r--	root	supergroup
+     /dir0/file1	1	2017-02-13 10:39	2017-02-13 10:39	134217728	1	1	0	0	-rw-r--r--	root	supergroup
+     /dir0/file2	1	2017-02-13 10:39	2017-02-13 10:39	134217728	1	1	0	0	-rw-r--r--	root	supergroup
+  ```
+
+- `DetectCorruption Processor`。检测image的潜在损坏。以分隔格式输出已发现损坏的image。
+
+  ```bash
+  bash$ bin/hdfs oiv -p DetectCorruption -delimiter delimiterString -t temporaryDir -i fsimage -o output
+     CorruptionType	Id	IsSnapshot	ParentPath	ParentId	Name	NodeType	CorruptChildren
+      MissingChild	16385	false	/	Missing		Node	1
+      MissingChild	16386	false	/	16385	dir0	Node	2
+      CorruptNode	16388	true		16386		Unknown	0
+      CorruptNode	16389	true		16386		Unknown	0
+      CorruptNodeWithMissingChild	16391	true		16385		Unknown	1
+      CorruptNode	16394	true		16391		Unknown	0
+  ```
+
+  
+
 ## 管理员命令
+
+TODO
+
+## HA命令
 
 ```bash
 hdfs haadmin --help
@@ -1372,11 +1498,428 @@ Usage: haadmin
 ```
 
 - **-transitionToActive**：将指定NameNode的状态转换为Active。
+
 - **-transitionToStandby** ：将指定NameNode的状态转换为Standby。
+
 - **-failover** ：进行故障转移，在将Active从第一个NameNode转移到第二个NameNode。
+
+  z注意：forcefence and forceactive flags not supported with auto-failover enabled.
+
 - **-getServiceState** ：获取指定NameNode的状态，Active/Standby。
+
 - **-getAllServiceState** ：获取**所有**NameNode的状态，Active/Standby。
+
 - **-checkHealth** ：获取指定NameNode的健康状态。健康则什么结果都没有，不健康则会有具体的报错信息。**功能目前尚未完全实现，不建议使用。**
 
 <font color="red">**注意：不执行fence，因此一般不建议使用这两个命令，而是建议使用`hdfs haadmin -failover`。**</font>
 
+# 4. 调优
+
+HDFS参数调优
+
+**1.NameNode数据目录**
+
+**dfs.name.dir, dfs.namenode.name.dir**
+
+指定一个本地文件系统路径，决定NN在何处存放fsimage和editlog文件。可以通过逗号分隔指定多个路径. 目前我们的产线环境只配置了一个目录，并存放在了做了RAID1或RAID5的磁盘上。
+
+
+
+**2.DataNode数据目录**
+
+**dfs.data.dir, dfs.datanode.data.dir**
+
+指定DN存放块数据的本地盘路径，可以通过逗号分隔指定多个路径。在生产环境可能会在一个DN上挂多块盘。
+
+
+
+**3.数据块的副本数**
+
+**dfs.replication**
+
+数据块的副本数，默认值为3
+
+
+
+**4.数据块大小**
+
+**dfs.block.size**
+
+HDFS数据块的大小，默认为128M，目前我们产线环境配置的是1G
+
+
+
+**5.HDFS做均衡时使用的最大带宽**
+
+**dfs.datanode.balance.bandwidthPerSec**
+
+HDFS做均衡时使用的最大带宽，默认为1048576，即1MB/s，对大多数千兆甚至万兆带宽的集群来说过小。不过该值可以在启动balancer脚本时再设置，可以不修改集群层面默认值。目前目前我们产线环境设置的是50M/s~100M/s
+
+
+
+**6.磁盘可损坏数**
+
+**dfs.datanode.failed.volumes.tolerated** 
+
+DN多少块盘损坏后停止服务，默认为0，即一旦任何磁盘故障DN即关闭。对盘较多的集群（例如每DN12块盘），磁盘故障是常态，通常可以将该值设置为1或2，避免频繁有DN下线。
+
+
+
+**7.数据传输连接数**
+
+**dfs.datanode.max.xcievers**
+
+DataNode可以同时处理的数据传输连接数,即指定在DataNode内外传输数据使用的最大线程数。官方将该参数的命名改为`dfs.datanode.max.transfer.threads`，默认值为4096，推荐值为8192，我们产线环境也是8192
+
+
+
+**8.NameNode处理RPC调用的线程数**
+
+**dfs.namenode.handler.count**
+
+NameNode中用于处理RPC调用的线程数，默认为10。对于较大的集群和配置较好的服务器，可适当增加这个数值来提升NameNode RPC服务的并发度，该参数的建议值：集群的自然对数 * 20
+
+python -c 'import math ; print int(math.log(N) * 20)'
+
+我们800+节点产线环境配置的是200~500之间
+
+**9.NameNode处理datanode 上报数据块和心跳的线程数**
+
+**dfs.namenode.service.handler.count**
+
+用于处理datanode 上报数据块和心跳的线程数量，与dfs.namenode.handler.count算法一致
+
+
+
+**10.DataNode处理RPC调用的线程数**
+
+**dfs.datanode.handler.count**
+
+DataNode中用于处理RPC调用的线程数，默认为3。可适当增加这个数值来提升DataNode RPC服务的并发度，线程数的提高将增加DataNode的内存需求，因此，不宜过度调整这个数值。我们产线环境设置的是10
+
+
+
+**11.DataNode最大传输线程数**
+
+**dfs.datanode.max.xcievers**
+
+最大传输线程数 指定在 DataNode 内外传输数据使用的最大线程数。
+
+这个值是指定 datanode 可同時处理的最大文件数量，推荐将这个值调大，默认是256，最大值可以配置为65535，我们产线环境配置的是8192。
+
+
+
+**12.读写数据时的缓存大小**
+
+**io.file.buffer.size**
+
+–设定在读写数据时的缓存大小，应该为硬件分页大小的2倍
+
+我们产线环境设置的为65536 （ 64K） 
+
+
+
+**13.冗余数据块删除**
+
+在日常维护hadoop集群的过程中发现这样一种情况：
+
+某个节点由于网络故障或者DataNode进程死亡，被NameNode判定为死亡，HDFS马上自动开始数据块的容错拷贝；当该节点重新添加到集群中时，由于该节点上的数据其实并没有损坏，所以造成了HDFS上某些block的备份数超过了设定的备份数。通过观察发现，这些多余的数据块经过很长的一段时间才会被完全删除掉，那么这个时间取决于什么呢？
+
+该时间的长短跟数据块报告的间隔时间有关。Datanode会定期将当前该结点上所有的BLOCK信息报告给NameNode，参数dfs.blockreport.intervalMsec就是控制这个报告间隔的参数。
+
+hdfs-site.xml文件中有一个参数：
+
+```xml
+<property>
+<name>dfs.blockreport.intervalMsec</name>
+<value>3600000</value>
+<description>Determines block reporting interval in milliseconds.</description>
+</property>
+```
+
+其中3600000为默认设置，3600000毫秒，即1个小时，也就是说，块报告的时间间隔为1个小时，所以经过了很长时间这些多余的块才被删除掉。通过实际测试发现，当把该参数调整的稍小一点的时候（60秒），多余的数据块确实很快就被删除了
+
+**14.新增块延迟汇报**
+
+当datanode上新写完一个块，默认会立即汇报给namenode。在一个大规模Hadoop集群上，每时每刻都在写数据，datanode上随时都会有写完数据块然后汇报给namenode的情况。因此namenode会频繁处理datanode这种快汇报请求，会频繁地持有锁，其实非常影响其他rpc的处理和响应时间。
+
+通过延迟快汇报配置可以减少datanode写完块后的块汇报次数，提高namenode处理rpc的响应时间和处理速度。
+
+```xml
+<property>  
+<name>dfs.blockreport.incremental.intervalMsec</name>  
+<value>300</value>
+</property>
+```
+
+我们产线环境HDFS集群上此参数配置为500毫秒，就是当datanode新写一个块，不是立即汇报给namenode，而是要等待500毫秒，在此时间段内新写的块一次性汇报给namenode。
+
+
+
+**15.增大同时打开的文件描述符和网络连接上限**
+
+使用ulimit命令将允许同时打开的文件描述符数目上限增大至一个合适的值。同时调整内核参数net.core.somaxconn网络连接数目至一个足够大的值。
+
+补充：net.core.somaxconn的作用 
+
+net.core.somaxconn是Linux中的一个kernel参数，表示socket监听（listen）的backlog上限。什么是backlog呢？backlog就是socket的监听队列，当一个请求（request）尚未被处理或建立时，它会进入backlog。而socket server可以一次性处理backlog中的所有请求，处理后的请求不再位于监听队列中。当server处理请求较慢，以至于监听队列被填满后，新来的请求会被拒绝。在Hadoop 1.0中，参数ipc.server.listen.queue.size控制了服务端socket的监听队列长度，即backlog长度，默认值是128。而Linux的参数net.core.somaxconn默认值同样为128。当服务端繁忙时，如NameNode或JobTracker，128是远远不够的。这样就需要增大backlog，例如我们的集群就将ipc.server.listen.queue.size设成了32768，为了使得整个参数达到预期效果，同样需要将kernel参数net.core.somaxconn设成一个大于等于32768的值。
+
+# MapReduce和Yarn技术原理
+
+原文章：https://www.bbsmax.com/A/l1dybyAqze/
+
+## MapReduce的概述
+
+> MapReduce基于Google发布的MapReduce论文设计开发，用于**大规模数据集（大于1TB）的并行计算**
+
+具有如下特点：
+
+- **易于编程：**程序员仅需描述做什么，具体怎么做交由系统的**执行框架**处理。
+- **良好的扩展性：**可通过**添加节点**以扩展集群能力。
+- **高容错性：**通过**计算迁移或数据迁移**等策略提高集群的可用性与容错性。
+
+当某些节点发生故障时，可以通过计算迁移或数据迁移在其他节点继续执行任务，保证任务执行成功。
+
+- MapReduce是一个**基于集群的高性能并行计算平台**（Cluster Infrastructure）。
+- MapReduce是一个**并行计算与运行软件框架**（Software Framework）。
+- MapReduce是一个**并行程序设计模型与方法**（Programming Model & Methodology）。
+
+## YARN的概述
+
+Apache Hadoop YARN (Yet Another Resource Negotiator，**另一种资源协调者**) 是一种新的 Hadoop **资源管理器，**它是一个通用资源管理系统，可为上层应用提供统一的资源管理和调度，它的引入为集群在利用率、资源统一管理和数据共享等方面带来了巨大好处。
+
+![img](Hadoop3.x.assets/1444343-20190830142939308-369168032.png)
+
+## MapReduce过程详解
+
+![img](Hadoop3.x.assets/1444343-20190830143038134-21391137.png)
+
+![img](Hadoop3.x.assets/1444343-20190830143100491-1131727606.png)
+
+- **分片的必要性：**MR框架将**一个分片**和**一个Map TasK**对应，即一个Map Task只负责**处理**一个数据分片。**数据分片的数量**确定了为这个**Job创建Map Task的个数。**
+
+- **Application Master(AM)**负责一个Application**生命周期**内的所有工作。包括：与RM调度器协商以**获取**资源；将得到的资源进一步**分配**给内部任务（资源的二次分配）；与NM通信以**启动/停止**任务；**监控**所有任务运行状态，并在任务运行失败时重新为任务申请资源以**重启任务**。
+
+- **ResourceManager(RM)** 负责集群中所有资源的**统一管理和分配。**它**接收**来自各个节点（NodeManager）的资源汇报信息，并根据收集的资源按照一定的策略分配给各个应用程序。
+
+- **NodeManager（NM）**是每个节点上的**代理**，它管理Hadoop集群中**单个计算节点**，包括与ResourceManger保持**通信**，**监督**Container的生命周期管理，**监控**每个Container的资源使用（内存、CPU等）情况，**追踪**节点健康状况，**管理**日志和不同应用程序用到的附属服务（auxiliary service）。
+
+- MR组件在FI中只有jobhistoryserver实例，它只是**存储**任务的执行记录，**执行**列表，没有它，也可以运行任务。但是无法查询任务的详细信息。
+
+Reduce阶段的三个过程：
+
+- **Copy：**Reduce Task从各个Map Task**拷贝**MOF文件。
+- **Sort：**通常又叫Merge，将多个MOF文件进行**合并再排序。**
+- **Reduce**：用户自定义的Reduce逻辑。
+
+### Shuffle机制
+
+![img](Hadoop3.x.assets/1444343-20190830144318492-258623410.png)
+
+**Shuffle的定义：**Map阶段和Reduce阶段之间**传递中间数据的过程**，包括Reduce Task从各个Map Task获取MOF文件的过程，以及对MOF的排序与合并处理。
+
+## 典型程序WorldCound举例
+
+![img](Hadoop3.x.assets/1444343-20190830144459973-486468615.png)
+
+假设要分析一个**大文件A里每个英文单词出现的个数**，利用MapReduce框架能快速实现这一统计分析。
+
+- 第一步：待处理的大文件A已经**存放在HDFS上**，大文件A被切分的数据块A.1、A.2、A.3分别存放在Data Node #1、#2、#3上。
+- 第二步：WordCount分析处理程序实现了用户自定义的Map函数和Reduce函数。WordCount将分析应用提交给RM，RM根据请求创建对应的Job，并根据文件块个数按文件块分片，创建3个 MapTask 和 3个Reduce Task，**这些Task运行在Container中。**
+- 第三步：Map Task 1、2、3的输出是一个经分区与排序（假设没做Combine）的MOF文件，记录形如表所示。
+- 第四步：Reduce Task从 Map Task获取MOF文件，经过**合并、排序，**最后根据用户自定义的Reduce逻辑，输出如表所示的统计结果。
+
+### WorldCound程序功能
+
+![img](Hadoop3.x.assets/1444343-20190830144729593-1402939480.png)
+
+### WorldCound的Map过程
+
+![img](Hadoop3.x.assets/1444343-20190830144803359-878831936.png)
+
+### WorldCound的Reduce过程
+
+![img](Hadoop3.x.assets/1444343-20190830144831425-1726784100.png)
+
+## YARN的组件架构
+
+![img](Hadoop3.x.assets/1444343-20190830144858210-2046586325.png)
+
+在图中有两个客户端向YARN提交任务，蓝色表示一个任务流程，棕色表示另一个任务流程。
+
+- 首先**client提交任务，ResourceManager接收**到任务，然后**启动并监控**起来的第一个**Container**,也就是App Mstr。
+- App Mstr**通知nodemanager管理资源并启动其他container。**
+- 任务最终是运行在**Container**当中。
+
+### MapReduce On YARN任务调度流程
+
+![img](Hadoop3.x.assets/1444343-20190830145357391-1046158965.png)
+
+1. 步骤1：用户向YARN 中**提交**应用程序， 其中包括ApplicationMaster 程序、启动ApplicationMaster 的命令、用户程序等。
+2. 步骤2：ResourceManager 为该应用程序**分配**第一个Container， 并与对应的NodeManager **通信**，要求它在这个Container 中**启动应用程序**的ApplicationMaster 。
+3. 步骤3：ApplicationMaster 首先向ResourceManager **注册**， 这样用户可以直接通过ResourceManage **查看**应用程序的运行状态，然后它将为各个任务**申请资源，并监控**它的运行状态，直到运行结束，即重复步骤4~7。
+4. 步骤4：ApplicationMaster 采用**轮询**的方式通过RPC 协议向ResourceManager 申请和领取资源。
+5. 步骤5：一旦ApplicationMaster **申请**到资源后，便与对应的NodeManager **通信**，要求它启动任务。
+6. 步骤6：NodeManager 为任务设置好**运行环境**（包括环境变量、JAR 包、二进制程序等）后，将任务启动命令写到一个脚本中，并通过运行该脚本启动任务。
+7. 步骤7：各个任务通过某个RPC 协议向ApplicationMaster **汇报**自己的状态和进度，以让ApplicationMaster 随时掌握各个任务的运行状态，从而可以在任务失败时重新启动任务。在应用程序运行过程中，用户可随时通过RPC 向ApplicationMaster 查询应用程序的当前运行状态。
+8. 步骤8 应用程序运行完成后，ApplicationMaster 向ResourceManager **注销并关闭**自己。
+
+### YARN HA方案
+
+YARN中的**ResourceManager**负责整个集群的**资源管理和任务调度**，YARN高可用性方案通过引入冗余的ResourceManager节点的方式，解决了ResourceManager 单点故障问题。
+
+![img](Hadoop3.x.assets/1444343-20190830145856405-161493180.png)
+
+- ResourceManager的**高可用性**方案是通过设置一组**Active/Standby的ResourceManager**节点来实现的。与HDFS的高可用性方案类似，**任何时间点上都只能有一个ResourceManager处于Active状态**。当Active状态的ResourceManager发生故障时，可通过自动或手动的方式触发故障转移，进行Active/Standby状态切换。
+- 在未开启自动故障转移时，YARN集群启动后，管理员需要在命令行中使用**YARN rmadmin**命令手动将其中一个ResourceManager切换为Active状态。当需要执行计划性维护或故障发生时，则需要先手动将Active状态的ResourceManager切换为Standby状态，再将另一个ResourceManager切换为Active状态。
+- 开启自动故障转移后，ResourceManager会通过内置的基于**ZooKeeper**实现的**ActiveStandbyElector来决定**哪一个ResouceManager应该成为Active节点。当Active状态的ResourceManager发生故障时，另一个ResourceManager将自动被选举为Active状态以接替故障节点。
+- 当集群的ResourceManager以HA方式部署时，客户端使用的**“YARN-site.xml”**需要配置所有ResourceManager地址。客户端（包括ApplicationMaster和NodeManager）会以**轮询**的方式寻找Active状态的ResourceManager。如果当前Active状态的ResourceManager无法连接，那么会继续使用轮询的方式找到新的ResourceManager。
+
+### YARN　APPMaster容错机制
+
+![img](Hadoop3.x.assets/1444343-20190830150120214-1732893662.png)
+
+- 在YARN中，**ApplicationMaster(AM)**与其他Container类似也运行在NodeManager上（忽略未管理的AM）。AM可能会由于多种原因崩溃、退出或关闭。如果AM停止运行，ResourceManager(RM)会**关闭**ApplicationAttempt中管理的所有Container，包括当前任务在NodeManager(NM)上正在运行的所有Container。RM会在另一计算节点上启动新的ApplicationAttempt。
+- 不同类型的应用希望以多种方式处理AM重新启动的事件。MapReduce类应用目标是不丢失任务状态，但也能允许一部分的状态损失。但是对于长周期的服务而言，用户并不希望仅仅由于AM的故障而导致整个服务停止运行。
+- YARN支持在新的ApplicationAttempt启动时，保留之前Container的状态，因此运行中的作业可以继续无故障的运行。
+
+## 资源管理
+
+当前YARN支持**内存和CPU**两种资源类型的管理和分配。 每个NodeManager可分配的内存和CPU的数量可以通过配置选项设置（可在YARN服务配置页面配置）。
+
+1. **Yarn.nodemanager.resource.memory-mb**
+2. **Yarn.nodemanager.vmem-pmem-ratio**
+3. **Yarn.nodemanager.resource.cpu-vcore**
+
+- Yarn.nodemanager.resource.memory-mb表示用于当前NodeManager上可以分配给容器的**物理内存的大小**，单位：MB。必须小于NodeManager服务器上的实际内存大小。
+- Yarn.nodemanager.vmem-pmem-ratio表示为容器设置**内存限制时虚拟内存跟物理内存的比值**。容器分配值使用物理内存表示的，虚拟内存使用率超过分配值的比例不允许大于当前这个比例。
+- Yarn.nodemanager.resource.cpu-vcore表示**可分配给container的CPU核数**。建议配置为CPU核数的1.5-2倍。
+
+### 资源分配模型
+
+![img](Hadoop3.x.assets/1444343-20190830150453334-1318629453.png)
+
+- 调度器**维护一群队列的信息**。用户可以向一个或者多个队列提交应用。
+- 每次**NM心跳**的时候，调度器根据一定的**规则选择**一个队列，再在队列上选择一个应用，尝试在这个应用上分配资源。
+- 调度器会优**先匹配本地资源**的申请请求，其次是**同机架的，**最后是**任意机器的。**
+- 当任务提交上来，**首先会声明**提交到哪个队列上，调度器会分配队列，如果没有指定则任务运行在默认队列。
+- 队列是**封装了集群资源容量的资源集合，**占用集群的百分比例资源。
+- 队列分为**父队列，子队列**，任务最终是运行在子队列上的。父队列可以有多个子队列。
+- 调度器选择队列上的应用，然后根据一些算法给应用分配资源。
+
+## 容量调度器的介绍
+
+**容量调度器：Capacity Scheduler 。**
+
+- 容量调度器使得Hadoop应用**能够共享的、多用户的、操作简便的**运行在集群上，同时最大化集群的吞吐量和利用率。
+- 容量调度器以**队列为单位**划分资源，每个队列都有资源使用的下限和上限。每个用户可以设定资源使用上限。管理员可以约束单个队列、用户或作业的资源使用。支持作业优先级，但不支持资源抢占。
+
+### 容量调度器的特点
+
+1. **容量保证：**管理员可为每个队列设置资源**最低保证和资源使用上限**，所有提交到该队列的应用程序共享这些资源。
+2. **灵活性：**如果一个队列中的资源有剩余，可以暂时共享给那些需要资源的队列，当该队列有新的应用程序提交，则其他队列释放的资源会归还给该队列。
+3. **支持优先级：**队列支持任务优先级调度（默认是FIFO）。
+4. **多重租赁：**支持多用户共享集群和多应用程序同时运行。为防止单个应用程序、用户或者队列独占集群资源，管理员可为之增加多重约束。
+5. **动态更新配置文件：**管理员可根据需要动态修改配置参数，以实现在线集群管理。
+
+### 容量调度器的任务选择
+
+调度时，首先按以下策略选择一个合适队列：
+
+- **资源利用量最低的队列优先，**比如同级的两个队列Q1和Q2，它们的容量均为30，而Q1已使用10，Q2已使用12，则会优先将资源分配给Q1。
+- **最小队列层级优先**，例如：QueueA与QueueB.childQueueB，则QueueA优先。
+- **资源回收请求队列优先。**
+
+然后按以下策略选择该队列中一个任务：
+
+- 按照任务优先级和提交时间顺序选择，同时考虑用户资源量限制和内存限制。
+
+## 队列资源限制（1）
+
+队列的创建是在多租户页面，当创建一个租户关联YARN服务时，**会创建同名**的队列。比如先创建QueueA,QueueB两个租户，即对应YARN两个队列。
+
+### 队列资源限制（2）
+
+**队列的资源容量（百分比）**，有default、QueueA、QueueB三个队列，每个队列都有一个**[队列名].capacity配置：**
+
+1. Default队列容量为整个集群资源的20%。
+2. QueueA队列容量为整个集群资源的10%。
+3. QueueB队列容量为整个集群资源的10%，**后台有一个影子队列root-default使队列之和达到100% 。**
+
+- 在集群的Manager页面点击“租户管理”》“动态资源计划”》“资源分布策略”可以看到，可配置各队列资源容量。
+- **影子队列：**是不对外呈现的一个队列。以XX-default为名字，目的是为了使同级的队列容量之和不够一百时，将剩余容量值赋予此队列（容量调度器要求同级队列容量和要为100）。
+
+### 队列资源限制（3）
+
+**共享空闲资源**
+
+- 由于存在资源共享，因此一个队列使用的资源可能超过其容量（例如QueueA.capacity），而最大资源使用量可通过参数限制。
+- 如果某个队列任务较少，可将剩余资源共享给其他队列，例如QueueA的maximum-capacity配置为100，假设当前只有QueueA在运行任务，理论上QueueA可以占用整个集群100%的资源。
+
+**参数：Yarn.scheduler.capacity.root.QueueA.maximum-capacity**
+
+## 用户限制和任务限制
+
+用户限制和任务限制的参数可通过“租户管理”>“动态资源计划”>“队列配置”进行配置。
+
+### 用户限制（1）
+
+**每个用户最低资源保障（百分比**）：
+
+- 任何时刻，一个队列中每个用户可使用的资源量均有一定的限制，当一个队列中同时运行多个用户的任务时，每个用户的可使用资源量在一个最小值与最大值之间浮动，其中，最大值取决于正在运行的任务数目，而最小值则由minimum-user-limit-percent决定。
+- 例如，设置队列A的这个值为25，即Yarn.scheduler.capacity.root.QueueA.minimum-user-limit-percent=25，那么随着提任务的用户增加，队列资源的调整如下：
+
+| 第1个用户提交任务到QueueA | 会获得QueueA的100%资源。                                     |
+| ------------------------- | ------------------------------------------------------------ |
+| 第2个用户提交任务到QueueA | 每个用户会最多获得50%的资源。                                |
+| 第3个用户提交任务到QueueA | 每个用户会最多获得33.33%的资源。                             |
+| 第4个用户提交任务到QueueA | 每个用户会最多获得25%的资源。                                |
+| 第5个用户提交任务到QueueA | 为了保障每个用户最低能获得25%的资源，第5个用户将无法再获取到QueueA的资源，必须等待资源的释放。 |
+
+### 用户限制（2）
+
+**每个用户最多可使用的资源量（所在队列容量的倍数）**：
+
+- queue容量的倍数，用来设置一个user可以获取更多的资源。 Yarn.scheduler.capacity.root.QueueD.user-limit-factor=1。默认值为1，表示一个user获取的资源容量不能超过queue配置的capacity，无论集群有多少空闲资源，最多不超过maximum-capacity。
+
+**用户可以使用超过capacity的资源,但不超过maximum-capacity。**
+
+### 任务限制
+
+**最大活跃任务数：**
+
+- 整个集群中允许的最大活跃任务数，包括运行或挂起状态的所有任务，当提交的任务申请数据达到限制以后，新提交的任务将会被拒绝。默认值10000。
+
+**每个队列最大任务数：**
+
+- 对于每个队列，可以提交的最大任务数，以QueueA为例，可以在队列配置页面配置，默认是1000，即此队列允许最多1000个活跃任务。
+
+**每个用户可以提交的最大任务数：**
+
+- 这个数值依赖每个队列最大任务数。根据上面的数据， QueueA最多可以提交1000个任务，那么对于每个用户而言，可以向QueueA提交的最大任务数为1000* 用户最低资源保障率（假设25%）* 用户可使用队列资源的倍数(假设1)。
+
+1. **用户最低资源保障率：**Yarn.scheduler.capacity.root.QueueA.minimum-user-limit-percent。
+2. **用户可使用队列资源的倍数**：Yarn.scheduler.capacity.root.QueueA.user-limit-factor。
+
+### 查看队列信息
+
+- 队列的信息可以通过YARN webUI进行查看，进入方法是“服务管理”>“YARN”>“ResouceManager（主）”>“Scheduler”。
+
+## 增强特性 - YARN动态内存管理
+
+![img](Hadoop3.x.assets/1444343-20190830152211785-2069172701.png)
+
+- 动态内存管理可用来优化NodeManager中Containers的**内存利用率**。任务在运行过程中可能产生多个Container。
+- 当前，当单个节点上的Container超过Container运行内存大小时，即使节点总的配置内存利用还很低，NodeManager也会终止这些Containers。这样就会经常使用户作业失败。
+- 动态内存管理特性在当前是一个改进，只有当NodeManager中的所有Containers的总内存使用超过了已确定的阈值，NM总内存阈值的计算方法是
+- Yarn.nodemanager.resource.memory-mb*1024*1024*Yarn.nodemanager.dynamic.memory.usage.threshold，单位GB，那么那些内存使用过多的Containers才会被终止。
+- 举例，假如某些Containers的物理内存利用率超过了配置的内存阈值，但所有Containers的总内存利用率并没有超过设置的NodeManager内存阈值，那么那些内存使用过多的Containers仍可以继续运行。
+
+### 增强特性 - YARN基于标签调度
+
+![img](Hadoop3.x.assets/1444343-20190830152319526-1840591858.png)
+
+- 在没有标签调度之前，任务提交到哪个节点上是**无法控制**的，会根据一些算法及条件，集群**随机分配**到某些节点上。而标签调度可以**指定任务**提交到哪些节点上。
+- 比如之前需要消耗高内存的应用提交上来，由于运行在那些节点不可控，任务可能运行在普通性能的机器上。
+- **Label based scheduling是一种调度策略**。该策略的基本思想是：用户可以为每个**nodemanager标注一个标签**，比如high-memory，high-IO等进行分类，以表明该nodemanager的特性；同时，用户可以为调度器中**每个队列标注一个标签**，即队列与标签绑定，这样，提交到某个队列中的作业，只会使用标注有对应标签的节点上的资源，即任务实际运行在打有对应标签的节点上。
+- 将耗内存消耗型的任务提交到绑定了**high-memry**的标签的队列上，那么任务就可以运行在**高内存**机器上。
