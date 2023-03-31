@@ -1364,11 +1364,380 @@ YARN HA集群支持配置LB，通过RM web ui 的`/isAcitve` HTTP请求，可以
 
 # 3. Hadoop命令
 
+## ViewFs
+
+视图文件系统（ViewFs）提供了一种管理多个Hadoop文件系统命名空间（或命名空间卷）的方法。
+
+### 联邦出现之前
+
+假设当前为clusterX集群，访问HDFS文件系统的几种方式：
+
+- `hdfs dfs -ls /foo/bar` 依赖于`core-site.xml`中的`fs.default.name`配置。走的是RPC协议
+- `hdfs dfs -ls hdfs://namenodeOfClusterX:port/foo/bar `走的是RPC协议
+- `hdfs dfs -ls hdfs://namenodeOfClusterY:port/foo/bar` 走的是RPC协议
+- `hdfs dfs -ls webhdfs://namenodeClusterX:http_port/foo/bar` 走的是HTTP协议，通过webhdfs来访问HDFS文件系统。
+- `curl http://namenodeClusterX:http_port/webhdfs/v1/foo/bar` 走的是HTTP协议，通过webhdfs REST API来访问HDFS文件系统。
+-  `curl http://proxyClusterX:http_port/foo/bar`通过HDFS proxy来访问HDFS文件系统。
+
+### 联邦出现之后
+
+通过viewFs来创建多个cluster的namespace的视图（逻辑上的映射），通过mount table的配置将viewFs和多个cluster的namespace或者指定path进行链接，实现映射（对外仿佛只有一个集群）。假设`fs.defaultFS`如下：
+
+```xml
+  <!-- 默认的fs -->
+  <property>
+  <name>fs.defaultFS</name>
+  <value>viewfs://clusterX</value>
+  </property>
+```
+
+**挂载指定路径**
+
+```xml
+ <configuration> 
+  <property>
+    <name>fs.viewfs.mounttable.ClusterX.link./data</name>
+    <value>hdfs://nn1-clusterx.example.com:8020/data</value>
+  </property>
+  <property>
+    <name>fs.viewfs.mounttable.ClusterX.link./project</name>
+    <value>hdfs://nn2-clusterx.example.com:8020/project</value>
+  </property>
+  <property>
+    <name>fs.viewfs.mounttable.ClusterX.link./user</name>
+    <value>hdfs://nn3-clusterx.example.com:8020/user</value>
+  </property>
+  <property>
+    <name>fs.viewfs.mounttable.ClusterX.link./tmp</name>
+    <value>hdfs://nn4-clusterx.example.com:8020/tmp</value>
+  </property>
+  <property>
+    <name>fs.viewfs.mounttable.ClusterX.linkFallback</name>
+    <value>hdfs://nn5-clusterx.example.com:8020/home</value>
+  </property>
+</configuration>
+```
+
+`fs.viewfs.mounttable.ClusterX.link./data=hdfs://nn1-clusterx.example.com:8020/data`，表示将`hdfs://nn1-clusterx.example.com:8020/data`挂载到`viewfs://ClusterX/data`，就是通过这一配置，实现了`viewfs://ClusterX/data`和`hdfs://nn1-clusterx.example.com:8020/data`的映射。
+
+**挂载根目录**
+
+直接mount某HDFS集群的根目录到某viewFs。
+
+```xml
+<configuration>
+  <property>
+    <name>fs.viewfs.mounttable.ClusterY.linkMergeSlash</name>
+    <value>hdfs://nn1-clustery.example.com:8020/</value>
+  </property>
+</configuration>
+```
+
+通过上面配置，实现了`viewfs://ClusterY/`和`hdfs://nn1-clustery.example.com:8020/`的映射。
+
+有了viewFs之后访问viewFs的几种方式：
+
+- `/foo/bar` 等价于`viewfs://clusterX/foo/bar`
+
+- `viewfs://clusterX/foo/bar`
+
+- `viewfs://clusterY/foo/bar`
+
+  distcp工具也可以用。
+
+  ```bash
+  distcp viewfs://clusterY/pathSrc viewfs://clusterZ/pathDest
+  ```
+
+- `viewfs://clusterX-webhdfs/foo/bar` 通过webhdfs访问
+
+- `http://namenodeClusterX:http_port/webhdfs/v1/foo/bar` HTTP协议，与没有使用viewFs一样的。
+
+- `http://proxyClusterX:http_port/foo/bar` HTTP协议，与没有使用viewFs一样的。
+
+在viewFs之前，执行如下命令会报错，不支持跨集群的rename。但是通过viewFs可以支持。 
+
+```bash
+rename hdfs://cluster1/user/joe/myStuff hdfs://cluaster2/data/foo/bar
+```
+
+### Nfly挂载点
+
+通过`Nfly`可以实现1个逻辑文件可以被复制到多个文件系统中（如hdfs、s3、本地文件系统等）。配置示例。
+
+```xml
+  <property>
+    <name>fs.viewfs.mounttable.global.linkNfly../ads</name>
+    <value>uri1,uri2,uri3</value>
+  </property>
+```
+
+执行如下命令在viewFs中的ads目录下创建一个文件Z1
+
+假设配置如下：
+
+```xml
+  <property>
+    <name>fs.viewfs.mounttable.global.linkNfly../ads</name>
+    <value>file:/tmp/ads1, file:/tmp/ads2, file:/tmp/ads3</value>
+  </property>
+```
+
+
+
+```bash
+hadoop fs -touchz viewfs://global/ads/z1
+
+# 可以发现挂载点的3个文件系统中都有了此文件。
+ls -al /tmp/ads*/z1
+-rw-r--r--  1 user  wheel  0 Mar 11 12:17 /tmp/ads1/z1
+-rw-r--r--  1 user  wheel  0 Mar 11 12:17 /tmp/ads2/z1
+-rw-r--r--  1 user  wheel  0 Mar 11 12:17 /tmp/ads3/z1
+```
+
+## View File System Overload Scheme
+
+参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/ViewFsOverloadScheme.html
+
+TODO
+
+## snapshot
+
+参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsSnapshots.html
+
+**HDFS的快照是只读的。快照的一些常见作用是数据备份、防止用户错误和灾难恢复。**
+
+可以对整个文件系统做snapshot，也可以对文件系统的某个子树（子目录）做snapshot。
+
+快照文件记录块列表和文件大小，但不进行数据复制，也就是说snapshot记录的是目录的元数据。
+
+快照不会对常规HDFS操作产生不利影响：修改按时间倒序记录，以便可以直接访问当前数据。快照数据是通过从当前数据中减去修改来计算的。
+
+
+
+可快照的目录（snapshottable，快照表）最多支持65535个快照。可快照目录的数量无限制。**如果目录中有快照，则在删除所有快照之前，既不能删除也不能重命名该目录**。
+
+**当前不允许使用嵌套的快照表目录。**换句话说，如果目录的祖先/后代之一是快照表目录，则不能将其设置为快照目录。
+
+.snapshot
+
+具体操作（**需要管理员权限（superuser）**）：
+
+允许对指定目录进行快照：
+
+```bash
+hdfs dfsadmin -allowSnapshot <path>
+```
+
+不允许创建目录的快照。在禁止快照之前，必须删除目录的所有快照。
+
+```bash
+hdfs dfsadmin -disallowSnapshot <path>
+```
+
+创建快照
+
+```bash
+hdfs dfs -createSnapshot <path> [<snapshotName>]
+```
+
+删除快照
+
+```bash
+hdfs dfs -deleteSnapshot <path> <snapshotName>
+```
+
+重命名快照
+
+```bash
+hdfs dfs -renameSnapshot <path> <oldName> <newName>
+```
+
+查看当前用户可以做快照的所有目录
+
+```bash
+hdfs lsSnapshottableDir
+```
+
+查看两个快照之间的不同之处，`.`表示当前目录状态
+
+```bash
+hdfs snapshotDiff <path> <fromSnapshot> <toSnapshot>
+
+# 查看快照和当前目录状态的不同
+hdfs snapshotDiff <path> <fromSnapshot> .
+```
+
+输出结果有如下几种：
+
+```bash
++	The file/directory has been created.
+-	The file/directory has been deleted.
+M	The file/directory has been modified.
+R	The file/directory has been renamed.
+```
+
+注意：
+
+> 假设快照目录为D0，有个其他目录为D1。
+>
+> 从D0/A重命名为D0/A1，状态为`R`。
+>
+> 从D0/A重命名到D1/A，状态为`-`，表示从当前快照目录删除了。
+>
+> 从D1/A重命名为D0/A，状态为`+`，表示加入到当前快照目录了。
+
+列出foo目录的所有快照
+
+```bash
+hdfs dfs -ls /foo/.snapshot
+```
+
+列出快照s0的文件/目录
+
+```bash
+hdfs dfs -ls /foo/.snapshot/s0
+```
+
+从快照s0中copy文件/目录
+
+```bash
+hdfs dfs -cp -ptopax /foo/.snapshot/s0/bar /tmp
+```
+
+`-ptopax`表示保留原文件的timestamps, ownership, permission, ACLs and XAttrs。
+
+从不支持快照的旧版本HDFS升级时，需要首先重命名或删除名为`.snapshot`的快照路径，以避免与保留路径（`.snopshot`）冲突。
+
+```bash
+# 1. 允许打快照
+[hadoop@hadoop322-node01 ~]$ hdfs dfsadmin -allowSnapshot /user/sjl
+Allowing snapshot on /user/sjl succeeded
+# 2. 为某目录创建快照
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -createSnapshot /user/sjl 
+Created snapshot /user/sjl/.snapshot/s20230331-103523.634
+# 3. 查看某目录的快照
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl 
+Found 1 items
+drwxr-xr-x   - hadoop supergroup          0 2023-02-13 15:58 /user/sjl/test
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot
+Found 1 items
+drwxr-xr-x   - hadoop supergroup          0 2023-03-31 10:35 /user/sjl/.snapshot/s20230331-103523.634
+# 4. 重命名
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -renameSnapshot /user/sjl s20230331-103523.634 s230331-01
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot
+Found 1 items
+drwxr-xr-x   - hadoop supergroup          0 2023-03-31 10:35 /user/sjl/.snapshot/s230331-01
+
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot/s230331-01/test
+Found 2 items
+drwxr-xr-x   - hadoop supergroup          0 2023-02-13 14:49 /user/sjl/.snapshot/s230331-01/test/input
+drwxr-xr-x   - hadoop supergroup          0 2023-02-13 16:02 /user/sjl/.snapshot/s230331-01/test/output
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/test
+Found 2 items
+drwxr-xr-x   - hadoop supergroup          0 2023-02-13 14:49 /user/sjl/test/input
+drwxr-xr-x   - hadoop supergroup          0 2023-02-13 16:02 /user/sjl/test/output
+# 5. 删除原始文件，在.snapshot中仍存在旧的文件
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -rm /user/sjl/test/input/LICENSE.txt
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot/s230331-01/test/input/LICENSE.txt
+-rw-r--r--   3 hadoop supergroup     150569 2023-02-13 14:48 /user/sjl/.snapshot/s230331-01/test/input/LICENSE.txt
+# 6. 查看当前用户可以在哪些目录做快照
+[hadoop@hadoop322-node01 ~]$ hdfs lsSnapshottableDir
+drwxr-xr-x 0 hadoop supergroup 0 2023-03-31 10:35 1 65536 /user/sjl
+# 7. 查看快照的不同
+[hadoop@hadoop322-node01 ~]$ hdfs snapshotDiff /user/sjl s230331-01 .
+Difference between snapshot s230331-01 and current directory under directory /user/sjl:
+M	./test/input
+-	./test/input/LICENSE.txt
+```
+
+直接`hdfs dfs -ls /user/sjl`并不能看到是否有`.snapshot`，需要直接`hdfs dfs -ls /user/sjl/.snapshot`。
+
+## Offline Edits Viewer
+
+参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsEditsViewer.html
+
+`Offline Edits Viewer`工具的目的是解析edits log文件。**此工具是基于edits文件来进行解析的，并不是一定要运行hadoop集群。**
+
+支持的input format，对应的参数为`-i`。
+
+- binary，二进制格式。
+- xml。XML格式。
+
+Note: XML/Binary format input file is not allowed to be processed by the same type processor.
+
+**注意：XML/Binary格式作为输入文件，不能选择相同类型的processor。若输入格式为XML，则不能选择xml的processor。**
+
+支持的输出格式，对应的参数为`-o`。
+
+- binary，二进制格式。
+- xml，XML格式。
+- stats，打印统计信息，无法依据此输出转换回edits log文件。
+
+提供了如下几种processor：
+
+- XML Processor。默认
+
+  ```bash
+  bash$ bin/hdfs oev -p xml -i edits -o edits.xml
+  ```
+
+  因为是默认的proseesor，不加`-p xml`也是可以的。
+
+  ```bash
+  bash$ bin/hdfs oev -i edits -o edits.xml
+  ```
+
+- Binary Processor
+
+  根据x.xml重建edits log 文件
+
+  ```bash
+  bash$ bin/hdfs oev -p binary -i edits.xml -o edits
+  ```
+
+  
+
+- Stats Processor
+
+  主要用于获取edits log文件中的统计信息。
+
+  ```bash
+  bash$ bin/hdfs oev -p stats -i edits -o edits.stats
+  ```
+
+  输出如下：
+
+  ```bash
+     VERSION                             : -64
+     OP_ADD                         (  0): 8
+     OP_RENAME_OLD                  (  1): 1
+     OP_DELETE                      (  2): 1
+     OP_MKDIR                       (  3): 1
+     OP_SET_REPLICATION             (  4): 1
+     OP_DATANODE_ADD                (  5): 0
+     OP_DATANODE_REMOVE             (  6): 0
+     OP_SET_PERMISSIONS             (  7): 1
+     OP_SET_OWNER                   (  8): 1
+     OP_CLOSE                       (  9): 9
+     OP_SET_GENSTAMP_V1             ( 10): 0
+     ...some output omitted...
+     OP_APPEND                      ( 47): 1
+     OP_SET_QUOTA_BY_STORAGETYPE    ( 48): 1
+     OP_ADD_ERASURE_CODING_POLICY   ( 49): 0
+     OP_ENABLE_ERASURE_CODING_POLICY  ( 50): 1
+     OP_DISABLE_ERASURE_CODING_POLICY ( 51): 0
+     OP_REMOVE_ERASURE_CODING_POLICY  ( 52): 0
+     OP_INVALID                     ( -1): 0
+  ```
+
+  
+
 ## Offline Image Viewer
 
 参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsImageViewer.html
 
-`Offline Image Viewer`是一种工具，用于将hdfs fsimage文件的内容转储为人类可读的格式，并提供只读的WebHDFS API，以便对Hadoop集群的命名空间进行离线分析和检查。该工具能够相对快速地处理非常大的image文件。该工具处理Hadoop 2.4及更高版本中包含的布局格式。如果您想处理较旧的布局格式，可以使用Hadoop 2.3的`Offline Image Viewer`或[oiv_legacy](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsImageViewer.html#oiv_legacy_Command)命令。如果该工具无法处理图像文件，它将干净地退出。**Offline Image Viewer不需要运行Hadoop集群；它在运行中完全离线。**
+`Offline Image Viewer`工具的目的是将hdfs fsimage文件的内容转储为人类可读的格式，并提供只读的WebHDFS API，以便对Hadoop集群的命名空间进行离线分析和检查。该工具能够相对快速地处理非常大的image文件。该工具处理Hadoop 2.4及更高版本中包含的布局格式。如果您想处理较旧的布局格式，可以使用Hadoop 2.3的`Offline Image Viewer`或[oiv_legacy](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsImageViewer.html#oiv_legacy_Command)命令。如果该工具无法处理图像文件，它将干净地退出。**Offline Image Viewer不需要运行Hadoop集群；它在运行中完全离线。**
 
 **注意：如果要使用`oiv_legacy`命令，需要`dfs.namenode.legacy-oiv-image.dir`，这样standby Namenode或secondary Namenode才会在checkpoint的时候保存旧格式的fsimage到此配置项的目录中。**
 
