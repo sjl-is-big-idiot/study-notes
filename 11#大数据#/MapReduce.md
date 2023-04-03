@@ -4,6 +4,231 @@
 
 ![image-20210912205222426](MapReduce.assets/image-20210912205222426.png)
 
+参考文档：https://hadoop.apache.org/docs/stable/hadoop-mapreduce-client/hadoop-mapreduce-client-core/MapReduceTutorial.html
+
+mapreduce job的Input和Output都存储在file system中。
+
+MR框架负责**调度任务**、**监控任务**、**重新执行失败的任务**。MRAppMaster
+
+MR作业需要指定三类信息：
+
+- Input/Output的位置
+- map和reduce函数（通过实现Mapper和Reducer接口来实现）
+- 其他的Job配置参数
+
+可以通过`Hadoop Job client`来提交Job（jar或者其他可执行文件）
+
+虽然Hadoop框架是由Java实现的，但是MR Job不是一定要用Java来写的。
+
+- `Hadoop Streaming` ：用可执行文件方式来创建/运行Job。
+- `Hadoop Pipes` ：是一个SWIG，兼容C++ API来实现MR application
+
+MR application操作的是<key, value>对，输入是<key, value>对，输出也是<key, value>对。因为key/value会被序列化，因此key、value的类需要实现`Writable`接口。key类需要实现`WritableComparable`接口，以便可以按key来排序。
+
+**mapper**
+
+mapper是MR框架中的一个接口。
+
+mapper将Input的key/value对映射为中间结果的key/value对。MR框架用InputFormat生成InputSplit，为每个InputSplit生成一个map任务。`Job.setMapperClass(class)`可以将mapper的实现类传递给Job。然后在每个InputSplit中的每个key/value对调用map函数。map的输出的key/value对的类型可以不与输入的key/value对的类型一致。
+
+sort -> partition -> combine -> spill -> compress
+
+**map的数量？**
+
+map的数量跟input的字节数、input的文件的block数量有关系。因为会为每个InputSplit产生一个map任务，因此需要看如何划分InputSplit。通常一个node可以有10-100个map，针对cpu计算较少的job可以为一个node设置300个map。建议一个map运行时间在1min以上（因为创建和销毁map也需要开销，如果创建出来就运行几秒钟，那更多的时间浪费在了创建/销毁map了，那么可以考虑减少map数量，而增加每个map处理的数据量）。
+
+`set(MRJobConfig.NUM_MAPS, int)`只是为MR框架建议一个map的值，不是设置之后，map的数量就一定是这个值。
+
+**reducer**
+
+reducer对map的输出结果进行聚合。reducer是MR框架中的一个接口。
+
+reduce的个数可以通过`Job.setNumReducerTasks(Int)`来设置。通过Job.setReducerClass(class)将Reducer的实现类传递给Job。MR框架调用reduce函数来处理每一个key/value对。
+
+reducer有三个主要阶段：shuffle、sort、reduce。
+
+- shuffle：传递给reduce的input是已经排序的map的输出。MR框架ton过HTTP获取每个map中由对应reduce处理的partition。
+
+- sort：sort和shuffle同时发生，获取到map的输出结果之后还会进行merge。
+
+- 二次sort：在shuffle时是按照key进行排序的，但是某些情况还需要对value中的每个字段来进行排序，这就是二次排序。
+
+  二次排序的实现有两种方式：
+
+  - 将此key的所有value都获取到后，全部缓存到内存进行排序。缺点是数据量不能太大。
+  - 将key，value作为新的key，如key-value，让框架对新的key进行排序。
+
+- reduce：为每个key/value对调用reduce函数，reduce的输出是未排序的。
+
+**reduce的数量**
+
+建议值： 0.95或1.75 * 节点数 * 节点的最大container数。
+
+reduce的个数可以为0个，比如sqoop的任务就是只有map没有reduce的。当reduce为0时，map直接将结果写入输出路径，且不会进行排序（因为没有聚合，无法做到全局有序）。
+
+**Partitioner**
+
+partitioner控制中间结果（map输出）的key分配到哪个partition，在shuffle copy时被发送到哪个reduce。通常按Hash算法来分区，**分区数量=reduce任务的数量**。`Hash Partitioner`是默认的Partitioner。
+
+**Counter**
+
+Counter是用来报告application统计信息的一个工具。Mapper和Reducer的实现类可以通过Counter来汇报统计信息。
+
+**Job的配置文件**
+
+MR框架中有一个Job接口，可以让用户来描述一个MR Job。
+
+**Task执行和环境**
+
+task继承`MRAppMaster`的环境。可以通过`apreduce.[map | reduce].java.opts`来指定task的jvm参数。
+
+**内存管理**
+
+可以通过`mapreduce.[map | reduce].memory.mb`来设置每个map/reduce的最大内存，必须大于等于`-Xmx`设置的JVM内存。通常`-Xmx`此值的80%。
+
+**InputSplit**
+
+一个InputSplit表示将由一个mapper来处理的数据。是一个逻辑上的实例。
+
+**RecordReader**
+
+负责从一个InputSplit读取<key, value>对。
+
+**InputFormat**
+
+描述了MapReduce作业的输入规范。
+MapReduce框架依赖作业的InputFormat：
+
+- 将输入文件拆分为逻辑InputSplit实例，然后将每个InputSplit实例分配给一个mapper。
+- 提供RecordReader实现，用于从逻辑InputSplit中收集输入记录以供mapper处理。
+
+**OutputFormat**
+
+描述了MapReduce作业的输出规范。
+MapReduce框架依赖作业的OutputFormat：
+
+- 验证作业的输出规范；例如，检查输出目录是否不存在。
+- 提供用于写入作业输出文件的RecordWriter实现。输出文件存储在文件系统中。
+
+**OutputCommitter**
+
+TODO
+
+**RecordWriter**
+
+RecordWriter 负责将输出结果的 `<key, value>`对写入文件中。
+
+**Counters**
+
+Counter是由MR框架或application定义的全局计数器。
+
+**DistributedCache（分布式缓存）**
+
+`DistributedCache`分发特定任务的、大的、只读的文件。
+
+`DistributedCache`是MapReduce框架的一个工具，作用是缓存application的文件（如 text，archive，jar等）。
+
+可以在Job中指定需要缓存的文件（文件需要已经存在于hdfs上了）。
+
+在task开始执行之前，MR框架会拷贝必要的文件到worker节点。
+
+`DistributedCache`会跟踪缓存文件的修改时间。在task执行过程中，缓存的文件不应该被修改，修改后就需要重新获取文件了，降低效率，且容易导致多个task获取到的缓存文件内容不一致，出现问题。
+
+`DistributedCache`可以分发简单的、只读的数据/文件，也可以分发archive（如zip，tar，tgz，tar.gz）和jar。
+
+缓存file和archive
+
+> `mapreduce.job.cache.{files |archives}`，或`Job.addCacheFile(URI)`/`Job.addCacheArchive(URI)` and `Job.setCacheFiles(URI[\])`/ `Job.setCacheArchives(URI[\])`可以设置需要缓存的file、archive。`Job.addArchiveToClassPath(Path)`，或`Job.addFileToClassPath(Path)`或`mapreduce.job.classpath.{files |archives}`可以将文件/archive/jar添加到task的jvm classpath中。
+
+分布式缓存的文件可以是private或public的。这决定了缓存的文件在worker节点上如何共享。
+
+- private的分布式缓存文件
+
+  这类文件缓存在本地目录中。这类分布式缓存文件仅由提交此作业的用户所共享，此用户的所有job可以共享这些文件，其他用户和job不能访问。
+
+- public的分布式缓存文件
+
+  这类文件缓存在全局目录中。所有用户和job都可以使用。
+
+**加密shuffle**
+
+因为未加密时，shuffle是基于HTTP协议进行通信的，所以加密shuffle是基于HTTPS协议进行通信的。
+
+**支持YARN共享缓存**
+
+MR吃吃YARN的共享缓存，通过此种机制可以利用其他资源（不用每个application都分发此类资源）。这样可以减少Job提交机和YARN集群之间的网络IO，减少Job提交时间和总体的Job运行时间。
+
+YARN集群运行了shared cache服务。
+
+`mapred-site.xml`中的`mapreduce.job.sharedcache.mode`配置参数控制哪些类型的资源可以上传到YARN的共享缓存。
+
+```xml
+<property>
+    <name>mapreduce.job.sharedcache.mode</name>
+    <value>disabled</value>
+    <description>
+       A comma delimited list of resource categories to submit to the
+       shared cache. The valid categories are: jobjar, libjars, files,
+       archives. If "disabled" is specified then the job submission code
+       will not use the shared cache.
+    </description>
+</property>
+```
+
+
+
+MR有三种方式可以指定MR job需要的资源：
+
+- 命令行方式
+
+  如`-files`, `-archives`, `-libjars`。如果资源的类型匹配，且MR配置开启了shared cache，那么这些配置指定的资源在类型匹配的时候会先去shared cache中找。
+
+- distributed cache api
+
+  如果指定了`distributed cache`，不管shared cache是否启用，都直接走distributed cache。
+
+- shared cache api
+
+
+
+**向后兼容**
+
+向后兼容表示向低版本兼容。
+
+**map相关参数**
+
+```bash
+mapreduce.task.io.sort.mb							# 环形缓冲区的大小
+mapreduce.map.sort.spill.percent			# 一旦环形buffer达此阈值，就会安排一个线程将环形buffer中的内容spill到磁盘
+																			# 如果在spill的过程中，环形buffer又满了，会再启动线程来spill，前一此spill
+																			# 不会阻塞下一次spill
+																			# 大于环形buffer的记录会先触发一次spill，spill到一个单独的文件				
+```
+
+**shuffle/reduce相关参数**
+
+```bash
+mapreduce.task.io.soft.factor										# 控制merge过程同时打开的segment数量。默认是10，
+mapreduce.reduce.merge.inmem.thresholds					# 默认值1000，表示开始spill的map输出文件数阈值，<=0表示没有阈值，
+																								#	此时只由缓冲池比例来控制。
+mapreduce.reduce.shuffle.merge.percent					# 默认值0.66，表示开始spill的缓冲池的比例阈值，达到0.66开始spill。
+mapreduce.reduce.shuffle.input.buffer.percent		# 默认值0.7，表示shuffle copy阶段用于保存map输出的堆内存的比例
+																								# 相对mapreduce.reduce.java.opts的比例
+mapreduce.reduce.input.buffer.percent						# reduce期间用来缓存map结果大小，堆内存百分比。当shuflle结束后，
+																								# 内存中剩余数据必须小于此值才开始reduce计算。默认情况下map输出都写入磁盘
+mapreduce.reduce.shuffle.parallelcopies					# 默认值5，表示拉取map输出结果的copier线程数。
+```
+
+
+
+查看mapreduce的历史日志
+
+```bash
+mapred job -history output.jhist
+```
+
+
+
 ## 1.2 MapReduce优缺点
 
 ### 1.2.1 优点
