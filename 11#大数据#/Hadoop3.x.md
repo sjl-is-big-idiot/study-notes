@@ -47,11 +47,168 @@ NN会根据机架感知和storage policy，调整副本放置位置。先机架�
 
 读取HDFS中的文件时，HDFS会采取**就近原则**，目的是尽可能地减少带宽消耗和读写延迟。尽量选择和dfs客户端同一个rack中的DN来读写。不在同一个rack则随机。
 
+HDFS支持几种块放置策略。
 
+- `BlockPlacementPolicyDefault`
 
-### **safemode**
+  默认策略。第一个block放在rack-A中的DN（若客户端是DN，则放在当前客户端所在DN），第二个block放在rack-B的随机一个DN，第三个block放在rack-B的另外一个DN。
+
+- `BlockPlacementPolicyRackFaultTolerant`
+
+  `BlockPlacementPolicyDefault`只跨了两个rack，如果两个rack同时故障，则会造成集群数据不可用。而此策略会将3个block副本放置在3个不同的rack。
+
+  ![Rack Fault Tolerant Policy](Hadoop3.x.assets/RackFaultTolerant.jpg)
+
+  相关配置`hdfs-site.xml`
+
+  ```xml
+  <property>
+    <name>dfs.block.replicator.classname</name>
+    <value>org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyRackFaultTolerant</value>
+  </property>
+  ```
+
+  
+
+- `BlockPlacementPolicyWithNodeGroup`
+
+  通过新的3层分层拓扑，引入了节点组级别，该级别可以很好地映射到基于虚拟环境的基础设施上。在虚拟化环境中，多个虚拟机将托管在同一台物理机器上。同一物理主机上的Vm会受到同一硬件故障的影响。因此，将物理主机映射到一个节点组—此块放置保证了它永远不会在同一节点组（物理主机）上放置多个副本，在节点组出现故障的情况下，最多只会丢失一个副本。
+
+  `core-site.xml`
+
+  ```xml
+  <property>
+    <name>net.topology.impl</name>
+    <value>org.apache.hadoop.net.NetworkTopologyWithNodeGroup</value>
+  </property>
+  <property>
+    <name>net.topology.nodegroup.aware</name>
+    <value>true</value>
+  </property>
+  ```
+
+  `hdfs-site.xml`
+
+  ```xml
+  <property>
+    <name>dfs.block.replicator.classname</name>
+    <value>
+      org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyWithNodeGroup
+    </value>
+  </property>
+  ```
+
+  `拓扑脚本`
+
+  ```bash
+  192.168.0.1 /rack1/nodegroup1
+  192.168.0.2 /rack1/nodegroup1
+  192.168.0.3 /rack1/nodegroup2
+  192.168.0.4 /rack1/nodegroup2
+  192.168.0.5 /rack2/nodegroup3
+  192.168.0.6 /rack2/nodegroup3
+  ```
+
+  
+
+- `BlockPlacementPolicyWithUpgradeDomain`
+
+  除了基于rack进行分组外，还可以基于Upgrade Domain进行分组。比如将每个rack的第一个node分到ud_01，每个rack的第二个node分到ud_02，依此类推。这样block的3个副本放到3个不同的Upgrade Domain，每个Upgrade Domain最多只能放置一个副本。
+
+  ![微信图片_20230407140156](Hadoop3.x.assets/微信图片_20230407140156.jpg)
+
+- `AvailableSpaceBlockPlacementPolicy`
+
+  基于DN磁盘的空间使用来进行块放置。尽可能地将块放置到磁盘空间使用率更低的DN。
+
+  相关配置
+
+  `hdfs-site.xml`
+
+  ```xml
+  <property>
+    <name>dfs.block.replicator.classname</name>
+    <value>org.apache.hadoop.hdfs.server.blockmanagement.AvailableSpaceBlockPlacementPolicy</value>
+  </property>
+  
+  <property>
+    <name>dfs.namenode.available-space-block-placement-policy.balanced-space-preference-fraction</name>
+    <value>0.6</value>
+    <description>
+      Special value between 0 and 1, noninclusive.  Increases chance of
+      placing blocks on Datanodes with less disk space used.
+    </description>
+  </property>
+  
+  <property>
+  <name>dfs.namenode.available-space-block-placement-policy.balanced-space-tolerance</name>
+  <value>5</value>
+  <description>
+      Special value between 0 and 20, inclusive. if the value is set beyond the scope,
+      this value will be set as 5 by default, Increases tolerance of
+      placing blocks on Datanodes with similar disk space used.
+  </description>
+  </property>
+  
+  <property>
+    <name>
+      dfs.namenode.available-space-block-placement-policy.balance-local-node
+    </name>
+    <value>false</value>
+    <description>
+      If true, balances the local node too.
+    </description>
+  </property>
+  ```
+
+  
+
+- `AvailableSpaceRackFaultTolerantBlockPlacementPolicy`
+
+  类似`AvailableSpaceBlockPlacementPolicy`，是对其的扩展，尽可能在多个rack中进行block副本的分配。
+
+  相关配置
+
+  `hdfs-site.xml`
+
+  ```xml
+  <property>
+    <name>dfs.block.replicator.classname</name>
+    <value>org.apache.hadoop.hdfs.server.blockmanagement.AvailableSpaceRackFaultTolerantBlockPlacementPolicy</value>
+  </property>
+  
+  <property>
+    <name>dfs.namenode.available-space-rack-fault-tolerant-block-placement-policy.balanced-space-preference-fraction</name>
+    <value>0.6</value>
+    <description>
+      Only used when the dfs.block.replicator.classname is set to
+      org.apache.hadoop.hdfs.server.blockmanagement.AvailableSpaceRackFaultTolerantBlockPlacementPolicy.
+      Special value between 0 and 1, noninclusive.  Increases chance of
+      placing blocks on Datanodes with less disk space used. More the value near 1
+      more are the chances of choosing the datanode with less percentage of data.
+      Similarly as the value moves near 0, the chances of choosing datanode with
+      high load increases as the value reaches near 0.
+    </description>
+  </property>
+  
+  <property>
+    <name>dfs.namenode.available-space-rack-fault-tolerant-block-placement-policy.balanced-space-tolerance</name>
+    <value>5</value>
+    <description>
+      Only used when the dfs.block.replicator.classname is set to
+      org.apache.hadoop.hdfs.server.blockmanagement.AvailableSpaceRackFaultTolerantBlockPlacementPolicy.
+      Special value between 0 and 20, inclusive. if the value is set beyond the scope,
+      this value will be set as 5 by default, Increases tolerance of
+      placing blocks on Datanodes with similar disk space used.
+    </description>
+  </property>
+  ```
+
+### safemode
 
 NN启动时会先进入safemode状态，safemode状态中不会进行block的复制。NN接受来自DN的heartbeat和Blockreport。每个block有一个最小副本数。NN会检查每个block的可用副本数是否满足最小副本数。当满足的block（认为此种副本是safe的）达到一定比例之后，再等待30秒，NN就会退出safemode了。NN会持有少于最小副本数的block，然后将block的副本复制到其他DN，已满足副本数要求。
+
+当NN进入safemode，则此时HDFS是只读的，不允许任何修改filesystem和block的操作。
 
 ***PS:启动一个刚刚格式化完的集群时，HDFS还没有任何操作呢，因此Namenode不会进入安全模式。***
 
@@ -169,6 +326,131 @@ drwxr-xr-x   - hadoop hadoop          0 2015-05-08 12:39 .Trash/Current/user/had
 **减少副本因子**
 
 减少副本因子，NN会将多余的block副本删除。在DN的下一次心跳时，NN将此信息发送给DN。DN收到之后，移除这些block。在setrep完成和释放此block占用的集群空间之间也会有一段时间的延迟。
+
+### Web Interface
+
+NN和DN都各自运行了内部的web server，用于展示NN、DN的一些信息。默认地NN的web UI地址为`http://namenode-host:9870`。
+
+
+
+### Secondary NameNode
+
+当NN启动时，从fsimage中读取HDFS的状态，然后将edits log应用到命名空间。因为NN只在启动时合并fsimage和edits log，对于比较繁忙的HDFS集群，其edits log会非常的长。那么再下一次NN启动时，会花费很长的时间来合并fsimage和edits log。
+
+Secondary NameNode会定期合并fsimage和edits log，保证edits log始终保持在一个合理的大小。因为Secondary NameNode对内存的消耗与NN差不多，因此Secondary NameNode通常运行在与NN相同配置的另外一台机器上。
+
+checkpoint的触发条件（满足任意一个条件就开始checkpoint）：
+
+- `dfs.namenode.checkpoint.period`，默认为1小时，表示两次checkpoint的最大间隔时间
+- `dfs.namenode.checkpoint.txns`，默认为100万，表示记录的事务条数达到100w，则进行checkpoint
+
+### Checkpoint Node
+
+Checkpoint Node定期创建namespace的checkpoint。
+
+从active Namenode下载fsimage和edits，在本地进行合并，再上传新的fsimage给active Namenode。Checkpoint node运行在Namenode不同的机器，因为也需要相同大小的内存。`hdfs namenode -checkpoint`命令可以启动checkpoint node。
+
+`Checkpoint node`/`Backup Node`的位置由配置项`dfs.namenode.backup.address`和`dfs.namenode.backup.http-address`（web接口）决定。
+
+checkpoint的触发条件（满足任意一个条件就开始checkpoint）：
+
+- `dfs.namenode.checkpoint.period`，默认为1小时，表示两次checkpoint的最大间隔时间
+- `dfs.namenode.checkpoint.txns`，默认为100万，表示记录的事务条数达到100w，则进行checkpoint
+
+### Backup Node
+
+Backup node提供了与Checkpoint node相同的checkpoint功能，并在内存中维护文件系统命名空间的最新副本，该副本始终与active NameNode状态同步。除了从NameNode接受edtis的日志流并将其保存到磁盘之外，Backup node还将这些edits应用到内存中自己的命名空间副本中，从而创建命名空间的备份。
+
+Backup node不需要像checkpoint node或Secondary NameNode那样从active NameNode下载fsimage和edits文件来创建checkpoint，因为它在内存中已经有了命名空间的最新状态。
+
+由于Backup node在内存中维护命名空间的副本，因此其RAM要求与NameNode相同。
+
+NameNode只支持一个Backup node。如果正在使用Backup node，则不能注册任何Checkpoint node。将来将支持同时使用多个Backup node。
+
+Backup node的配置方式与Checkpoint node相同。可以通过`bin/hdfs namenode -backup`启动一个Backup node。
+
+`Checkpoint node`/`Backup Node`的位置由配置项`dfs.namenode.backup.address`和`dfs.namenode.backup.http-address`（web接口）决定。
+
+**使用Backup node可以在没有持久存储的情况下运行NameNode**，从而将合并最新命名空间的责任交给Backup node。要做到这一点，请使用`-importCheckpoint`选项启动NameNode，同时不为NameNode配置指定edits dfs.NameNode.edits.dir类型的永久存储目录。
+
+### Import Checkpoint
+
+如果Namenode的最新的fsimage和edits丢失了，可以将最新的checkpoint导入到Namenode。
+
+（1）创建`dfs.namenode.name.dir`指定的空目录
+
+（2）在`dfs.namenode.checkpoint.dir`（默认值为` file://${hadoop.tmp.dir}/dfs/namesecondary`）指定checkpoint的目录
+
+（3）使用`hdfs --daemon start -importCheckpoint namenode`启动namenode
+
+Namenode会从`dfs.namenode.checkpoint.dir`目录加载checkpoint，然后将其保存到`dfs.namenode.name.dir`目录。如果`dfs.namemode.name.dir`中包含合法的fsimage，则NameNode将启动失败。
+
+### Balancer
+
+NN在考虑将客户端写入的block放在哪些DN上时，会从以下几个方面进行考虑：
+
+- 如果写入的客户端为DN，则第一个副本写入当前DN
+- 需要将其他block 副本传输到其他rack，就能够容忍整个rack故障。
+- 一个block副本通常放在写入客户端所在rack上，可以减少跨rack的网络IO。
+- 将HDFS数据均匀地分布在集群中的DN上。
+
+Balancer支持两种模式：
+
+- `tool mode`
+
+  尽可能地平衡集群，当满足如下条件时，balancer退出：
+
+  - 集群数据均衡了。（满足threshold）
+  - 达到迭代次数的要求后不会再移动任何字节（默认迭代5次）。
+  - 没有block可以被移动。
+  - cluter正在升级
+  - 其他错误。
+
+- `service mode`
+
+  balancer作为一个daemon长期运行。
+
+  - 每一个回合都尝试平衡集群，直到成功或报错。
+  - 可以配置两次balance之间的间隔时间，配置项`dfs.balancer.service.interval`
+  - 在遇到异常时，balancer会尝试几次，当失败`dfs.balancer.service.retries.on.exception`次数之后，会停止此服务。
+
+### Datanode热插拔驱动器
+
+Datanode支持热插拔驱动器。用户可以在不关闭DataNode的情况下添加或替换HDFS数据卷。
+
+- 如果是新的存储目录（如增加了一块盘），需要先格式化并挂载此数据盘。
+
+- 更新`dfs.datanode.data.dir`的配置，增加新的存储目录。
+
+- `dfsadmin -reconfig datanode HOST:PORT start`让此DN重新加载配置，使用`dfsadmin -reconfig datanode HOST:PORT status`命令可以查看reconfinguration任务的状态
+
+  `dfsadmin -reconfig datanode livenodes start`
+
+  `dfsadmin -reconfig datanode livenodes status`
+
+- 一旦reconfinguration任务完成，就可以umount或者移除数据目录，然后再移除物理磁盘。
+
+### fsck
+
+fsck工具可以检查HDFS文件系统的健康状况，可以发现哪些文件、block有问题。如missing block，under-replicated block（副制不足的块）。fsck只能报告有哪些问题，并能修复这些问题。对于可修复的故障，NN会自动进行修复。fsck不是hadoop的命令，只能通过`hdfs fsck`来运行。
+
+### fetchdt
+
+fetchdt工具可以用来获取委托token，并将其存储在本地文件系统。
+
+fsck不是hadoop的命令，只能通过 `bin/hdfs fetchdt DTfile`来运行。
+
+### Recovery Mode
+
+通常，我们会配置多个metadata存储位置。当某个存储位置损坏之后，还可以从其他位置读取metadata。
+
+但是如果只有一个metadata存储位置，且已经损坏了，那该如何办呢？
+
+尝试以recovery mode来启动NN，可以恢复大多数的元数据信息。
+
+`hdfs --daemon start namenode -recover`
+
+在使用recovery mode之前，需要将最新的fsimage和edits进行备份，避免recovery mode造成数据丢失。
 
 ## 公平调度队列（Fair Call Queue）
 
@@ -3913,6 +4195,21 @@ YARN HA集群支持配置LB，通过RM web ui 的`/isAcitve` HTTP请求，可以
 ## 管理员命令
 
 TODO
+
+```bash
+hdfs dfs -help										# hdfs dfs支持哪些命令
+hdfs dfs -help command-name				# 查看hdfs dfs具体某命令的帮助信息
+
+hdfs dfsadmin -report							# 查看hdfs的基础统计信息
+hdfs dfsadmin -safemode						# 手动enter|leave safemode
+hdfs dfsadmin -finalizeUpgrade		# 移除upgrade之前做的backup
+hdfs dfsadmin -refreshNodes				# 更新允许连接到nn的dn节点，相关配置dfs.hosts,dfs.hosts.exclude
+hdfs dfsadmin -printTopology			# 打印hdfs集群的拓扑结构
+```
+
+
+
+
 
 ## HA命令
 
