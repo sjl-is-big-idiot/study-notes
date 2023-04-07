@@ -4,6 +4,355 @@ Hadoop3.x和Hadoop2.x的区别
 
 hdfs知识详解：https://www.codenong.com/cs106154575/
 
+## HDFS架构
+
+### HDFS的目标
+
+- 硬件容错
+- 流式数据访问：追求的是高吞吐量而不是低延迟。
+- 大数据集：GB ~ TB级别，上千万文件
+- 简单一致性模型：write-once-read-many访问模型，宝恒数据一致性。文件不能修改，但可以append和truncate。
+- 移动计算优于移动数据：尽量在数据所在主机执行计算
+- 可移植性
+
+### **NN职责**
+
+- 负责管理文件系统命名空间
+- 元数据操作，如open file、close file、rename file/directory
+
+### **DN职责**
+
+- 处理读写数据的请求
+- block的创建、删除、复制等
+
+写入到HDFS的file会被分解为一或多个block，除了最后一个block之外，其他block的块大小都是相同的，等于block size。我想的是如果append到此file，那数据实际应该是直接append到最后一个block中了，如果放不下，应该就会创建一个新的block，作为新的最后一个block。TODO未验证。
+
+DN会向NN发送heartbeat和blockreport（每个DN中的所有block的list）。
+
+### **块放置策略**
+
+参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsBlockPlacementPolicies.html
+
+- 副本因子=3
+
+  如果写入的客户端是DN，则在当前DN写入第一个副本，在其它rack的随机一个DN写入第二个副本，在第二个副本所在rack的其他DN写入第三个副本。
+
+  否则，在客户端所在rack中的随机一个DN写入第一个副本，在其它rack的随机一个DN写入第二个副本，在第二个副本所在rack的其他DN写入第三个副本。
+
+- 副本因子=4或其他
+
+  第4个副本随机放置，但是每个rack中的副本数的上限要小于此值：`(replicas - 1) / racks + 2`
+
+NN会根据机架感知和storage policy，调整副本放置位置。先机架感知，再storage policy。
+
+读取HDFS中的文件时，HDFS会采取**就近原则**，目的是尽可能地减少带宽消耗和读写延迟。尽量选择和dfs客户端同一个rack中的DN来读写。不在同一个rack则随机。
+
+
+
+### **safemode**
+
+NN启动时会先进入safemode状态，safemode状态中不会进行block的复制。NN接受来自DN的heartbeat和Blockreport。每个block有一个最小副本数。NN会检查每个block的可用副本数是否满足最小副本数。当满足的block（认为此种副本是safe的）达到一定比例之后，再等待30秒，NN就会退出safemode了。NN会持有少于最小副本数的block，然后将block的副本复制到其他DN，已满足副本数要求。
+
+***PS:启动一个刚刚格式化完的集群时，HDFS还没有任何操作呢，因此Namenode不会进入安全模式。***
+
+相关配置：
+
+```bash
+dfs.namenode.replication.min					# 默认为1。block的最小副本数，小于此值认为此block不安全
+dfs.namenode.safemode.threshold-pct		# 默认0.999f。
+																			# 安全的block达到此百分比之后，NN才会退出safemode，还需要其他条件也满足。
+dfs.namenode.safemode.min.datanodes		# 默认为0。表示所有datanode都不可用，仍然可以离开安全模式。
+																			# 离开安全模式的最小可用（alive）datanode数量要求
+dfs.namenode.safemode.extension				# 单位为毫秒，默认为1。当集群可用block比例，可用datanode都达到要求之后，
+																			# 如果在extension配置的时间段之后依然能满足要求，此时集群才离开安全模式。
+```
+
+### **fs元数据的持久化**
+
+- 事务日志EditLog
+
+  记录了对元数据的修改操作，如创建新文件、修改文件的副本因子等。
+
+- FSimage
+
+  NN的内存中维护了fsimage和blockmap（应该是根据DN的Blockreport得来的）。
+
+  checkpoint的触发条件（满足任意一个就触发checkpoint）：
+
+  - 时间间隔(`dfs.namenode.checkpoint.period`单位秒)
+  - 事务条数(`dfs.namenode.checkpoint.txns` 默认100w条)
+
+  DN在启动时，会扫描本地文件系统，获取到block list，然后发送Blockreport给NN。
+
+### **通信协议**
+
+所有HDFS通信协议都是基于TCP/IP协议的。客户端与NameNodeTCP端口建立连接。它与NameNode的ClientProtocol对话。DN使用DataNode Protocol与NN进行通信。远程过程调用（RPC）抽象封装了Client Protocol和DataNode Protocol。根据设计，NameNode从不启动任何RPC。它只响应由DataNodes或客户端发出的RPC请求。
+
+### **健壮性（Robustness）**
+
+HDFS的主要目标是即使发生错误也要保证存储数据的可靠性。通常由三种错误：NN的故障、DN的故障、网络分区（network partition）。
+
+- 数据盘故障、心跳和re-replication
+
+  DN会定期向NN发送心跳。网络分区会导致某一部分的DN丢失与NND的连接。NN将最近没有心跳的DN标记为dead，并且不会向它们发送任何IO请求。在这些被标记为dead的DN上的block都被HDFS认为是不可用的。DN的dead会导致某些block的副本数低于其副本因子。NN不断地跟踪哪些block需要被复制，并在必要时候启动复制。re-replication发生有多种原因：
+
+  - DN不可用
+  - replica损坏
+  - DN上某磁盘硬件故障
+  - 某file的副本因子增加了
+
+  为了避免因DataNodes的状态波动而导致的复制风暴，将DataNodes标记为dead的超时时间较长（默认情况下超过10分钟，即10分钟内都没有收到DN的心跳，则标记为dead），对于性能敏感的工作负载，用户可以设置较短的间隔来将DataNodes标记为stale节点，并通过配置避免在stale节点进行读写。
+
+- 集群重新平衡
+
+  因为副本放置策略、添加新的节点、大量删除数据等原因，会导致集群中某些DN的磁盘使用率高，而某些DN磁盘使用率低，导致集群不平衡。HDFS支持集群的重新平衡，对DN之间的block进行移动，让集群保持更为平衡。
+
+- 数据完整性
+
+  从DataNode获取的数据块可能是已损坏。这种损坏可能是由于存储设备故障、网络故障或软件错误造成的。HDFS客户端可以对HDFS文件的内容进行checksum检查。当客户端创建HDFS文件时，它会计算文件的每个块的checksum，并将这些checksum存储在同一HDFS命名空间中的一个单独的隐藏文件中。当客户端检索文件内容时，它会验证从每个DataNode接收的数据是否与存储在相关checksum文件中的checksum匹配。如果没有，则客户端可以选择从具有该块副本的另一个DataNode检索该块。
+
+- 元数据磁盘故障
+
+  FsImage、EditLog损坏会导致HDFS无法正常工作。HDFS有两种机制可以解决此问题：
+
+  - NN支持多个元数据目录，每个目录的内容是一致的。但是这种多个目录的元数据的同步更新，会一定程度地影响NN的性能。
+  - HDFS HA集群可以避免某个FsImage或EditLog的损坏而导致HDFS集群无法正常工作。
+
+- 快照
+
+  快照支持存储特定时刻的数据副本（元数据的快照）。
+
+### **Data Organization**
+
+**Data Block**
+
+HDFS被设计来存储大文件的。HDFS的访问模型是write-once-read-many。hadoop1.x的block size常为64MB，hadoop2.x之后的block size常为128MB。
+
+**Replication Pipelining**
+
+当client写一个replica factor为3的HDFS文件时，NN会使用`replication target choosing`算法来找到一个托管此文件的block的DN list。
+
+client先写入第一个DN，第一个DN开始接收一部分数据，将此部分数据写入buffer，并将该部分数据传输到第二个DN；
+
+第二个DN开始接收一部分数据，将此部分数据写入buffer，并将该部分数据传输到第三个DN；
+
+第三个DN将数据写入buffer，每个DN的buffer达到一定比例后将数据溢写到磁盘。
+
+### 可访问性（Accessibility）
+
+HDFS的数据可以通过多种方式来访问，如`FileSystem Java API`，`FS Shell`, `REST API`, 直接`浏览器访问`等。
+
+### 空间回收（Space Reclamation）
+
+当启用了HDFS的trash功能后，通过`FS Shell`删除的文件/目录并不会被直接删除，而是移动到了回收站。每个用户都有自己的回收站通常为`/user/<username>/.Trash`。如果发生误删除，可以将回收站中的文件进行恢复。
+
+最近删除的文件被放入`/user/<username>/.trash/current`目录，HDFS会定期checkpoint一下回收站目录，将旧的删除的文件移动到`/user/<username>/.trash/<date>`目录。
+
+当回收站中的文件过期之后，NN会将此文件从namespace中删除，进而导致此文件对应的block被释放。应该为回收站的文件保留足够长的时间，如7天。
+
+常用命令
+
+```bash
+$ hadoop fs -mkdir -p delete/test1
+$ hadoop fs -mkdir -p delete/test2
+$ hadoop fs -ls delete/
+$ hadoop fs -rm -r delete/test1
+Moved: hdfs://localhost:8020/user/hadoop/delete/test1 to trash at: hdfs://localhost:8020/user/hadoop/.Trash/Current
+# 直接删除文件/目录，不进入回收站
+$ hadoop fs -rm -r -skipTrash delete/test2
+Deleted delete/test2
+$ hadoop fs -ls .Trash/Current/user/hadoop/delete/
+Found 1 items\
+drwxr-xr-x   - hadoop hadoop          0 2015-05-08 12:39 .Trash/Current/user/hadoop/delete/test1
+```
+
+**减少副本因子**
+
+减少副本因子，NN会将多余的block副本删除。在DN的下一次心跳时，NN将此信息发送给DN。DN收到之后，移除这些block。在setrep完成和释放此block占用的集群空间之间也会有一段时间的延迟。
+
+## 公平调度队列（Fair Call Queue）
+
+Hadoop的组件，尤其是Namendoe，面临着较大的来自客户端的RPC负载压力，以前以FIFO的方式处理client的RPC请求，但是若某user一下提交了大量的RPC请求，那么会导致其他用户的RPC请求不能得到快速的响应。
+
+为了解决上述问题，引入了`Fair Call Queue`（简称`FCQ`）。原理图如下：
+
+![FairCallQueue Overview](Hadoop3.x.assets/faircallqueue-overview.png)
+
+client向IPC server发送request，request首先进入`Listen Queue`，`Reader`线程从`Listen Queue`中拿出来一个request，并传递给可配置的`RpcScheduler`，为其分配优先级，并放入`Call Queue`，`Handler`线程接受`Call Queue`中的请求，并处理它们，返回响应给client。
+
+默认情况下，使用`FairCallQueue的RpcScheduler`是`DecayRpcScheduler`。` DecayScheduler`维护了每个用户的请求数。这个请求数会随着时间的推移而递减，每个`sweep period`（默认5s）会将每个用户的请求数 * `decay factor`（默认0.5）。
+
+`sweep period`：扫描周期
+
+`decay factor`：衰减因子
+
+每次扫描都将用户的请求数从高到低进行排序。**每个用户都有一个优先级**。
+
+- 请求数占总的50%以上的这一个用户的优先级为3（最低）
+- 请求数占总的25%-50%的这些用户的优先级为2
+- 请求数占总的12.5%-25%的这些用户的优先级为1
+- 请求数占总的12.5%以下的用户的优先级为0（最高）
+
+每次扫描之后，缓存已知用户的优先级直到下次扫描，新加入的用户即时计算其优先级。
+
+在`FairCallQueue`中，有多个优先级队列，每个队列都被指定了一个权重。当请求到达`call queue`时，根据`RpcScheduler`给用户分配的优先级，将请求放入对应优先级的队列中。当`Handler`线程从`call queue`获取到哪一个请求是由`RpcMultiplexer`决定的。代码中写死为`WeightedRoundRobinMultiplexer`（WRRM）。WRRM根据队列的权重来处理队列中的请求；4个队列默认的权重分别是8,4,2,1。
+
+WRRM处理8个最高优先级`call queue`中的请求；
+
+WRRM处理4个第二优先级`call queue`中的请求；
+
+WRRM处理2个第三优先级`call queue`中的请求；
+
+WRRM处理1个最低优先级`call queue`中的请求；
+
+按上述规则轮询。
+
+除了优先级加权（priority-weighting）机制之外，还有一个回退机制（`backoff`），配置了backoff之后，server抛出异常给client，而不是处理client的请求。要求client在重试之前等待一段时间。
+
+- 当`FCQ`满了之后，client再尝试将请求放入FCQ时就会触发backoff。这会backoff请求数量较多的client，进而减轻server端的负载。
+
+- 按响应时间backoff
+
+  如果高优先级的请求的处理太慢，将会当值更低优先级的请求被backoff。例如，优先级1的响应时间阈值为10秒，而该队列的平均响应时间为12秒，那么优先级2、3的请求将会收到backoff异常，而优先级为0、1的正常处理。这样的目的是，当整个系统负载较重时，导致高优先级的client的请求受到影响时，会强制backoff请求数量较多的client，以提高对高优先级client请求的处理速度。
+
+总结：就是将用户的的请求进行分组以实现限流。用户身份的识别是由`identity provider`，默认是`UserIdentityProvider`实现的
+
+**Cost-based Fair Call Queue（基于成本的FCQ）**
+
+尽管FCQ在减轻提交大量请求的用户的影响方面做得很好，但它没有考虑到每个请求的处理成本。比如，1000个`getFileInfo`请求和1000个在某巨大目录上的`listStatus`请求的处理成本是不同的，后者的成本更高。
+
+使用用户的操作（请求）的总处理时间来确定该用户的优先级。
+
+总处理时间 = 无锁的处理时间 * 1 + 共享锁的处理时间 * 10 + 互斥锁的处理时间 * 100
+
+即根据用户在server端的实际负载来决定用户的优先级。将`costprovider.impl`配置设置为`org.apache.hadoop.ipc.WeightedTimeCostProvider`以启用`Cost-based Fair Call Queue`。
+
+**配置FCQ**
+
+FCQ的配置只与单独的IPC Server有关。可以允许不同的IPC Server使用不同的配置。配置的前缀决定了此配置对哪些IPC Server生效。格式为`ipc.<port_number>`。例如`ipc.8020.callqueue.impl`控制运行在8020端口的IPC Server的`call queue`的实现。
+
+相关配置
+
+下面配置省略了`ipc.<prot_number>`的前缀。
+
+| 配置项                                          | 应用的组件                    | 描述                                                         |
+| ----------------------------------------------- | ----------------------------- | :----------------------------------------------------------- |
+| backoff.enable                                  | General                       | 默认false。当queue满了之后是否启用客户端backoff              |
+| callqueue.impl                                  | General                       | 默认`java.util.concurrent.LinkedBlockingQueue` (FIFO queue)。call queue实现的类名。要实现FCQ应设置为`org.apache.hadoop.ipc.FairCallQueue` |
+| scheduler.impl                                  | General                       | `org.apache.hadoop.ipc.DefaultRpcScheduler` (no-op scheduler) 如果使用了FCQ，默认值为 `org.apache.hadoop.ipc.DecayRpcScheduler`。scheduler实现的类名。要使用FCQ应为`org.apache.hadoop.ipc.DecayRpcScheduler` |
+| scheduler.priority.levels                       | RpcScheduler, CallQueue       | 默认4。在scheduler和call queue中有多少个优先级级别。         |
+| faircallqueue.multiplexer.weights               | WeightedRoundRobinMultiplexer | 默认`8,4,2,1`。每个优先级队列的权重，对应队列的优先级递减。  |
+| identity-provider.impl                          | DecayRpcScheduler             | 默认org.apache.hadoop.ipc.UserIdentityProvider。将用户请求映射到用户的身份 |
+| cost-provider.impl                              | DecayRpcScheduler             | 默认`org.apache.hadoop.ipc.DefaultCostProvider`。将用户的请求映射到请求所需的成本（时间）。要启用cost-based FCQ应设为`org.apache.hadoop.ipc.WeightedTimeCostProvider`. |
+| decay-scheduler.period-ms                       | DecayRpcScheduler             | 默认5000。decay时的扫描周期sweep period。                    |
+| decay-scheduler.decay-factor                    | DecayRpcScheduler             | 默认0.5。衰减因子。                                          |
+| decay-scheduler.thresholds                      | DecayRpcScheduler             | 默认13,25,50。客户端的负载阈值。将处于对应阈值范围的client划分到对应的优先级队里。 |
+| decay-scheduler.backoff.responsetime.enable     | DecayRpcScheduler             | 默认false。是否启用基于响应时间的backoff。                   |
+| decay-scheduler.backoff.responsetime.thresholds | DecayRpcScheduler             | 默认10s,20s,30s,40s。每个优先级队列的响应时间的阈值。如果某个队列的平均响应时间大于对应阈值，则会在更低的优先级队列发生backoff。 |
+| decay-scheduler.metrics.top.user.count          | DecayRpcScheduler             | 默认10。The number of top (i.e., heaviest) users to emit metric information about. |
+| weighted-cost.lockshared                        | WeightedTimeCostProvider      | 默认10。处理shared lock时的时间权重。                        |
+| weighted-cost.lockexclusive                     | WeightedTimeCostProvider      | 默认100。处理exclusive lock时的时间权重。                    |
+| weighted-cost.{handler,lockfree,response}       | WeightedTimeCostProvider      | 默认1。处理无锁请求时的时间权重。                            |
+
+配置示例
+
+```xml
+<property>
+     <name>ipc.8020.callqueue.impl</name>
+     <value>org.apache.hadoop.ipc.FairCallQueue</value>
+</property>
+<property>
+     <name>ipc.8020.scheduler.impl</name>
+     <value>org.apache.hadoop.ipc.DecayRpcScheduler</value>
+</property>
+<property>
+     <name>ipc.8020.scheduler.priority.levels</name>
+     <value>2</value>
+</property>
+<property>
+     <name>ipc.8020.faircallqueue.multiplexer.weights</name>
+     <value>99,1</value>
+</property>
+<property>
+     <name>ipc.8020.decay-scheduler.thresholds</name>
+     <value>90</value>
+</property>
+```
+
+## 本地库（native library）
+
+由于性能原因和Java实现不可用的原因，Hadoop的某些组件使用native implement，称之为`native hadoop library`。包含三部分：
+
+- Compress Codecs(bzip2, lz4, zlib)
+- 本地短路读和中心化缓存的Native IO utilities
+- CRC32 checksum的实现
+
+`native hadoop library`只在`*nix`平台上支持，主要是GUV/Linus平台，如RHEL4/Fedora，Ubuntu，Centoo。`native hadoop library`名为`libhadoop.so`，位于`$HADOOP_HOME/lib/native`目录下。
+
+可以通过`distributedcache`的方式加载native库。如
+
+1. 将library 上传到HDFS: `bin/hadoop fs -copyFromLocal mylib.so.1 /libraries/mylib.so.1`
+2. 在MR job中将library添加到分布式缓存: `DistributedCache.createSymlink(conf);` `DistributedCache.addCacheFile("hdfs://host:port/libraries/mylib.so.1 #mylib.so", conf);`
+3. 在MR task中加载library: `System.loadLibrary("mylib.so");`
+
+## 代理用户（proxy user）
+
+proxy user可以代表其他用户来行事。
+
+**相关配置**
+
+```bash
+hadoop.proxyuser.$superuser.hosts		# $superuser可以代理由哪些主机发出的请求
+hadoop.proxyuser.$superuser.gruops	# $superuser可以代理哪些组的用户
+hadoop.proxyuser.$superuser.users		# $superuser可以代理哪些用户
+```
+
+**表示**：允许`$superuser`，在这里是`super`运行在哪些主机上，代理哪些用户或者属于哪些组的用户。
+
+`core-site.xml`
+
+```xml
+<property>
+  <name>hadoop.proxyuser.super.hosts</name>
+  <value>host1,hots2</value>
+</property>
+<property>
+  <name>hadoop.proxyuser.super.groups</name>
+  <value>gruop1,group2</value>
+</property>
+<property>
+  <name>hadoop.proxyuser.users</name>
+  <value>user1,user2</value>
+</property>
+```
+
+下面参考自：https://www.jianshu.com/p/a27bc8651533
+
+Hadoop2.0版本开始支持ProxyUser的机制。含义是使用User A的用户认证信息，以User B的名义去访问hadoop集群。对于服务端来说就认为此时是User B在访问集群，相应对访问请求的鉴权（包括HDFS文件系统的权限，YARN提交任务队列的权限）都以用户User B来进行。User A被认为是superuser（这里super user并不等同于hdfs中的超级用户，只是拥有代理某些用户的权限，对于hdfs来说本身也是普通用户），User B被认为是proxyuser。
+
+`proxyuser`：即被代理的用户。
+
+`superuser`：这里的superuser，并不是启动NN的用户，而是用来代理某些用户的用户。
+
+在Hadoop的用户认证机制中，如果使用的是`Simple认证机制`，实际上ProxyUser的使用意义并不大，因为客户端本身就可以使用任意用 户对服务端进行访问，服务端并不会做认证。而在使用了安全认证机制（例如`Kerberos`）的情况下，ProxyUser认证机制就很有作用：
+
+1. 用户的管理会比较繁琐，每增加一个新的用户，都需要维护相应的认证信息（kerberosKeyTab），使用ProxyUser的话，只需要维护少量superuser的认证信息，而新增用户只需要添加proxyuser即可，proxyuser本身不需要认证信息。
+2. 通常的安全认证方式，适合场景是不同用户在不同的客户端上提交对集群的访问；而实际应用中，通常有第三方用户平台或系统会统一用户对集群的访问，并 且执行一系列任务调度逻辑，例如Oozie、华为的BDI系统等。此时访问集群提交任务的实际只有一个客户端。使用ProxyUser机制，则可以在这一 个客户端上，实现多个用户对集群的访问。
+
+
+
+![img](Hadoop3.x.assets/9190482-66299fabaf1dd66a.png)
+
+**proxyuser下的认证流程**：
+
+1. **对SuperUser进行认证**，在Simple认证模式下直接通过认证，在Kerberos认证模式下，会验证ticket的合法性。
+
+2. **代理权限认证**，即认证SuperUser是否有权限代理proxyUser。这里权限认证的逻辑的实现可以通过 hadoop.security.impersonation.provider.class参数指定。在默认实现中通过一系列参数可以指定每个 SuperUser允许代理用户的范围。
+
+3. **访问请求鉴权**，即*验证proxyUser是否有权限对集群（hdfs文件系统访问或者yarn提交任务到资源队列）的访问*。这里的鉴权只是针对 proxyUser用户而已经与SuperUser用户无关，及时superUser用户有权限访问某个目录，而proxyUser无权限访问，此时鉴权 也会返回失败。
+
+![img](Hadoop3.x.assets/9190482-d210da5cfeda8615.png)
+
 ## 机架感知
 
 **机架感知的目的**：为了实现容错，HDFS的block management使用机架感知，将block的副本放置在不同的机架。
@@ -96,6 +445,2199 @@ echo $@ | xargs -n 1 | awk -F '.' '{print "/rack-"$NF}'
 Hadoop兼容文件系统，Hadoop compatible file system，简称HCFS。就是Hadoop兼容的文件系统。
 
 ![image-20230331152628677](Hadoop3.x.assets/image-20230331152628677.png)
+
+## secure mode
+
+当Hadoop配置在安全模式中运行，则每个hadoop服务和每个用户都必须用kerberos进行认证。
+
+为了让hadoop的服务之间可以进行身份认证，正向/反向主机查找（host lookup）是需要的，通常是通过`DNS`或`/etc/hosts`实现。
+
+Hadoop的安全功能包括**身份验证**、**服务级别授权**、**Web控制台身份验证**和**数据保密**。
+
+终端用户
+
+当开启了Service Level Authorization，在于Hadoop的服务通信前需要先认证，可以使用`kinit`命令进行认证。编程方式可以通过keytab文件进行认证。
+
+**daemon的用户账号**
+
+假设
+
+HDFS以hdfs用户运行
+
+YARN以yarn用户运行
+
+MapReduce JobHistory以mapred用户运行
+
+| User:Group    | Daemons                                             |
+| :------------ | :-------------------------------------------------- |
+| hdfs:hadoop   | NameNode, Secondary NameNode, JournalNode, DataNode |
+| yarn:hadoop   | ResourceManager, NodeManager                        |
+| mapred:hadoop | MapReduce JobHistory Server                         |
+|               |                                                     |
+
+**Hadoop kerberos主体**
+
+需要为每个Hadoop daemon配置其kerberos主体、keytab文件。服务的kerberos主体的格式为：`ServiceName/_HOST@REALM`。如：`dn/_HOST@EXAMPLE.COM`。`_HOST`应替换为每个节点的主机名。
+
+**Hadoop将kerberos主体映射到os用户**
+
+Hadoop使用`hadoop.security.auth_to_local`，`hadoop.security.auth_to_local.mechanism`来决定如何将kerberos映射为os用户。
+
+例如在`core-site.xml`中，有如下配置
+
+```xaml
+<property>
+  <name>hadoop.security.auth_to_local</name>
+  <value>
+    RULE:[2:$1/$2@$0]([ndj]n/.*@REALM.\TLD)s/.*/hdfs/
+    RULE:[2:$1/$2@$0]([rn]m/.*@REALM\.TLD)s/.*/yarn/
+    RULE:[2:$1/$2@$0](jhs/.*@REALM\.TLD)s/.*/mapred/
+    DEFAULT
+  </value>
+</property>
+```
+
+第一条：`nn/.*@REALM.TLD`，`dn/.*@REALM.TLD`，`jn/.*@REALM.TLD`。`.*`是主机名，整体表示任意主机的这几个kerberos主体映射为hdfs用户
+
+第二条：`rm/.*@REALM.TLD`，`nm/.*@REALM.TLD`，`.*`是主机名，整体表示任意主机的这几个kerberos主体映射为yarn用户
+
+第三条：`jhs/.*@REALM.TLD`，`.*`是主机名，整体表示任意主机的这几个kerberos主体映射为yarn用户
+
+可以使用`hadoop kerbname`命令来测试上述规则是否ok。
+
+**os用户映射到os group**
+
+由`hadoop.security.group.mapping`配置项决定。
+
+
+
+
+
+## Service Level Authorization
+
+Hadoop是如何配置和管理服务级别授权的。
+
+`service level authorization`是一种授权机制，确保连接到指定服务的client有权限访问。例如，MR集群利用此机制来控制哪些user/group list能够提交job。
+
+`$HADOOP_CONF_DIR/hadoop-policy.xml`是用来定义hadoop个服务的ACL的配置文件。`service level authorization`在其它访问控制检查之前执行，如文件权限检查、作业队列访问检查等。
+
+**相关配置**
+
+`core-site.xml`
+
+```bash
+hadoop.security.authorization			# 默认false。是否启用service level authorization
+```
+
+
+
+`$HADOOP_CONF_DIR/hadoop-policy.xml`
+
+```bash
+security.client.protocol.acl							# ClientProtocol的ACL，被用户代码中的DistributedFileSystem使用。
+security.client.datanode.protocol.acl			#	ClientDatanodeProtocol的ACL，被用于块恢复时client-datanode的协议。
+security.datanode.protocol.acl						# DatanodeProtocol的ACL，被用于datanode连接namenode
+security.inter.datanode.protocol.acl			# InterDatanodeProtocol的ACL，被用于datanode之间更新生成时间戳
+security.namenode.protocol.acl						# NamenodeProtocol的ACL，被用于secondary nn连接namenode
+security.job.client.protocol.acl					# JobSubmissionProtocol的ACL，被用于job client向RM提交作业，查询作业状态
+security.job.task.protocol.acl						# TaskUmbilicalProtocol的ACL，被用于map和reduce任务连接父nodemanager。
+security.refresh.policy.protocol.acl			# RefreshAuthorizationPolicyProtocol的ACL，被用于dfsadmin,rmadmin刷新安全策略
+security.ha.service.protocol.acl					# HAService protocol的ACL，被用于haadmin管理active，standby nn的状态
+```
+
+**ACL**
+
+`$HADOOP_CONF_DIR/hadoop-policy.xml`为每个Hadoop服务定义个ACL，格式如下：
+
+```bash
+user1，user2 group1，group2			# 用户和组之间用空格隔开 
+ group2 											 # 若只有组，则开头加个空格
+```
+
+如果没有为服务配置ACL，则走`security.service.authorization.default.acl`的值，如果`security.service.authorization.default.acl`的值也没配置，则为`*`。
+
+**Blocked ACL**
+
+支持黑名单ACL的方式，表示阻止哪些用户/组访问。格式与ACL保持一样，不同之处是，配置项的最后需要加`.blocked`。例如，`security.client.protocol.acl.blocked`。
+
+blocked ACL和ACL可以同时使用，则必须同时满足两者的条件，才有权限去访问对应的服务。
+
+如果没有为服务配置Blocked ACL，则走`security.service.authorization.default.acl.blocked`的值，如果`security.service.authorization.default.acl.blocked`的值也没配置，则表示不阻止任何用户/组。
+
+**基于IP或主机名的访问控制**
+
+可以与client的IP或者主机名来进行访问控制。限制只能从哪些IP/主机来访问某服务。
+
+例如，`security.client.protocol.acl`属性的主机列表的访问控制配置项为`security.client.protocol.hosts`。如果服务没有指定这样的主机列表，则使用`security.service.authorization.default.hosts`的值，如果`security.service.authorization.default.hosts`的值也未配置，则为`*`。
+
+blocked ACL也是类似的。`security.client.protocol.hosts`, `security.client.protocol.hosts.blocked`。默认值为`security.service.authorization.default.hosts.blocked`，都没有，则表示不阻止任何host。
+
+**刷新`Service Level Authorization`**
+
+对于Namenode和ResourceManager而言，可以不重启服务修改`Service Level Authorization`配置。先修改Namenode和Resourcemaanger所在主机的`$HADOOP_CONF_DIR/hadoop-policy.xml`，再执行如下命令刷新配置。
+
+```bash
+# 刷新NN的Service Level Authorizatio
+$ bin/hdfs dfsadmin -refreshServiceAcl
+# 刷新RM的Service Level Authorizatio
+$ bin/yarn rmadmin -refreshServiceAcl
+```
+
+配置示例：
+
+只允许alice用户、bob用户和mapreduce中的用户可以提交job到MR集群
+
+```xml
+<property>
+     <name>security.job.client.protocol.acl</name>
+     <value>alice,bob mapreduce</value>
+</property>
+```
+
+只有datanodes用户组中的用户运行的datanode才能和namenode通信。
+
+```xml
+<property>
+     <name>security.datanode.protocol.acl</name>
+     <value>datanodes</value>
+</property>
+```
+
+允许所有用户作为DFSClient与HDFS集群通信。
+
+```xml
+<property>
+     <name>security.client.protocol.acl</name>
+     <value>*</value>
+</property>
+```
+
+
+
+## HTTP认证
+
+默认地，Hadoop HTTP Web-console（RM, NM, NN, DN）是不用认证就能访问的
+
+Hadoop HTTP Web控制台可以配置使用HTTP SPNEGO协议进行kerberos认证。也支持使用pseudo/simple认证，也支持自定义认证机制。
+
+**相关配置**
+
+`core-site.xml`
+
+```bash
+hadoop.http.filter.initializers													# org.apache.hadoop.security.AuthenticationFilterInitializer
+hadoop.http.authentication.type													# 默认simple。HTTP控制台使用的认证类型。支持simple | kerberos | #AUTHENTICATION_HANDLER_CLASSNAME#.
+hadoop.http.authentication.token.validity								#	默认36000。认证token的有效时间，单位秒。
+hadoop.http.authentication.token.max-inactive-interval	#	默认-1。server端让client的token无效的时间，-1表示禁用。
+hadoop.http.authentication.signature.secret.file				# 默认$user.home/hadoop-http-auth-signature-secret。用来签名认证token的secret文件。
+hadoop.http.authentication.cookie.domain								# 存储认证token的HTTP cookie的域。
+hadoop.http.authentication.cookie.persistent						# 默认false。是否持久化cookie。
+hadoop.http.authentication.simple.anonymous.allowed			# 默认true。当使用simple认证类型时，是否允许匿名请求。
+hadoop.http.authentication.kerberos.principal						# 默认HTTP/_HOST@$LOCALHOST。kerberos认证时，HTTP所使用的kerberos主体。
+hadoop.http.authentication.kerberos.keytab							# 默认$user.home/hadoop.keytab。HTTP所使用的kerberros主体的keytab文件的位置。
+```
+
+**CORS**
+
+启用cross-origin support (CORS)，需要以下配置：
+
+```bash
+hadoop.http.cross-origin.enabled					# 默认false。为所有web服务启用CORS。
+hadoop.http.cross-origin.allowed-origins	# 默认*。允许的源。
+hadoop.http.cross-origin.allowed-methods	# 默认GET,POST,HEAD。允许的HTTP方法。
+hadoop.http.cross-origin.allowed-headers	# 默认X-Requested-With,Content-Type,Accept,Origin。允许的请求头。
+hadoop.http.cross-origin.max-age					# 默认1800。
+```
+
+
+
+## Credential provider api
+
+TODO
+
+## Hadoop KMS
+
+`Key Management Server`，简称`KMS`。它是一个基于`KeyProvider` API的key management server。KMS的client和server端使用REST API通过HTTP协议进行通信。
+
+client是一个KeyProvider实现，它使用KMS HTTP REST API与KMS进行交互。
+
+KMS及其client具有内置的安全性，并且支持HTTP SPNEGO Kerberos身份验证和HTTPS安全传输。
+
+KMS是一个Java Jetty web应用程序。
+
+作用就是通过API接口来获取和维护密钥。在加密等时候才会用到此服务。
+
+
+
+**启停`KMS`服务**
+
+```bash
+hadoop --daemon start|stop kms
+```
+
+
+
+**KMS客户端配置**
+
+KMS的客户端是`KeyProvider`。如果`KMS`运行在`http://localhost:9600/kms`，则KeyProvider的URI为`kms://http@localhost:9600/kms`。如果`KMS`运行在`https://localhost:9600/kms`，则KeyProvider的URI为`kms://https@localhost:9600/kms`。
+
+```xaml
+<property>
+  <name>hadoop.security.key.provider.path</name>
+  <value>kms://http@localhost:9600/kms</value>
+  <description>
+    The KeyProvider to use when interacting with encryption keys used
+    when reading and writing to an encryption zone.
+  </description>
+</property>
+```
+
+
+
+**KMS server端配置**
+
+`etc/hadoop/kms-site.xml`
+
+```xml
+ <property>
+     <name>hadoop.kms.key.provider.uri</name>
+     <value>jceks://file@/${user.home}/kms.keystore</value>
+  </property>
+
+  <property>
+    <name>hadoop.security.keystore.java-keystore-provider.password-file</name>
+    <value>kms.keystore.password</value>
+  </property>
+```
+
+
+
+## Tracing
+
+HDFS-5274增加了对通过HDFS跟踪请求的支持，使用了开源跟踪库Apache HTrace。
+
+## Unix shell
+
+Apache Hadoop的大部分功能都是通过shell控制的。有几种方法可以修改这些命令执行方式的默认行为。`hadoop-env.sh`
+
+**终端用户相关的环境变量**
+
+```bash
+HADOOP_CLIENT_OPTS="-Xmx1g -Dhadoop.socks.server=localhost:4000"	# 设置了hadoop命令的client的jvm内存。如hadoop fs -ls /tmp
+YARN-CLIENT_OPTS=""																								# 如果配置了此项，当使用yarn命令时会用此项覆盖HADOOP_CLIENT_OPTS
+
+# (command)_(subcommand)_OPTS`
+MAPRED_DISTCP_OPTS="-Xmx2g"																				# mapred distcp的内存设为2g
+
+HADOOP_CLASSPATH=${HOME}/lib/myjars/*.jar													# :为分隔符。hadoop classpath可以查看
+
+```
+
+如果是通用的环境变量，可以将之设置在`${HOME}/.hadoop-env`
+
+```bash
+#
+# my custom Apache Hadoop settings!
+#
+
+HADOOP_CLIENT_OPTS="-Xmx1g"
+MAPRED_DISTCP_OPTS="-Xmx2g"
+HADOOP_DISTCP_OPTS="-Xmx2g"
+```
+
+**管理员相关的环境变量**
+
+daemon进程不会理会`HADOOP_CLIENT_OPTS`变量。
+
+```bash
+# (command)_(subcommand)_OPTS
+# (command)_(subcommand)_SECURE_EXTRA_OPTS
+# (command)_(subcommand)_USER
+HDFS_NAMENODE_USER=hdfs												# 在执行hdfs namenode和hdfs --daemon start namenode会验证运行此命令的用户是否是hdfs
+HADOOP_DISTCP_USER=jane												# 在执行hadoop distcp时，验证用户是否为jane。
+
+HDFS_DATANODE_USER=root												# 执行hdfs --daemon start datanode命令时必须为root用户，
+HDFS_DATANODE_SECURE_USER=hdfs								# 当启动完之后，会切换为hdfs用户。
+```
+
+除了`$USER_HOME/.hadoop-env`之外，还可以使用`$USER_HOME/.hadooprc`来覆盖`hadoop-env.sh`中的环境变量。
+
+```bash
+# 会加入.hadooprc
+hadoop_add_classpath /some/path/custom.jar
+```
+
+**自定以HADOOP命令**
+
+hadoop支持写自定义的命令。
+
+```bash
+function yarn_subcommand_hello
+{
+  echo "$@"
+  exit $?
+}
+```
+
+然后，可以在命令行使用`yarn --debug hello world I see you`命令，自定义的`yarn hello`命令。`world I see you`是输入的参数。
+
+详细的环境变量见 `$HADOOP_HOME/etc/hadoop/*-env.sh`。
+
+## registry
+
+启用了Hadoop Service Registry之后，允许部署的application向zk注册自己，其他客户端可以从zk获取到注册信息与之通信。
+
+- YARN Service Registry
+- Registry Configuration
+- Using the Hadoop Service Registry
+- Registry Security
+- Registry DNS Server
+
+## ViewFs
+
+参考文章：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/ViewFs.html
+
+https://www.dandelioncloud.cn/article/details/1546761552711659522
+
+视图文件系统（View File System，简称ViewFs）提供了一种管理多个Hadoop文件系统命名空间（或命名空间卷）的方法。
+
+### 没有ViewFs前的问题是什么？
+
+大数据时代，随着业务的迅速扩张，大公司内部往往有多套hadoop cluster来支撑起内部的数据体量。那么**多集群的管理协调**就是面临的一大难题。
+
+在很多时候,我们会碰到数据融合的需求,比如说原先有A集群,B集群,后来管理员认为有2套集群,数据访问不方便,于是设法将A,B集群融合为一个更大的集群,将他们的数据都放在同一套集群上.一种办法就是用Hadoop自带的DistCp工具,将数据进行跨集群的拷贝.当然这会带来很多的问题,如果数据量非常庞大的话.本文给大家介绍另外一种解决方案,ViewFileSystem,姑且可以叫做视图文件系统.大意就是让不同集群间维持视图逻辑上的唯一性,不同集群间还是各管各的.
+
+**传统数据合并方案**
+
+------
+
+为了形成对比,下面描述一下数据合并中常用的数据合并的做法,就是搬迁数据.举例在HDFS中,也会想到用DistCp工具进行远程拷贝.虽然DistCp本身就是用来干这种事情的,但是随着数据量规模的升级,会有以下问题的出现:
+
+- 1.拷贝周期太长,如果数据量非常大,在机房总带宽有限的情况,拷贝的时间将会非常长.
+- 2.数据在拷贝的过程中,一定会有原始数据的变更与改动,如何同步这方面的数据也是需要考虑的方面.
+
+以上2点,是我想到的比较突出的问题.OK,下面就要隆重介绍一下ViewFileSystem的概念了,可能还不是被很多人所熟知.
+
+**解决方案**：
+
+1、ViewFs
+
+2、Router-based Federation（简称RBF）。
+
+### 联邦出现之前
+
+假设当前为clusterX集群，访问HDFS文件系统的几种方式：
+
+- `hdfs dfs -ls /foo/bar` 依赖于`core-site.xml`中的`fs.default.name`配置。走的是RPC协议
+- `hdfs dfs -ls hdfs://namenodeOfClusterX:port/foo/bar `走的是RPC协议
+- `hdfs dfs -ls hdfs://namenodeOfClusterY:port/foo/bar` 走的是RPC协议
+- `hdfs dfs -ls webhdfs://namenodeClusterX:http_port/foo/bar` 走的是HTTP协议，通过webhdfs来访问HDFS文件系统。
+- `curl http://namenodeClusterX:http_port/webhdfs/v1/foo/bar` 走的是HTTP协议，通过webhdfs REST API来访问HDFS文件系统。
+- `curl http://proxyClusterX:http_port/foo/bar`通过HDFS proxy来访问HDFS文件系统。
+
+### 联邦出现之后
+
+通过viewFs来创建多个cluster的namespace的视图（逻辑上的映射），通过`client-side mount table`的配置将viewFs和多个cluster的namespace或者指定path进行链接，实现映射（对外仿佛只有一个集群）。
+
+**也就是说ViewFs的配置是在客户端做的，当然为了保证集群内也能通过ViewFs去访问其他集群，那么建议是多个集群中的所有节点都同一配置。**
+
+假设`fs.defaultFS`如下：
+
+```xml
+  <!-- 默认的fs -->
+  <property>
+  <name>fs.defaultFS</name>
+  <value>viewfs://clusterX</value>
+  </property>
+```
+
+**挂载指定路径**
+
+```xml
+ <configuration> 
+  <property>
+    <name>fs.viewfs.mounttable.ClusterX.link./data</name>
+    <value>hdfs://nn1-clusterx.example.com:8020/data</value>
+  </property>
+  <property>
+    <name>fs.viewfs.mounttable.ClusterX.link./project</name>
+    <value>hdfs://nn2-clusterx.example.com:8020/project</value>
+  </property>
+  <property>
+    <name>fs.viewfs.mounttable.ClusterX.link./user</name>
+    <value>hdfs://nn3-clusterx.example.com:8020/user</value>
+  </property>
+  <property>
+    <name>fs.viewfs.mounttable.ClusterX.link./tmp</name>
+    <value>hdfs://nn4-clusterx.example.com:8020/tmp</value>
+  </property>
+  <property>
+    <name>fs.viewfs.mounttable.ClusterX.linkFallback</name>
+    <value>hdfs://nn5-clusterx.example.com:8020/home</value>
+  </property>
+</configuration>
+```
+
+`fs.viewfs.mounttable.ClusterX.link./data=hdfs://nn1-clusterx.example.com:8020/data`，表示将`hdfs://nn1-clusterx.example.com:8020/data`挂载到`viewfs://ClusterX/data`，就是通过这一配置，实现了`viewfs://ClusterX/data`和`hdfs://nn1-clusterx.example.com:8020/data`的映射。
+
+**挂载根目录**
+
+直接mount某HDFS集群的根目录到某viewFs。
+
+```xml
+<configuration>
+  <property>
+    <name>fs.viewfs.mounttable.ClusterY.linkMergeSlash</name>
+    <value>hdfs://nn1-clustery.example.com:8020/</value>
+  </property>
+</configuration>
+```
+
+通过上面配置，实现了`viewfs://ClusterY/`和`hdfs://nn1-clustery.example.com:8020/`的映射。
+
+有了viewFs之后访问viewFs的几种方式：
+
+- `/foo/bar` 等价于`viewfs://clusterX/foo/bar`
+
+- `viewfs://clusterX/foo/bar`
+
+- `viewfs://clusterY/foo/bar`
+
+  distcp工具也可以用。
+
+  ```bash
+  distcp viewfs://clusterY/pathSrc viewfs://clusterZ/pathDest
+  ```
+
+- `viewfs://clusterX-webhdfs/foo/bar` 通过webhdfs访问
+
+- `http://namenodeClusterX:http_port/webhdfs/v1/foo/bar` HTTP协议，与没有使用viewFs一样的。
+
+- `http://proxyClusterX:http_port/foo/bar` HTTP协议，与没有使用viewFs一样的。
+
+在viewFs之前，执行如下命令会报错，不支持跨集群的rename。但是通过viewFs可以支持。 
+
+```bash
+rename hdfs://cluster1/user/joe/myStuff hdfs://cluaster2/data/foo/bar
+```
+
+### Nfly挂载点
+
+通过`Nfly`可以实现1个逻辑文件可以被复制到多个文件系统中（如hdfs、s3、本地文件系统等）。配置示例。
+
+```xml
+  <property>
+    <name>fs.viewfs.mounttable.global.linkNfly../ads</name>
+    <value>uri1,uri2,uri3</value>
+  </property>
+```
+
+执行如下命令在viewFs中的ads目录下创建一个文件Z1
+
+假设配置如下：
+
+```xml
+  <property>
+    <name>fs.viewfs.mounttable.global.linkNfly../ads</name>
+    <value>file:/tmp/ads1, file:/tmp/ads2, file:/tmp/ads3</value>
+  </property>
+```
+
+
+
+```bash
+hadoop fs -touchz viewfs://global/ads/z1
+
+# 可以发现挂载点的3个文件系统中都有了此文件。
+ls -al /tmp/ads*/z1
+-rw-r--r--  1 user  wheel  0 Mar 11 12:17 /tmp/ads1/z1
+-rw-r--r--  1 user  wheel  0 Mar 11 12:17 /tmp/ads2/z1
+-rw-r--r--  1 user  wheel  0 Mar 11 12:17 /tmp/ads3/z1
+```
+
+## View File System Overload Scheme
+
+参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/ViewFsOverloadScheme.html
+
+### ViewFs有两个问题：
+
+-  要使用ViewFs需要修改`core-site.xml`中的`fs.defaultFS`为(`viewfs://xxx`)。
+-  要使用ViewFs需要将`mount table`的配置分发给所有客户端（包括集群的所有数据/计算节点）。
+
+`ViewFs Overload Scheme`是对`ViewFs`的扩展，它解决了上面两个问题的。
+
+### 启用`ViewFs Overload Scheme`
+
+#### 解决需要修改`fs.defaultFS`的问题
+
+
+
+例子1：
+
+`core-site.xml`
+
+```xml
+<property>
+  <name>fs.defaultFS</name>
+  <value>hdfs://mycluster</value>
+</property>
+<property>
+  <!--<name>fs.<scheme>.impl</name> 这里的<scheme>的值与fs.defaultFS的值保持一致-->
+  <name>fs.hdfs.impl</name>
+  <value>org.apache.hadoop.fs.viewfs.ViewFileSystemOverloadScheme</value>
+</property>
+<!-- viewfs的mount table配置-->
+<!-- hdfs://mycluster/user/fileA 映射到 hdfs://mycluster/user/fileA-->
+<property>
+  <name>fs.viewfs.mounttable.mycluster.link./user</name>
+  <value>hdfs://mycluster/user</value>
+</property>
+
+<!-- hdfs://mycluster/data/fileA 映射到 o3fs://bucket1.volume1/data/fileA -->
+<property>
+  <name>fs.viewfs.mounttable.mycluster.link./data</name>
+  <value>o3fs://bucket1.volume1/data</value>
+</property>
+<!-- hdfs://mycluster/backup/fileA 映射到 s3a://bucket1/backup/fileA -->
+<property>
+  <name>fs.viewfs.mounttable.mycluster.link./backup</name>
+  <value>s3a://bucket1/backup/</value>
+</property>
+<!-- 不匹配上面的mount link规则的都走如下配置 -->
+<property>
+  <name>fs.viewfs.mounttable.mycluster.linkfallback</name>
+  <value>hdfs://mycluster/</value>
+</property>
+```
+
+注意：就算`fs.defualtFS=hdfs://mycluster/data`，按照上述配置，`fs.viewfs.mounttable.mycluster.linkfallback=hdfs://mycluster`。
+
+例子2
+
+`core-site.xml`
+
+```xml
+<property>
+  <name>fs.defaultFS</name>
+  <value>s3a://bucketA/</value>
+</property>
+<property>
+  <!--<name>fs.<scheme>.impl</name> 这里的<scheme>的值与fs.defaultFS的值保持一致-->
+  <name>fs.s3a.impl</name>
+  <value>org.apache.hadoop.fs.viewfs.ViewFileSystemOverloadScheme</value>
+</property>
+<property>
+  <name>fs.viewfs.mounttable.bucketA.link./user</name>
+  <value>hdfs://cluster/user</value>
+</property>
+
+<property>
+  <name>fs.viewfs.mounttable.bucketA.link./data</name>
+  <value>o3fs://bucket1.volume1.omhost/data</value>
+</property>
+
+<property>
+  <name>fs.viewfs.mounttable.bucketA.link./salesDB</name>
+  <value>s3a://bucketA/salesDB/</value>
+</property>
+```
+
+这两个例子，如下图所示：
+
+![img](Hadoop3.x.assets/ViewFSOverloadScheme.png)
+
+
+
+#### 解决mount table配置分发的问题
+
+**中心化的mount table配置**
+
+**方案一：将中心化的mount table配置文件放在HCFS上（如HDFS，COS、OSS、OBS等文件系统上）**
+
+`fs.viewfs.mounttable.path`的值可以是目录，也可以是指定的某个文件。**若为目录，则找符合指定命名规格的最新的mount table配置文件作为当前的配置文件；若为文件，则只会将指定的文件作为当前的配置文件**。
+
+在`core-site.xml`中，`fs.viewfs.mounttable.path`配置为目录
+
+```xml
+<property>
+  <name>fs.viewfs.mounttable.path</name>
+  <value>hdfs://cluster/config/mount-table-dir</value>
+</property>
+```
+
+会在`hdfs://cluster/config/mount-table-dir/`目录下找到文件名为`mount-table.<versionNumber>.xml`格式的文件，并选择`versionNumber`更高的作为mount table的配置文件，所以每次修改mount table 之后需要增加versionNumber。
+
+在`core-site.xml`中，`fs.viewfs.mounttable.path`配置为指定文件
+
+```
+<property>
+  <name>fs.viewfs.mounttable.path</name>
+  <value>hdfs://cluster/config/mount-table-dir/mount-table.<versionNumber>.xml</value>
+</property>
+```
+
+注意：官方的建议是将mount table的mount link配置都写在单独的配置文件中如`mount-table.<versionNumber>.xml`中，而不要直接写在`core-site.xml`中，因为这会搞得特别乱。
+
+**方案二：将mount table的配置文件放在远程Server上，通过xml的xinclude方式获取配置**
+
+```xmla
+<configuration xmlns:xi="http://www.w3.org/2001/XInclude">
+  <xi:include href="http://myserver/mountTable/mountTable.xml" />
+</configuration>
+```
+
+**缺点**：远程server的单点故障问题。
+
+通过配置`fs.viewfs.mounttable.default.name.key`，可以实现不写主机/namespace信息也可以访问集群上的数据，如 `hdfs:///foo/bar`, `hdfs:/foo/bar` or `viewfs:/foo/bar`。如：
+
+```xml
+<property>
+  <name>fs.hdfs.impl</name>
+  <value>org.apache.hadoop.fs.viewfs.ViewFileSystemOverloadScheme</value>
+</property>
+
+<property>
+  <name>fs.defaultFS</name>
+  <value>hdfs://cluster/</value>
+</property>
+
+<property>
+  <name>fs.viewfs.mounttable.default.name.key</name>
+  <value>cluster</value>			<!-- 此值必须等于fs.defaultFS中的主机部分 -->
+</property>
+```
+
+
+
+**ViewFs Overload Scheme的缺点**：
+
+- 每次job启动都会进行一次额外的mount point信息的请求解析，这是否会给server端造成一定的压力？同时这部分会增加少许的latency。
+- 如果在job运行过程中更改了server端的mapping关系，job的task可能会看到不一样的mount point关系，会出问题。
+
+## snapshot
+
+参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsSnapshots.html
+
+**HDFS的快照是只读的。快照的一些常见作用是数据备份、防止用户错误和灾难恢复。**
+
+可以对整个文件系统做snapshot，也可以对文件系统的某个子树（子目录）做snapshot。
+
+快照文件记录块列表和文件大小，但不进行数据复制，也就是说snapshot记录的是目录的元数据。
+
+快照不会对常规HDFS操作产生不利影响：修改按时间倒序记录，以便可以直接访问当前数据。快照数据是通过从当前数据中减去修改来计算的。
+
+
+
+可快照的目录（snapshottable，快照表）最多支持65535个快照。可快照目录的数量无限制。**如果目录中有快照，则在删除所有快照之前，既不能删除也不能重命名该目录**。
+
+**当前不允许使用嵌套的快照表目录。**换句话说，如果目录的祖先/后代之一是快照表目录，则不能将其设置为快照目录。
+
+.snapshot
+
+具体操作（**需要管理员权限（superuser）**）：
+
+允许对指定目录进行快照：
+
+```bash
+hdfs dfsadmin -allowSnapshot <path>
+```
+
+不允许创建目录的快照。在禁止快照之前，必须删除目录的所有快照。
+
+```bash
+hdfs dfsadmin -disallowSnapshot <path>
+```
+
+创建快照
+
+```bash
+hdfs dfs -createSnapshot <path> [<snapshotName>]
+```
+
+删除快照
+
+```bash
+hdfs dfs -deleteSnapshot <path> <snapshotName>
+```
+
+重命名快照
+
+```bash
+hdfs dfs -renameSnapshot <path> <oldName> <newName>
+```
+
+查看当前用户可以做快照的所有目录
+
+```bash
+hdfs lsSnapshottableDir
+```
+
+查看两个快照之间的不同之处，`.`表示当前目录状态
+
+```bash
+hdfs snapshotDiff <path> <fromSnapshot> <toSnapshot>
+
+# 查看快照和当前目录状态的不同
+hdfs snapshotDiff <path> <fromSnapshot> .
+```
+
+输出结果有如下几种：
+
+```bash
++	The file/directory has been created.
+-	The file/directory has been deleted.
+M	The file/directory has been modified.
+R	The file/directory has been renamed.
+```
+
+注意：
+
+> 假设快照目录为D0，有个其他目录为D1。
+>
+> 从D0/A重命名为D0/A1，状态为`R`。
+>
+> 从D0/A重命名到D1/A，状态为`-`，表示从当前快照目录删除了。
+>
+> 从D1/A重命名为D0/A，状态为`+`，表示加入到当前快照目录了。
+
+列出foo目录的所有快照
+
+```bash
+hdfs dfs -ls /foo/.snapshot
+```
+
+列出快照s0的文件/目录
+
+```bash
+hdfs dfs -ls /foo/.snapshot/s0
+```
+
+从快照s0中copy文件/目录
+
+```bash
+hdfs dfs -cp -ptopax /foo/.snapshot/s0/bar /tmp
+```
+
+`-ptopax`表示保留原文件的timestamps, ownership, permission, ACLs and XAttrs。
+
+从不支持快照的旧版本HDFS升级时，需要首先重命名或删除名为`.snapshot`的快照路径，以避免与保留路径（`.snopshot`）冲突。
+
+```bash
+# 1. 允许打快照
+[hadoop@hadoop322-node01 ~]$ hdfs dfsadmin -allowSnapshot /user/sjl
+Allowing snapshot on /user/sjl succeeded
+# 2. 为某目录创建快照
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -createSnapshot /user/sjl 
+Created snapshot /user/sjl/.snapshot/s20230331-103523.634
+# 3. 查看某目录的快照
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl 
+Found 1 items
+drwxr-xr-x   - hadoop supergroup          0 2023-02-13 15:58 /user/sjl/test
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot
+Found 1 items
+drwxr-xr-x   - hadoop supergroup          0 2023-03-31 10:35 /user/sjl/.snapshot/s20230331-103523.634
+# 4. 重命名
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -renameSnapshot /user/sjl s20230331-103523.634 s230331-01
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot
+Found 1 items
+drwxr-xr-x   - hadoop supergroup          0 2023-03-31 10:35 /user/sjl/.snapshot/s230331-01
+
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot/s230331-01/test
+Found 2 items
+drwxr-xr-x   - hadoop supergroup          0 2023-02-13 14:49 /user/sjl/.snapshot/s230331-01/test/input
+drwxr-xr-x   - hadoop supergroup          0 2023-02-13 16:02 /user/sjl/.snapshot/s230331-01/test/output
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/test
+Found 2 items
+drwxr-xr-x   - hadoop supergroup          0 2023-02-13 14:49 /user/sjl/test/input
+drwxr-xr-x   - hadoop supergroup          0 2023-02-13 16:02 /user/sjl/test/output
+# 5. 删除原始文件，在.snapshot中仍存在旧的文件
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -rm /user/sjl/test/input/LICENSE.txt
+[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot/s230331-01/test/input/LICENSE.txt
+-rw-r--r--   3 hadoop supergroup     150569 2023-02-13 14:48 /user/sjl/.snapshot/s230331-01/test/input/LICENSE.txt
+# 6. 查看当前用户可以在哪些目录做快照
+[hadoop@hadoop322-node01 ~]$ hdfs lsSnapshottableDir
+drwxr-xr-x 0 hadoop supergroup 0 2023-03-31 10:35 1 65536 /user/sjl
+# 7. 查看快照的不同
+[hadoop@hadoop322-node01 ~]$ hdfs snapshotDiff /user/sjl s230331-01 .
+Difference between snapshot s230331-01 and current directory under directory /user/sjl:
+M	./test/input
+-	./test/input/LICENSE.txt
+```
+
+直接`hdfs dfs -ls /user/sjl`并不能看到是否有`.snapshot`，需要直接`hdfs dfs -ls /user/sjl/.snapshot`。
+
+## Offline Edits Viewer
+
+参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsEditsViewer.html
+
+`Offline Edits Viewer`工具的目的是解析edits log文件。**此工具是基于edits文件来进行解析的，并不是一定要运行hadoop集群。**
+
+支持的input format，对应的参数为`-i`。
+
+- binary，二进制格式。
+- xml。XML格式。
+
+Note: XML/Binary format input file is not allowed to be processed by the same type processor.
+
+**注意：XML/Binary格式作为输入文件，不能选择相同类型的processor。若输入格式为XML，则不能选择xml的processor。**
+
+支持的输出格式，对应的参数为`-o`。
+
+- binary，二进制格式。
+- xml，XML格式。
+- stats，打印统计信息，无法依据此输出转换回edits log文件。
+
+提供了如下几种processor：
+
+- XML Processor。默认
+
+  ```bash
+  bash$ bin/hdfs oev -p xml -i edits -o edits.xml
+  ```
+
+  因为是默认的proseesor，不加`-p xml`也是可以的。
+
+  ```bash
+  bash$ bin/hdfs oev -i edits -o edits.xml
+  ```
+
+- Binary Processor
+
+  根据x.xml重建edits log 文件
+
+  ```bash
+  bash$ bin/hdfs oev -p binary -i edits.xml -o edits
+  ```
+
+  
+
+- Stats Processor
+
+  主要用于获取edits log文件中的统计信息。
+
+  ```bash
+  bash$ bin/hdfs oev -p stats -i edits -o edits.stats
+  ```
+
+  输出如下：
+
+  ```bash
+     VERSION                             : -64
+     OP_ADD                         (  0): 8
+     OP_RENAME_OLD                  (  1): 1
+     OP_DELETE                      (  2): 1
+     OP_MKDIR                       (  3): 1
+     OP_SET_REPLICATION             (  4): 1
+     OP_DATANODE_ADD                (  5): 0
+     OP_DATANODE_REMOVE             (  6): 0
+     OP_SET_PERMISSIONS             (  7): 1
+     OP_SET_OWNER                   (  8): 1
+     OP_CLOSE                       (  9): 9
+     OP_SET_GENSTAMP_V1             ( 10): 0
+     ...some output omitted...
+     OP_APPEND                      ( 47): 1
+     OP_SET_QUOTA_BY_STORAGETYPE    ( 48): 1
+     OP_ADD_ERASURE_CODING_POLICY   ( 49): 0
+     OP_ENABLE_ERASURE_CODING_POLICY  ( 50): 1
+     OP_DISABLE_ERASURE_CODING_POLICY ( 51): 0
+     OP_REMOVE_ERASURE_CODING_POLICY  ( 52): 0
+     OP_INVALID                     ( -1): 0
+  ```
+
+  
+
+## Offline Image Viewer
+
+参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsImageViewer.html
+
+`Offline Image Viewer`工具的目的是将hdfs fsimage文件的内容转储为人类可读的格式，并提供只读的WebHDFS API，以便对Hadoop集群的命名空间进行离线分析和检查。该工具能够相对快速地处理非常大的image文件。该工具处理Hadoop 2.4及更高版本中包含的布局格式。如果您想处理较旧的布局格式，可以使用Hadoop 2.3的`Offline Image Viewer`或[oiv_legacy](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsImageViewer.html#oiv_legacy_Command)命令。如果该工具无法处理图像文件，它将干净地退出。**Offline Image Viewer不需要运行Hadoop集群；它在运行中完全离线。**
+
+**注意：如果要使用`oiv_legacy`命令，需要`dfs.namenode.legacy-oiv-image.dir`，这样standby Namenode或secondary Namenode才会在checkpoint的时候保存旧格式的fsimage到此配置项的目录中。**
+
+`Offline Image Viewer`提供了如下几种输出processor：
+
+- `Web Processor`。默认。它启动一个HTTP服务器，该服务器暴露只读的WebHDFS API。用户可以通过使用HTTP REST API以交互方式查看命名空间。它不支持安全模式，也不支持HTTPS。
+
+  使用方式：
+
+  第一步，启动HTTP服务器，用来暴露只读的WebHDFS API。
+
+  ```bash
+   bash$ bin/hdfs oiv -i fsimage
+     14/04/07 13:25:14 INFO offlineImageViewer.WebImageViewer: WebImageViewer
+     started. Listening on /127.0.0.1:5978. Press Ctrl+C to stop the viewer.
+  ```
+
+  第二步，通过如下命令获取namespace的image信息。
+
+  ```bash
+     bash$ bin/hdfs dfs -ls webhdfs://127.0.0.1:5978/
+     Found 2 items
+     drwxrwx--* - root supergroup          0 2014-03-26 20:16 webhdfs://127.0.0.1:5978/tmp
+     drwxr-xr-x   - root supergroup          0 2014-03-31 14:08 webhdfs://127.0.0.1:5978/user
+  ```
+
+  HTTP接口形式访问：
+
+  ```bash
+     bash$ curl -i http://127.0.0.1:5978/webhdfs/v1/?op=liststatus
+     HTTP/1.1 200 OK
+     Content-Type: application/json
+     Content-Length: 252
+  
+     {"FileStatuses":{"FileStatus":[
+     {"fileId":16386,"accessTime":0,"replication":0,"owner":"theuser","length":0,"permission":"755","blockSize":0,"modificationTime":1392772497282,"type":"DIRECTORY","group":"supergroup","childrenNum":1,"pathSuffix":"user"}
+     ]}}
+  ```
+
+- `XML Processor`。创建fsimage的XML文档，包含fsimage中的所有信息。
+
+  ```bash
+  bash$ bin/hdfs oiv -p XML -i fsimage -o fsimage.xml
+  ```
+
+- `ReverseXML Processor`。这与XML处理器相反；它从一个XML文件重建一个fsimage。该处理器可以轻松创建用于测试的fsimage，并在出现损坏时手动编辑fsimage。
+
+  ```bash
+  bash$ bin/hdfs oiv -p ReverseXML -i fsimage.xml -o fsimage
+  ```
+
+- `FileDistribution Processor`。是**用于分析命名空间image中的文件大小的工具**。分析fsimage中指定大小范围的文件个数。范围为[0, maxSize]，步长为`-step`。
+
+  ```bash
+  bash$ bin/hdfs oiv -p FileDistribution -maxSize maxSize -step size -i fsimage -o output
+        Size	NumFiles
+     4	1
+     12	1
+     16	1
+     20	1
+     totalFiles = 4
+     totalDirectories = 2
+     totalBlocks = 4
+     totalSpace = 48
+     maxFileSize = 21
+  ```
+
+  通过`-format`进行输出格式化
+
+  ```bash
+  bash$ bin/hdfs oiv -p FileDistribution -maxSize maxSize -step size -format -i fsimage -o output
+     Size Range	NumFiles
+     (0 B, 4 B]	1
+     (8 B, 12 B]	1
+     (12 B, 16 B]	1
+     (16 B, 21 B]	1
+     totalFiles = 4
+     totalDirectories = 2
+     totalBlocks = 4
+     totalSpace = 48
+     maxFileSize = 21
+  ```
+
+- `Delimited Processor`。生成一个文本文件，其中包含正在构建的inode和inode共有的所有元素，并用分隔符分隔。默认的分隔符是`\t`，但这可以通过`-demitter`参数进行更改。
+
+  ```bash
+  bash$ bin/hdfs oiv -p Delimited -delimiter delimiterString -i fsimage -o output
+     Path	Replication	ModificationTime	AccessTime	PreferredBlockSize	BlocksCount	FileSize	NSQUOTA	DSQUOTA	Permission	UserName	GroupName
+     /	0	2017-02-13 10:39	1970-01-01 08:00	0	0	0	9223372036854775807	-1	drwxr-xr-x	root	supergroup
+     /dir0	0	2017-02-13 10:39	1970-01-01 08:00	0	0	0	-1	-1	drwxr-xr-x	root	supergroup
+     /dir0/file0	1	2017-02-13 10:39	2017-02-13 10:39	134217728	1	1	0	0	-rw-r--r--	root	supergroup
+     /dir0/file1	1	2017-02-13 10:39	2017-02-13 10:39	134217728	1	1	0	0	-rw-r--r--	root	supergroup
+     /dir0/file2	1	2017-02-13 10:39	2017-02-13 10:39	134217728	1	1	0	0	-rw-r--r--	root	supergroup
+  ```
+
+- `DetectCorruption Processor`。检测image的潜在损坏。以分隔格式输出已发现损坏的image。
+
+  ```bash
+  bash$ bin/hdfs oiv -p DetectCorruption -delimiter delimiterString -t temporaryDir -i fsimage -o output
+     CorruptionType	Id	IsSnapshot	ParentPath	ParentId	Name	NodeType	CorruptChildren
+      MissingChild	16385	false	/	Missing		Node	1
+      MissingChild	16386	false	/	16385	dir0	Node	2
+      CorruptNode	16388	true		16386		Unknown	0
+      CorruptNode	16389	true		16386		Unknown	0
+      CorruptNodeWithMissingChild	16391	true		16385		Unknown	1
+      CorruptNode	16394	true		16391		Unknown	0
+  ```
+
+  
+
+  
+
+## HDFS Router-based Federation（RBF）
+
+TODO
+
+参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs-rbf/HDFSRouterFederation.html
+
+联邦和viewFs可以解决单个Namenode的内存限制了集群可存储的数据量的问题。**但是如何维护和管理这么多的子集群呢？**
+
+为了解决这个问题，在集群的上层添加了一个federation layer。router组件拥有和namenode相同的接口，它查询`State Store`中记录的信息只有，就可以将客户端的请求转发到正确的集群或namespace。
+
+![Router-based Federation Sequence Diagram | width=800](Hadoop3.x.assets/routerfederation.png)
+
+最简单的配置是在每台NameNode计算机上部署一个路由器。路由器监视本地NameNode及其状态，并将检测信号发送到`State Store`。路由器监视本地NameNode，并将状态检测信号发送到`State Store`。当常规DFS客户端联系任何路由器以访问federation FS中的文件时，路由器会检查`State Store`（即本地缓存）中的`mount table`（子集群的映射关系），以找出包含该文件的子集群。然后，它在State Store（即本地缓存）中的Membership表中检查负责子集群的NameNode。在识别出正确的NameNode之后，路由器代理该请求。客户端直接访问数据节点。
+
+系统中可以有多个具有软状态的路由器。每个路由器有两个角色：
+
+- **federation接口**：向客户端公开单个全局NameNode接口，并将请求转发到正确子集群中的活动NameNode
+
+  Router接收HDFS客户端的请求，并检查State Store，将此请求转发到正确的子集群的Active Namenode。Router是无状态的。Router可以缓存`mount table`信息以提高性能。
+
+- **NameNode heartbeat**：在`State Store`中维护NameNode的信息
+
+  Router会定期发送心跳信息给`State Store`
+
+Router会定期的检查Namenode的状态。为了简单起见，通常可以将Router嵌入在Namenode中。
+
+**RBF的可用性和容错性**
+
+Router可能在多个级别上出现故障：
+
+- federation 接口HA
+
+  Router是无状态的，当一个Router故障了，其他Router可以接管它。需要在客户端配置所有的Router的连接信息。
+
+- State Store不可用
+
+  如过Router无法联系到State Store，则Router会进入安全模式（不能处理客户端请求）。客户端会尝试其他的Router。
+
+  管理router的安全模式。
+
+  ```bash
+  $HADOOP_HOME/bin/hdfs dfsrouteradmin -safemode enter | leave | get
+  ```
+
+- NameNode心跳HA
+
+  为了高可用和灵活性，多个Router监控同一个Namenode，并将心跳信息发送给State Store。状态存储中存在冲突的NameNode信息由每个路由器通过仲裁解决。
+
+- NameNode不可用
+
+  如果Router无法联系到Active Namenode，Router会尝试连接该集群的其他namenode。如果所有namenode都无法连接，则Router抛出异常。
+
+- NameNode过期
+
+  在指定时间内，如果namenode没有将心跳信息记录到State Store，那么监控此Namenode的Router会将此Namenode标记为过期，并且所有的Router都不会再去联系此namenode。只有当namenode的心跳信息恢复后，Router才会恢复和Namenode的连接。
+
+Router暴露了多种接口可以和用户、管理员交互：
+
+- RPC
+- Admin
+- Web UI
+- WebHDFS
+- JMX
+
+**配额管理**
+
+federation支持在`mount table`级别上的全局quota配置。出于性能考虑，Router会缓存quota信息并定期更新它。配置了全局quota之后，不建议直接在子集群级别设置和清除quota（应该在全局级别进行设置）。
+
+**`State Store`***
+
+State Store包含：
+
+- 子集群的块访问负载、可用磁盘空间、HA状态等方面的状态。
+- 文件夹/文件和子集群之间的映射，即远程`mount table`。
+
+State Store是可插拔的，
+
+`State Store`中的主要信息是：
+
+- `membership`
+
+  存储子集群的信息，如存储容量、节点数量。
+
+- `mount table`
+
+  `mount table`中存的是文件夹和子集群的映射关系。类似于ViewFs中的`mount table`。
+
+
+
+```bash
+# -nsQuota表示设置name quota，-ssQuota表示设置space quota。
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -setQuota /path -nsQuota 100 -ssQuota 1024
+# 设置指定storage type的qutoa
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -setStorageTypeQuota <path> -storageType <storage type>
+# 移除指定mount table上的quota
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -clrQuota <path>
+# 移除指定mount table上的storage type的quota
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -clrStorageTypeQuota <path>
+# 查看mount table 条目
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -ls
+Source                    Destinations              Owner                     Group                     Mode                      Quota/Usage
+/path                     ns0->/path                root                      supergroup                rwxr-xr-x                 [NsQuota: 50/0, SsQuota: 100 B/0 B]
+
+# 手动刷新mount table的缓存
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -refresh
+```
+
+
+
+### 部署
+
+默认情况下，Router监控本机的namenode。
+
+通过在配置文件`hdfs-rbf-default.xml`中配置`dfs.federation.router.store.driver.class `之后，Router才知道State Store的endpoint。
+
+**启动Router**
+
+```bash
+$HADOOP_PREFIX/bin/hdfs --daemon start dfsrouter
+```
+
+**停止Router**
+
+```bash
+$HADOOP_PREFIX/bin/hdfs --daemon stop dfsrouter
+```
+
+**mount table管理**
+
+mount table条目类似于ViewFs中的mount table 条目。federation admin工具可用用来管理RBF的mount table，如下所示：
+
+```bash
+# /tmp 映射为命名空间ns1的/tmp
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /tmp ns1 /tmp
+# /data/app1 映射为命名空间ns2的/data/app1
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /data/app1 ns2 /data/app1
+# /data/app2 映射为命名空间ns3的/data/app2
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /data/app2 ns3 /data/app2
+# 查看RBF所有的mount table 条目
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -ls
+# 只读的挂载点
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /readonly ns1 / -readonly
+```
+
+如果没有设置挂载点，Router将之映射到默认命名空间（`dfs.federation.Router.default.nameserviceId`）。
+
+mount table具有类似UNIX的权限，这些权限限制哪些用户和组可以访问mount point。写入权限允许用户添加、更新或删除mount point。读取权限允许用户列出mount point。执行权限未使用。
+
+mount table的权限设置：
+
+```bash
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /tmp ns1 /tmp -owner root -group supergroup -mode 0755
+```
+
+**多子集群**
+
+一个mount point可以映射到多个子集群。
+
+```bash
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /data ns1,ns2 /data -order SPACE
+```
+
+**禁用nameservice**
+
+用于下线一整个子集群。
+
+```bash
+# 禁用ns1命名空间
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -nameservice disable ns1
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -getDisabledNameservices
+# 启用ns1命名空间
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -nameservice enable ns1
+```
+
+**刷新Router服务器的配置**
+
+```bash
+# 刷新指定key，而不用重启Router服务。
+$HADOOP_HOME/bin/hdfs dfsrouteradmin -refreshRouterArgs <host:ipc_port> <key> [arg1..argn]
+```
+
+**相关配置**
+
+TODO
+
+## **HDFS权限**
+
+HDFS的文件/目录的权限模型类似于`POSIX model`。每个文件/目录都有owner和groups。
+
+HDFS的权限模型中：
+
+- `r`: 读文件；列出目录的内容。
+- `w`: 写/append文件；创建/删除文件/子目录。
+- `x`: HDFS文件无x；访问子目录。
+
+**`sticky bit`（粘滞位）**是设置在目录上的，目的是阻止非superuser、文件/目录owner的delete、mv操作。
+
+HDFS还提供了`POSIX ACLs`。
+
+**`permission check`**：
+
+- 用户名匹配文件/目录的owner，走owner的权限。
+- 组名匹配文件/目录的group list中的某个，走group的权限。
+- 走other用户的权限。
+
+### 用户身份（user identity）
+
+从`hadoop 0.22`开始支持2种模式来识别用户的身份，由`hadoop.security.authentication`参数决定使用什么模式。
+
+- `simple` 访问HDFS的用户身份由客户端进程所在主机的操作系统来决定。在`Unix-like system`中用户名=`whoami`。
+- `kerberos` 访问HDFS的用户身份由`keberos credentials`决定。
+
+**<font color="red">注意：HDFS本身是没有用户身份机制的，HDFS都是依赖其他机制来确定用户身份的。</font>**
+
+### 组映射（group mapping）
+
+由`hadoop.security.group.mapping`参数决定使用什么group mapping服务。
+
+hadoop支持的group mapping机制有如下几种（`hadoop.security.group.mapping`）：
+
+- **org.apache.hadoop.security.JniBasedUnixGroupsMappingWithFallback**
+
+  默认，如果`Java Native Interface`（JNI）可用，使用hadoop API来解析user的group list。如果JNI不可用，使用**org.apache.hadoop.security.ShellBasedUnixGroupsMapping**。
+
+- **org.apache.hadoop.security.JniBasedUnixGroupsNetgroupMappingWithFallback**
+
+   与**org.apache.hadoop.security.JniBasedUnixGroupsMappingWithFallback**类似。如果JNI可用，使用Hadoop native API来获取网络组成员。如果不可用，则使用**org.apache.hadoop.security.ShellBasedUnixGroupsNetgroupMapping**。
+
+- **org.apache.hadoop.security.ShellBasedUnixGroupsMapping**
+
+  Linux/Unix环境是使用`bash -c groups`命令，windows环境是`net group`命令，获取到的groups list。
+
+- **org.apache.hadoop.security.ShellBasedUnixGroupsNetgroupMapping**
+
+  与**org.apache.hadoop.security.ShellBasedUnixGroupsMapping**类似，但却是使用`getent netgroup`命令来获取网络组成员。
+
+- **org.apache.hadoop.security.LdapGroupsMapping**
+
+  连接LDAP服务器来解析用户的group list。
+
+- **org.apache.hadoop.security.CompositeGroupsMapping**
+
+  对上述provider进行组合使用。
+
+HDFS中，user到group的映射由NN来执行。
+
+**静态组映射（static mapping）**
+
+通过配置项`hadoop.user.group.static.mapping.overrides`可以实现静态组映射。其格式为：
+
+`user1=group1,group2;user2=;user3=group2`
+
+此配置会覆盖上述group mapping机制，即优先级比它们高。默认值为`dr.who=;`，表示此fake user是没有group的。
+
+**缓存**
+
+由于group mapping依赖外部机制，因此这会影响NN的性能。想要减少查找group mapping对NN性能的影响，Hadoop会缓存group mapping provider返回的group信息。缓存有效期由配置项`hadoop.security.groups.caceh.secs`决定，默认300秒。
+
+当缓存过期后，下一个请求会去查找group mapping provider中查找user的group，查找成功会刷新缓存。如果查找失败，后续的请求会继续查找。如果`hadoop.security.groups.cache.secs * 10`秒之后，还是未能成功刷新缓存，此时才会清理此已过期的缓存。如果没有缓存后续所有请求都会被阻塞（需要去查找group mapping），知道缓存被成功刷新。
+
+配置项`hadoop.security.groups.cache.background.reload`表示后台去刷新group mapping的缓存
+
+配置项`hadoop.security.groups.cache.background.reload.threads`表示后台去刷新group mapping的线程池大小，默认为3
+
+配置项`hadoop.security.groups.negative-cache.secs`表示如果group mapping provider没找到用户的组，在30秒内不会对同一用户执行任何查找。默认值30秒。
+
+**LDAP group mapping**
+
+`hadoop.security.group.mapping.ldap.url` 表示用于解析用户组的LDAP服务器的URL。它支持通过逗号分隔的列表配置多个LDAP服务器。
+
+`hadoop.security.group.mapping.ldap.base`表示LDAP连接的search base。通常为LDAP的根目录，
+
+`hadoop.security.group.mapping.ldap.userbase`
+
+`hadoop.security.group.mapping.ldap.groupbase`
+
+`hadoop.security.group.mapping.ldap.directory.search.timeout` 每个LDAP查询的超时时间，默认为10000毫秒。设为0表示无限等待不超时。
+
+`hadoop.security.group.mapping.ldap.search.group.hierarchy.levels`
+
+**band users**
+
+`hadoop.security.group.mapping.ldap.bind.user` 表示使用哪个用户连接到LDAP服务器
+
+`hadoop.security.group.mapping.ldap.bind.password.file` 表示`hadoop.security.group.mapping.ldap.bind.user`用户的密码文件
+
+**可支持多个bind user**
+
+```bash
+hadoop.security.group.mapping.ldap.bind.users=alias1,alias2
+hadoop.security.group.mapping.ldap.bind.users.alias1.bind.user=bindUser1 hadoop.security.group.mapping.ldap.bind.users.alias1.bind.password.alias=bindPasswordAlias1 hadoop.security.group.mapping.ldap.bind.users.alias2.bind.user=bindUser2 hadoop.security.group.mapping.ldap.bind.users.alias2.bind.password.alias=bindPasswordAlias2
+```
+
+**Active Directory**
+
+还支持通过Active Directory server进行组名的解析。
+
+### 权限检查（permission check）
+
+所有操作都需要遍历访问。
+
+如：假设访问`/foo/bar/baz`，那么要求客户端用户具有 `/`, `/foo` 和`/foo/bar`的`EXECUTION`权限。
+
+改变文件/目录权限的命令
+
+```bash
+hdfs dfs -chmod [-R] 066 文件名|目录名
+hdfs dfs -chgrp [-R] 组名 文件名|目录名
+hdfs dfs -chown [-R] [owner[:group]] 文件名|目录名
+```
+
+**super-user是运行NameNode进程的用户名。**
+
+**HDFS的super-user和NameNode所在机器的操作系统的super-user不必一样。**
+
+### ACLs
+
+HDFS除了支持传统的POSIX 权限模型外，还支持POSIX ACLs。
+
+ACL可以给为某些用户/组设置权限，是对传统的POSIX权限模型（不止ugi）的补充。
+
+NameNode的`hdfs-site.xml`中的`dfs.namenode.acls.enabled`参数决定了是否启用ACL。
+
+ACL由一组ACL条目组成。例如
+
+```bash
+   user::rw-											# 表示一个ACL条目，表示文件的owner具有rw权限
+   user:bruce:rwx                  #effective:r-- 表示用户bruce对此文件具有rwx权限，因为mask的原因，实际权限为r
+   group::r-x                      #effective:r-- 表示文件的group具有rx权限，因为mask的原因，实际权限为r
+   group:sales:rwx                 #effective:r-- 表示组sales对此文件具有rwx权限，因为mask的原因，实际权限为r
+   mask::r--											# 相当于一个过滤器。
+   other::r--											# 表示其他用户具有r权限
+```
+
+ACL条目的格式为`type:用户名或组名:权限字符串`。
+
+每个ACL都必须有一个掩码。只有目录可以具有默认ACL。创建新文件或子目录时，它会自动将其父级的默认ACL复制到自己的访问ACL中。
+
+```bash
+   user::rwx											# 是access acl，表示权限检查时检查的权限
+   group::r-x											# 是access acl，表示权限检查时检查的权限
+   other::r-x											# 是access acl，表示权限检查时检查的权限
+   default:user::rwx							# 是default acl，表示新子文件或子目录在创建后的acl权限。
+   default:user:bruce:rwx          #effective:r-x # 是default acl，表示新子文件或子目录在创建后的acl权限。
+   default:group::r-x							# 是default acl，表示新子文件或子目录在创建后的acl权限。
+   default:group:sales:rwx         #effective:r-x # 是default acl，表示新子文件或子目录在创建后的acl权限。
+   default:mask::r-x							# 是default acl，表示新子文件或子目录在创建后的acl权限。
+   default:other::r-x							# 是default acl，表示新子文件或子目录在创建后的acl权限。
+```
+
+修改了父目录的default acl不会改变已经创建了的子目录/文件的acl权限。
+
+access acl最多32条，default acl最多32条。
+
+如果配置了acl，那么权限检查的算法逻辑为：
+
+- 如果用户名匹配文件owner，走owner权限
+- 如果用户名匹配了acl中的用户名，走这条acl权限，但是要用mask对权限过滤。
+- 如果用户组名匹配group list中的一个，走group权限，但是要用mask对组权限过滤。
+- 如果用户组名匹配acl中的group list中的一个，走acl中的group权限，但是要用mask对组权限过滤。
+- 如果用户组名匹配acl中的group list中的一个，但是没有访问权限，则访问被拒绝。
+- 否则走other用户的权限。
+
+**与只有权限位的文件相比，具有ACL的文件在NameNode中会增加内存成本。**
+
+**acl相关命令**：
+
+```bash
+# 1. 获取文件/目录的access acl和default acl（目录才有）
+hdfs dfs -getfacl [-R] <path>
+# 2. 设置文件/目录的acl
+hdfs dfs -setfacl [-R] [-b |-k -m |-x <acl_spec> <path>] |[--set <acl_spec> <path>]
+# 3. 通过ls可以看到哪些文件/目录具有acl。如果最后面有个"+"表示有acl。
+hdfs dfs -ls <args>
+```
+
+**acl相关配置参数**：
+
+```bash
+# 是否启用permission check，不管true或false，chmod、chgrp、chown、setfacl始终会权限检查
+dfs.permissions.enabled = true
+# web server使用的用户名，如果为super-user那么会允许任何的web client看到所有内容。例如在hdfs web ui查看（此配置为other中用户，那么只能看到other用户有r权限的文件/目录）
+dfs.web.ugi = webuser,webgroup
+# super-users的组，此组中的用户具有superuser权限。
+dfs.permissions.superusergroup = supergroup
+# 创建文件和目录时使用的umask，如022，表示创建出来的目录权限为755。
+fs.permissions.umask-mode = 0022
+# acl的管理员
+dfs.cluster.administrators = ACL-for-admins
+# 是否启用hdfs acl
+dfs.namenode.acls.enabled = true
+# 启用之后，NameNode会把父目录的default acl应用到新创建的子目录/文件上。
+dfs.namenode.posix.acl.inheritance.enabled
+```
+
+## Quota（配额）
+
+HDFS可以为目录设置quota。有两种quota，两种quota相互独立。：
+
+- `name quota` 
+
+  是对指定目录下的文件/目录数量的硬限制。如果数量超过`name quota`的限制，则创建文件/目录会失败。最大的配额是Long.Max_Value。新创建的目录是没有设置name quota的。设置和移除quota也会记录到journalNode的edits log文件中。
+
+- `space quota` 
+
+  是对指定目录下的文件字节数的硬限制。新创建的目录没有关联的配额。最大的配额是Long.Max_Value。零配额仍然允许创建文件，但不能向文件中添加块。目录不计入`space quota`。`space quota`是乘以副本数之后的字节数（不是按单副本算的）。设置和移除quota也会记录到journalNode的edits log文件中。
+
+**Storage Type Quotas**
+
+HDFS还可以为指定目录的存储类型(SSD, DISK, ARCHIVE) 做硬限制。
+
+**quota相关命令**
+
+```bash
+###########管理员命令################
+# 为每个目录设置name quota，N表示个数
+hdfs dfsadmin -setQuota <N> <directory>...<directory>
+# 清除为这些目录设置的name quota
+hdfs dfsadmin -clrQuota <directory>...<directory>
+# 为每个目录设置space quota，N表示字节数。1GB的文件，副本数为3，则占用3GB的space quota。
+hdfs dfsadmin -setSpaceQuota <N> <directory>...<directory>
+# 清除为这些目录设置的space quota
+hdfs dfsadmin -clrSpaceQuota <directory>...<directory>
+# 为这些目录设置storage type quota
+hdfs dfsadmin -setSpaceQuota <N> -storageType <storagetype> <directory>...<directory>
+# 清除为这些目录设置的storage type quota
+hdfs dfsadmin -clrSpaceQuota -storageType <storagetype> <directory>...<directory>
+# 查看quota情况。-h表示人类可读，-v表示显示列头，-t表示显示每种storage type的配额。
+hadoop fs -count -q [-h] [-v] [-t [comma-separated list of storagetypes]] <directory>...<directory>
+```
+
+
+
+## libhdfs（C API）
+
+libhdfs是一个基于JNI的C API，用于Hadoop的分布式文件系统（HDFS）。它是HDFS API的一个子集，通过此C API可以操作HDFS文件和文件系统。
+
+## Web HDFS（REST API）
+
+FileSystem URIs和HTTP URLs的区别
+
+WebHDFS 的scheme是''`webhdfs://`"。
+
+```bash
+# WebHDFS的URI，等价于hdfs://<HOST>:<RPC_PORT>/<PATH>
+webhdfs://<HOST>:<HTTP_PORT>/<PATH>
+
+# 如果webhdfs开启了ssl，则应为
+swebhdfs://<HOST>:<HTTP_PORT>/<PATH>
+
+# 对应的HTTP REST URL
+http://<HOST>:<HTTP_PORT>/webhdfs/v1/<PATH>?op=...
+```
+
+
+
+## HttpFS
+
+HttpFS全称Hadoop HDFS over HTTP。HttpFS是一个提供REST HTTP网关的服务器，支持所有HDFS文件系统操作（读取和写入）。
+
+HttpFS可以用于在运行不同版本Hadoop的集群之间传输数据（克服RPC版本控制问题），例如使用Hadoop DistCP（跨大版本不支持）。
+
+可以使用curl，wget通过HttpFS来访问HDFS。
+
+HttpFS是一个独立于Hadoop NameNode的服务。
+HttpFS本身就是Java Jetty web应用程序。
+HttpFS HTTP Web服务API调用是映射到HDFS文件系统操作的HTTP REST调用。例如，使用curl Unix命令：
+
+```bash
+# 返回/user/foo/README.txt文件的内容
+$ curl 'http://httpfs-host:14000/webhdfs/v1/user/foo/README.txt?op=OPEN&user.name=foo'
+# 以json格式返回/user/foo目录的内容
+$ curl 'http://httpfs-host:14000/webhdfs/v1/user/foo?op=LISTSTATUS&user.name=foo'
+# 返回/user/foo/.Trash的路径，
+$ curl 'http://httpfs-host:14000/webhdfs/v1/user/foo?op=GETTRASHROOT&user.name=foo'
+# 创建/user/foo/bar目录
+$ curl -X POST 'http://httpfs-host:14000/webhdfs/v1/user/foo/bar?op=MKDIRS&user.name=foo'
+```
+
+HttpFS需要单独安装和启动，参考：https://hadoop.apache.org/docs/stable/hadoop-hdfs-httpfs/ServerSetup.html
+
+## 短路本地读（short circuit local read）
+
+在HDFS中，读取数据是通过DataNode进行。当客户端从DataNode读取文件时，DataNode会从磁盘中读取该文件，并通过TCP套接字将数据发送给客户端。所谓的“短路”读取绕过DataNode，允许客户端直接读取文件。显然，这只有在客户端与数据位于同一位置的情况下才有可能实现。短路读取为许多应用程序提供了实质性的性能提升。
+
+`short circuit read`需要使用`unix domain socket`，通过此套接字可以让client和datanode通信。
+
+短路本地读取需要在DataNode和客户端上进行配置。
+
+**短路本地读相关配置**
+
+```xml
+<configuration>
+  <property>
+    <name>dfs.client.read.shortcircuit</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>dfs.domain.socket.path</name>
+    <value>/var/lib/hadoop-hdfs/dn_socket</value>
+  </property>
+</configuration>
+```
+
+
+
+## 中心化缓存管理（centralized cache management）
+
+集中式缓存管理对于重复访问的文件非常有用。例如，Hive中经常用于联接的一个小表是缓存的一个很好的选择。
+
+通过此机制，用户可以指定需要HDFS缓存的path。NameNode通过心跳发送信息告诉DataNode，将需要缓存的block缓存在off-heap cache中。
+
+![Caching Architecture](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/images/caching.png)
+
+NameNode通过发送cache指令给Datanode，告诉datanode需要缓存哪些block。Datandoe通过心跳报告给Namenode它缓存了哪些block。cache指令会持久化在fsimage和edits log中。**缓存当前是在文件或目录级别上完成的**。可以缓存文件和目录（只缓存目录下的文件，子目录下的文件不缓存）
+
+## NFS Gateway
+
+NFS Gateway支持NFSv3，允许HDFS作为客户端本地文件系统的一部分挂载在本地文件系统。目前，NFS Gateway支持和启用了下面的使用模式：
+
+1.      用户可以在基于NFSv3客户端兼容的操作系统上的本地文件系统上浏览HDFS文件系统。
+
+2.      用户可以从挂载到本地文件系统的HDFS文件系统上下载文件。
+
+3.      用户可以从本地文件系统直接上传文件到HDFS文件系统。
+
+4.      用户可以通过挂载点直接将数据流写入HDFS。目前支持文件append，随机写还不支持。
+
+NFS Gateway机器需要跟运行HDFS Client一样的环境，像Jar包文件，HADOOP_CONF目录等。NFSGateway可以放在跟DataNode，NameNode或者任何一台HDFS Client机器上。
+NFS服务需要三个守护进程rpcbind或portmap（portmap在centos6上被改名为rpcbind）, mountd and nfsd，NFS Gateway已经包含了nfsd和mountd。挂载时会把HDFS根目录作为唯一的挂载点。由于在RHEL6.2等操作系统上rpcbind有bug,推荐使用NFS Gateway软件包里自带的portmap。
+
+## 滚动升级（rolling upgrade）
+
+从`Hadoop 2.4.0`开始才支持滚动升级。
+
+HDFS滚动升级允许升级单个HDFS守护进程。例如，datanode可以独立于namenode进行升级。一个namenode可以独立于其他namenode进行升级。namenode可以独立于datanode和journalnode进行升级。
+
+如果在新软件版本中启用了任何新功能，则升级后可能无法与旧软件版本一起使用。在这种情况下，应通过以下步骤进行升级。
+
+1.禁用新特性
+
+2.升级集群
+
+3.开启新特性
+
+### 升级
+
+只有HDFS HA集群才能不停机升级。
+
+假设NN1为Active NN，NN2为Standby NN。
+
+#### 不停机升级
+
+一般而言，JNs和ZKNs不用升级，只要升级NNs和DNs即可。
+
+**升级非联邦的HA集群**
+
+> 1、准备滚动升级
+>
+> （1）创建回滚用的fsimage
+>
+> ```bash
+> hdfs dfsadmin -rollingUpgrade prepare
+> ```
+>
+> （2）检查rollback用的fsimage。当出现`Proceed with rolling upgrade`表示ok了。
+>
+> ```bash
+> hdfs dfsadmin -rollingUpgrade query
+> ```
+>
+> 2、升级Active NN和standby NN
+>
+> （1）关闭NN2，并升级NN2
+>
+> （2）启动NN2，作为standby NN
+>
+> ```bash
+> hdfs namenode -rollingUpgrade started
+> ```
+>
+> （3）主从切换，NN2成为active NN，NN1成为standby NN。
+>
+> ```bash
+> hdfs haadmin -failover nn1 nn2
+> ```
+>
+> （4）关闭NN1，升级NN1
+>
+> （5）启动NN1，作为standby
+>
+> ```bash
+> hdfs namenode -rollingUpgrade started
+> ```
+>
+> 3、升级DNs
+>
+> （1）选一小批datanode（比如同一个rack的，因为默认副本策略会在多个rack放置副本）。
+>
+> 1）关闭一个datanode
+>
+> ```bash
+> hdfs dfsadmin -shutdownDatanode <DATANODE_HOST:IPC_PORT> upgrade
+> ```
+>
+> 2）检查、等待datanode关闭
+>
+> ```bash
+> hdfs dfsadmin -getDatanodeInfo <DATANODE_HOST:IPC_PORT>
+> ```
+>
+> 3）升级并重启datanode
+>
+> 4）对选择的这一批datanode都执行1-3步。
+>
+> （2）重复第一步，直到所有的datanode都升级了。
+>
+> 4、完成滚动升级
+>
+> 完成rolling upgrade。
+>
+> ```bash
+> hdfs dfsadmin -rollingUpgrade finalize
+> ```
+>
+> 
+
+**升级联邦HA集群**
+
+升级联邦HA集群和非联邦HA集群类似，不同在于第1步和第4步需要对每个namespace执行，第2步需要对每一对active NN和standby NN执行。
+
+> （1）为每个NameSpace准备滚动升级
+>
+> （2）为每个NameSpace升级每对Active和Standby的NN
+>
+> （3）升级DNs
+>
+> （4）为每个NameSpace完成滚动升级
+
+#### 停机升级
+
+对于非HA集群而言，namenode的升级需要停机。
+
+**升级非HA集群**
+
+与HA集群的升级步骤只有第2步不同。非HA集群升级的第2步为：
+
+> 升级NN和SNN
+>
+> （1）关闭SNN
+>
+> （2）关闭和升级NN
+>
+> （3）使用`hdfs dfsadmin -rollingUpgrade started`启动NN
+>
+> （4）升级并重启SNN
+
+### 降级
+
+降级将软件恢复到升级前的版本，并保留用户数据。假设时间T是滚动升级开始时间，并且升级因降级而终止。然后，在T时刻前/后创建的文件在HDFS中仍然可用。在T时刻前/后删除的文件在HDFS中保持删除状态。
+
+只有在NN 的layout version和DN的layout version在这两个版本之间都没有更改的情况下，较新版本才可降级为升级前版本。
+
+在HA集群中，当从旧软件版本到新软件版本的滚动升级正在进行时，可以以滚动方式将升级后的机器降级回旧软件版本。
+
+> 1、降级DNs
+>
+> （1）选一小批datanode（比如同一个rack的，因为默认副本策略会在多个rack放置副本）。
+>
+> 1）关闭一个datanode
+>
+> ```bash
+> hdfs dfsadmin -shutdownDatanode <DATANODE_HOST:IPC_PORT> upgrade
+> ```
+>
+> 2）检查/等待datanode关闭
+>
+> ```bash
+> hdfs dfsadmin -getDatanodeInfo <DATANODE_HOST:IPC_PORT>
+> ```
+>
+> 3）降级并重启datanode
+>
+> 4）为这一批datanode都执行1-3步。
+>
+> （2）重复第一步，直到所有的datanode都降级了。
+>
+> 2、降级Active NN和Standby NN
+>
+> （1）关闭和降级NN2
+>
+> （2）启动NN2作为standby NN
+>
+> （3）主备切换，NN2成为active，NN1成为standby
+>
+> ```bash
+> hdfs haadmin -failover nn1 nn2
+> ```
+>
+> 
+>
+> （4)关闭和降级NN1
+>
+> （5）启动NN1，作为standby
+>
+> 3、完成滚动降级
+>
+> ```bash
+> hdfs dfsadmin -rollingUpgrade finalize
+> ```
+>
+> 请注意，在降级NN之前必须降级DN，因为协议可以以向后兼容的方式更改，但不能向前兼容，即旧的DN可以与新的NN通信，但不能反过来。
+
+### 回滚
+
+回滚会将软件恢复到升级前的版本，也会将用户数据恢复到升级前是状态。假设滚动升级的开始时间为T，且升级被回滚所中止。在T时刻之前创建的文件在回滚后会仍然可用，但是在T时刻之后创建的文件在回滚后是不可用的。
+
+在T时刻之前删除的文件在回滚后仍是删除的，在T时刻之后删除的文件在回滚后是未被删除的。
+
+始终支持从较新版本回滚到升级前版本。然而，它不能以滚动的方式完成。它需要集群停机。假设NN1和NN2分别处于活动状态和备用状态。以下是回滚的步骤：
+
+> 1、关闭所有NN和DN。
+>
+> 2、在所有机器上恢复升级前的版本。
+>
+> 3、使用`hdfs dfsadmin -rollingUpgrade rollback`命令启动NN1，作为active。
+>
+> 4、使用`hdfs namenode -bootstrapStandby`，`hdfs --daemon start namenode`命令启动NN，作为standby。
+>
+> 5、使用`hdfs --daemon -rollback datanode`命令启动DN。
+
+相关命令介绍：
+
+```bash
+# query表示查询当前滚动升级的状态
+# prepare表示准备新的滚动升级
+# finalize表示完成了当前的滚动升级
+hdfs dfsadmin -rollingUpgrade <query|prepare|finalize>
+
+# 获取指定datanode的信息
+hdfs dfsadmin -getDatanodeInfo <DATANODE_HOST:IPC_PORT>
+
+# 提交指定datanode的shutdown请求。upgrade参数会告诉访问DN的客户端等待DN重启，过一段时间没重启会超时的。
+hdfs dfsadmin -shutdownDatanode <DATANODE_HOST:IPC_PORT> [upgrade]
+
+# rollback 表示恢复NN到升级之前的版本，用户数据也恢复到之前。
+# started 表示
+hdfs namenode -rollingUpgrade <rollback|started>
+```
+
+
+
+## 扩展属性（extended attributes）
+
+Extended attributes缩写为xattrs。允许用户应用程序将额外的元数据与文件或目录相关联。
+
+在HDFS中，有五个有效的命名空间：user、trusted、system、security和raw。这些命名空间中的每一个都有不同的访问限制。
+
+**相关命令**
+
+```bash
+# 获取xattrs
+hadoop fs -getfattr [-R] -n name | -d [-e en] <path>
+# 设置xattrs
+hadoop fs -setfattr -n name [-v value] | -x name <path>
+```
+
+**相关配置参数**
+
+```bash
+dfs.namenode.xattrs.enabled
+dfs.namenode.fs-limits.max-xattrs-per-inode
+dfs.namenode.fs-limits.max-xattr-size
+```
+
+
+
+## 透明加密（transparent encryption）
+
+HDFS实现透明的端到端加密。一旦配置，从特殊HDFS目录读取和写入的数据将透明地加密和解密，而不需要更改用户应用程序代码。
+
+存储加密和传输加密。
+
+HDFS引入了一个新的抽象：encryption zone。加密区是一个特殊的目录，其内容在写入时将被透明地加密，在读取时被透明地解密。每个加密区域都与创建区域时指定的一个加密区域密钥相关联。加密区域内的每个文件都有自己唯一的数据加密密钥（DEK）。HDFS从不直接处理DEK。相反，HDFS只处理加密的数据加密密钥（EDEK）。客户端解密EDEK，然后使用后续的DEK读取和写入数据。HDFS数据节点只看到一个加密字节流。
+
+HDFS允许嵌套加密区域。
+
+需要一个新的集群服务来管理加密密钥：Hadoop密钥管理服务器（KMS）。在HDFS加密的背景下，KMS执行三项基本职责：
+
+- 提供对存储的加密区域密钥的访问
+- 生成新的加密数据加密密钥以存储在NameNode上
+- 解密加密的数据加密密钥以供HDFS客户端使用。
+
+在加密区域中创建新文件时，NameNode会要求KMS生成一个用加密区域的密钥加密的新EDEK。然后，EDEK作为文件元数据的一部分持久存储在NameNode上。
+
+读取加密区域内的文件时，NameNode会向客户端提供文件的EDEK和用于加密EDEK的加密区域密钥版本。然后，客户端要求KMS解密EDEK，这包括检查客户端是否有权访问加密区域密钥版本。假设成功，客户端将使用DEK来解密文件的内容。
+
+读写路径的所有上述步骤都是通过DFSClient、NameNode和KMS之间的交互自动执行的。
+
+## 多重连接（muilthoming）
+
+在多址网络中，集群节点连接到多个网络接口。这样做可能有多种原因。
+
+- 安全性：安全性要求可能要求将集群内流量限制在与用于在集群内外传输数据的网络不同的网络中。
+- 性能：集群内流量可以使用一个或多个高带宽互连，如光纤通道、Infiniband或10GbE。
+- 故障切换/冗余：节点可能有多个网络适配器连接到单个网络，以处理网络适配器故障。
+
+## storage policies
+
+异构存储即有多种存储类型，不同存储类型对应的是不同的物理存储介质，
+
+HDFS支持的`storage type`:
+
+- `ARCHIVE` 高存储密度，计算性能低，主要用于归档。
+- `DISK` 默认的存储类型。
+- `SSD`
+- `RAM_DISK` 支持在内存中写入单个副本文件。
+
+HDFS支持的`storage policies`:
+
+- `Hot` 用于存储和计算。当一个block为hot时，此块的所有副本都存储在DISK中。
+- `Cold` 计算性能低，主要用于归档的数据。当一个block为cold时，此块的所有副本都存储在ARCHIVE中。
+- `Warm` 数据是部分hot，部分cold。当一个block处于hot时，块的副本存储在DISK，当一个block处于cold时，块的副本存储在ARCHIVE。
+- `All_SSD` 所有副本存储在SSD中。
+- `One_SSD` block的一个副本存储在SSD中，剩余的副本存储在DISK中。
+- `Lazy_Persist` block的一个副本存储在内存中。副本首先写入RAM_DISK，然后lazy 持久化到DISK中。
+- `Provieded` 数据存储在HDFS之外，详情见：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsProvidedStorage.html
+
+一个storage policy由如下几个字段组成：
+
+- Policy ID
+- Policy name
+- 用于block放置的存储类型的列表
+- A list of fallback storage types for file creation
+- A list of fallback storage types for replication
+
+**相关配置**：
+
+```bash
+# 是否启用storage policy，默认为true
+dfs.storage.policy.enabled
+# datanode的数据目录，格式为[DISK]file:///grid/dn/disk0，支持逗号分隔的多个数据目录。
+dfs.datanode.data.dir
+```
+
+**Storage Policy Satisfier (SPS)**
+
+在namenode外部运行的SPS服务会定期扫描storage policy和放置的block是否匹配。如果SPS识别出要为文件移动的某些block，则它将为数据节点安排块移动任务。如果移动中出现任何故障，SPS将通过发送新的块移动任务来重新尝试。
+
+SPS可以作为Namenode外部的外部服务启用，也可以在不重启Namenode的情况下动态禁用。
+
+*注意：SPS和mover工具不能同时运行。*
+
+**mover工具**
+
+mover是一个数据迁移工具，它主要作用是将数据归档。此工具会定期扫描HDFS中的文件，检查文件的block是否满足块放置策略，如果不满足，则会将block进行移动，以满足块放置策略。请注意，它总是尽可能在同一节点内移动块副本。如果这不可能（例如，当一个节点没有目标存储类型时），则它将通过网络将块副本复制到另一个节点。
+
+```bash
+hdfs mover [-p <files/dirs> | -f <local file name>]
+```
+
+
+
+相关命令：
+
+```bash
+# 列出所有storage policy
+hdfs storagepolicies -listPolicies
+# 为文件或目录设置storage policy
+hdfs storagepolicies -setStoragePolicy -path <path> -policy <policy>
+# 取消为某路径设置的storage policy
+hdfs storagepolicies -unsetStoragePolicy -path <path>
+# 获取某路径的storage policy
+hdfs storagepolicies -getStoragePolicy -path <path>
+# 根据文件/目录的当前存储策略安排要移动的块。
+hdfs storagepolicies -satisfyStoragePolicy -path <path>
+
+```
+
+
+
+## memory storage support
+
+
+
+![Lazy Persist Writes](Hadoop3.x.assets/LazyPersistWrites.png)
+
+HDFS可以先将数据写入Datanode的内存中，然后返回给客户端说文件/目录写入ok了，然后datanode异步地将数据flush到磁盘中，避免了高昂的磁盘IO和checksum计算。这种方式称为`lazy persist write`。在副本从内存持久化到磁盘前如果namenode重启了，可能会造成数据丢失。
+
+## Synthetic Load Generator
+
+https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/SLGUserGuide.html
+
+SLG是一种用于测试NameNode在不同客户端负载下的行为的工具。用户可以通过指定读取和写入的概率来生成读取、写入和列表请求的不同混合。用户通过调整工作线程的数量和操作之间的延迟的参数来控制负载的强度。当load Generator正在运行时，用户可以评测和监视NameNode的运行。当负载生成器退出时，它会打印一些NameNode统计信息，如每种操作的平均执行时间和NameNode吞吐量。
+
+
+
+```
+    yarn jar <HADOOP_HOME>/share/hadoop/mapreduce/hadoop-mapreduce-client-jobclient-<hadoop-version>.jar NNloadGenerator [options]
+```
+
+structure generator
+
+```
+    yarn jar <HADOOP_HOME>/share/hadoop/mapreduce/hadoop-mapreduce-client-jobclient-<hadoop-version>.jar NNstructureGenerator [options]
+```
+
+data generator
+
+```
+    yarn jar <HADOOP_HOME>/share/hadoop/mapreduce/hadoop-mapreduce-client-jobclient-<hadoop-version>.jar NNdataGenerator [options]
+```
+
+## Erasure Coding（纠删码）
+
+HDFS的3副本导致了存储空间和其他资源（如网络带宽）多了200%的开销。对于warn和cold数据而言，仍然消耗了与第一个副本相同的资源量。
+
+纠删码（EC）是对上面这种情况的改善，通过EC来代替复制。以更少的存储空间内提供了相同级别的容错。在典型的擦除编码（EC）设置中，额外的存储开销不超过50%（未使用EC是200%）。EC文件的复制因子是没有意义的。它总是1，并且不能通过`-setrep`命令进行更改。 
+
+在存储系统中，EC最显著的用途是廉价磁盘冗余阵列（RAID）。
+
+将EC与HDFS集成可以提高存储效率，同时仍然提供与传统的基于复制的HDFS部署类似的数据持久性。例如，一个有6个块的3x复制文件将消耗6*3=18个块的磁盘空间。但使用EC（6个数据，3个奇偶校验）部署，它只会消耗9个磁盘空间块。
+
+## disk balancer（磁盘间数据均衡）
+
+Diskbalancer是一个命令行工具，它的作用是在一个datanode的所有磁盘之前分发数据。Diskbalaner与Balancer是不同的。Balancer是在集群维度（节点之间）进行数据的均衡。
+
+由于某些原因（如由于磁盘故障，更换过磁盘）导致datanode内部的不同磁盘之间的使用率不均匀，使用Diskbalancer工具可以对指定datanode进行操作，将block从一个磁盘移动到另一块磁盘。
+
+### 架构
+
+plan：描述应该在两个磁盘之间移动多少数据的一组语句。一个plan由多个move步骤组成。
+
+move步骤：一个move步骤包括source disk、destination disk和需要移动的字节数。
+
+diskbalaner可以限制每秒copy的数据量以避免影响其他程序，disk balancer在集群中是默认启用的。
+
+第一步，创建一个移动计划。
+
+第二步，在指定datanode上执行此计划。
+
+**相关配置**：
+
+```bash
+dfs.disk.balancer.enabled													# 默认值为true。是否启用diskbalancer
+dfs.disk.balancer.max.disk.throughputInMBperSec		# 默认10MB/s。 diskbalancer用来copy数据的最大可用带宽
+dfs.disk.balancer.max.disk.errors									# 默认5。在终止两个disk之间的diskbalancer任务之前，最大可以忽略的错误数
+dfs.disk.balancer.block.tolerance.percent					# copy的目标百分比，达到此值表示此次copy就ok了。
+dfs.disk.balancer.plan.threshold.percent					# 如果节点volume密度的阈值大于此值，则表示此节点的磁盘之间需要balance
+dfs.disk.balancer.plan.valid.interval							# 默认1d。diskbalancer的plan的有效时间。
+```
+
+
+
+**相关命令**：
+
+```bash
+# 生成指定datanode节点的plan，生成两个文件<nodename>.before.json和<nodename>.plan.json
+hdfs diskbalancer -plan node1.mycluster.com
+
+# 执行指定datanode的plan，这通过从plan文件中读取datanode的地址来执行计划。
+hdfs diskbalancer -execute /system/diskbalancer/nodename.plan.json
+
+# 获取指定datanode的plan执行情况
+hdfs diskbalancer -query nodename.mycluster.com
+
+# 取消指定datanode的正在运行的plan，重启该datanode也会取消正在运行的plan
+hdfs diskbalancer -cancel /system/diskbalancer/nodename.plan.json
+或
+# planID可以通过hdfs diskbalancer -query命令获取到
+hdfs diskbalancer -cancel planID -node nodename
+
+# Report命令提供将从运行disk balancer中受益的指定节点或顶级节点的详细报告。
+hdfs diskbalancer -fs http://namenodeUri -report -node <file://> |[<DatanodeId>|IP|Hostanme>,...]
+或
+hdfs diskbalancer -fs http://namenodeUri -report -top topnum
+```
+
+
+
+## upgrade domain
+
+当前HDFS默认的块放置策略是3个副本需要至少放置在2个rack。在写操作的pipeline时，一个副本写入第一个rack，剩下2个副本都写入另一个rack。
+
+但是，如果做过负载均衡（balance）之后，可能会出现一个块的3个副本分布在3个不同的rack上。
+
+**块放置策略对datanode的滚动升级是有影响的。**如果按照默认的块放置策略，那么在升级datanode时可以按一个rack一个rack的滚动升级。**但是如果在升级时放置了2个副本的rack出现问题，那就就导致了升级期间此block的数据不可用了**。
+
+为了解决默认块放置策略在滚动升级时对datanode可用性的影响，引入了upgrade omain的概念。除了基于rack进行分组，datanode还可以分到不同的upgrade domain。例如任何机架的第一个位置（第一个机柜）分为ud_01，第二个位置（第二个机柜）分为ud_02等。
+
+upgrade domain块放置策略保证block的副本是跨upgrade domain放置的。三个副本放置在3个不同的upgrade domain中。滚动升级时，按upgrade domain来进行升级。这样确保二连同一个时刻只有一个副本的datanode在升级，剩余2个副本所在的block都是可用的。
+
+**在集群中启用upgrade domain的步骤**：
+
+- 将datanode分到不同的upgrade domain
+
+  **如何将datanode映射到upgrade domain id呢？**
+
+  一个常见的方式是根据机器在rack中的位置作为其upgrade domain id。要配置主机名到upgrade domain id的映射，需要使用json格式的配置文件。
+
+  **相关配置**：
+
+  `hdfs-site.xml`
+
+  ```bash
+  dfs.namenode.hosts.provider.classname		# org.apache.hadoop.hdfs.server.blockmanagement.CombinedHostFileManager
+  
+  dfs.hosts																# json格式的hosts文件
+  ```
+
+  `dfs.hosts`的格式示例如下：
+
+  ```json
+  [
+    {
+      "hostName": "dcA­rackA­01",
+      "upgradeDomain": "01"
+    },
+    {
+      "hostName": "dcA­rackA­02",
+      "upgradeDomain": "02"
+    },
+    {
+      "hostName": "dcA­rackB­01",
+      "upgradeDomain": "01"
+    },
+    {
+      "hostName": "dcA­rackB­02",
+      "upgradeDomain": "02"
+    }
+  ]
+  ```
+
+- 启用upgrade domain块放置策略
+
+  **相关配置**：
+
+  `hdfs-site.xml`
+
+  ```bash
+  dfs.block.replicator.classname	# org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyWithUpgradeDomain
+  ```
+
+  然后重启Namenode。
+
+- 将按照就的块放置策略来放置的块迁移，以满足upgrade domain块放置策略的要求
+
+  迁移的工具见 HDFS-8789
+
+upgrade domain是namenode的`JMX`的一部分，
+
+```bash
+# 查看upgrade domain
+hdfs dfsadmin -report
+
+# 查看指定path所在的datanode的upgrade domain
+hdfs fsck <path> -files -blocks -upgradedomains
+```
+
+## datanode admin（datanode管理）
+
+datanode有两大类状态：
+
+- 存活状态：live、dead、stale
+- 服务状态；in service、decommisioned、under maintenance
+
+场景一：datanode需要修复或维护几天以上
+
+下线datanode，状态变化：NORMAL -> DECOMMISSIONED_INPROGRESS -> DECOMMISSIONED
+
+场景二：datanode需要修复或维护几分钟-几个小时
+
+维护datanode，状态变化：NORMAL -> ENTERING_MAINTENANCE -> IN_MAINTENANCE
+
+datanode的admin操作有：
+
+- decommission
+- recommission
+- 进入维护状态
+- 退出维护状态
+
+datanode的管理状态有：
+
+- NORMAL：节点处于服务中
+- DECOMMISSIONED：节点已下线
+- DECOMMISSIONED_INPROGRESS：节点下线中
+- IN_MAINTENANCE：节点维护中
+- ENTERING_MAINTENANCE：节点正在进入维护状态。
+
+**仅主机配置文件**
+
+`dfs.hosts`内容如下
+
+```bash
+host1
+host2
+host3
+host4
+```
+
+`dfs.hosts.exclude`内容如下
+
+```
+host3
+host4
+```
+
+```bash
+# 让namenode重新加载主机级别的配置文件。
+hdfs-dfsadmin[-refreshNodes]
+```
+
+host1和host2处于服务状态，host3和host4处于下线状态。
+
+**json格式的配置文件**
+
+设置`hdfs-site.xml`
+
+```bash
+dfs.namenode.hosts.provider.classname	# org.apache.hadoop.hdfs.server.blockmanagement.CombinedHostFileManager
+dfs.hosts	# json格式的文件
+```
+
+`dfs.hosts`内容如下：
+
+```json
+[
+  {
+    "hostName": "host1"
+  },
+  {
+    "hostName": "host2",
+    "upgradeDomain": "ud0"
+  },
+  {
+    "hostName": "host3",
+    "adminState": "DECOMMISSIONED"
+  },
+  {
+    "hostName": "host4",
+    "upgradeDomain": "ud2",
+    "adminState": "IN_MAINTENANCE"
+  }
+]
+```
+
+**集群级别的配置**
+
+```bash
+dfs.namenode.maintenance.replication.min
+dfs.namenode.decommission.interval
+dfs.namenode.decommission.blocks.per.interval
+dfs.namenode.decommission.max.concurrent.tracked.nodes
+```
+
+相关命令：
+
+```bash
+# 查看datanode的管理状态
+hdfs dfsadmin -report
+
+# 查看指定路径文件所在的datanode的管理状态
+hdfs fsck <path>								# 仅显示下线状态的datanode
+hdfs fsck <path> -maintenance		# 显示下线和maitenance状态的datanode
+```
+
+
+
+## provided storage
+
+用一句话来概括这里的“提供式存储”：
+
+> 通过HDFS能够定位到数据的外部存储。
+
+在现有阶段，这个外部存储只支持读取操作，暂不支持外部存储的写。换句话说，对于用户来说，提供式存储能够使得用户通过现有HDFS逻辑访问到外部存储的数据。而且这个外部存储的空间不受本身HDFS集群容量的限制。
 
 # 2. Hadoop安装和配置
 
@@ -1366,1766 +3908,7 @@ YARN HA集群支持配置LB，通过RM web ui 的`/isAcitve` HTTP请求，可以
 
 # 3. Hadoop命令
 
-## ViewFs
 
-参考文章：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/ViewFs.html
-
-https://www.dandelioncloud.cn/article/details/1546761552711659522
-
-视图文件系统（View File System，简称ViewFs）提供了一种管理多个Hadoop文件系统命名空间（或命名空间卷）的方法。
-
-### 没有ViewFs前的问题是什么？
-
-大数据时代，随着业务的迅速扩张，大公司内部往往有多套hadoop cluster来支撑起内部的数据体量。那么**多集群的管理协调**就是面临的一大难题。
-
-在很多时候,我们会碰到数据融合的需求,比如说原先有A集群,B集群,后来管理员认为有2套集群,数据访问不方便,于是设法将A,B集群融合为一个更大的集群,将他们的数据都放在同一套集群上.一种办法就是用Hadoop自带的DistCp工具,将数据进行跨集群的拷贝.当然这会带来很多的问题,如果数据量非常庞大的话.本文给大家介绍另外一种解决方案,ViewFileSystem,姑且可以叫做视图文件系统.大意就是让不同集群间维持视图逻辑上的唯一性,不同集群间还是各管各的.
-
-**传统数据合并方案**
-
-------
-
-为了形成对比,下面描述一下数据合并中常用的数据合并的做法,就是搬迁数据.举例在HDFS中,也会想到用DistCp工具进行远程拷贝.虽然DistCp本身就是用来干这种事情的,但是随着数据量规模的升级,会有以下问题的出现:
-
-- 1.拷贝周期太长,如果数据量非常大,在机房总带宽有限的情况,拷贝的时间将会非常长.
-- 2.数据在拷贝的过程中,一定会有原始数据的变更与改动,如何同步这方面的数据也是需要考虑的方面.
-
-以上2点,是我想到的比较突出的问题.OK,下面就要隆重介绍一下ViewFileSystem的概念了,可能还不是被很多人所熟知.
-
-**解决方案**：
-
-1、ViewFs
-
-2、Router-based Federation（简称RBF）。
-
-### 联邦出现之前
-
-假设当前为clusterX集群，访问HDFS文件系统的几种方式：
-
-- `hdfs dfs -ls /foo/bar` 依赖于`core-site.xml`中的`fs.default.name`配置。走的是RPC协议
-- `hdfs dfs -ls hdfs://namenodeOfClusterX:port/foo/bar `走的是RPC协议
-- `hdfs dfs -ls hdfs://namenodeOfClusterY:port/foo/bar` 走的是RPC协议
-- `hdfs dfs -ls webhdfs://namenodeClusterX:http_port/foo/bar` 走的是HTTP协议，通过webhdfs来访问HDFS文件系统。
-- `curl http://namenodeClusterX:http_port/webhdfs/v1/foo/bar` 走的是HTTP协议，通过webhdfs REST API来访问HDFS文件系统。
--  `curl http://proxyClusterX:http_port/foo/bar`通过HDFS proxy来访问HDFS文件系统。
-
-### 联邦出现之后
-
-通过viewFs来创建多个cluster的namespace的视图（逻辑上的映射），通过`client-side mount table`的配置将viewFs和多个cluster的namespace或者指定path进行链接，实现映射（对外仿佛只有一个集群）。
-
-**也就是说ViewFs的配置是在客户端做的，当然为了保证集群内也能通过ViewFs去访问其他集群，那么建议是多个集群中的所有节点都同一配置。**
-
-假设`fs.defaultFS`如下：
-
-```xml
-  <!-- 默认的fs -->
-  <property>
-  <name>fs.defaultFS</name>
-  <value>viewfs://clusterX</value>
-  </property>
-```
-
-**挂载指定路径**
-
-```xml
- <configuration> 
-  <property>
-    <name>fs.viewfs.mounttable.ClusterX.link./data</name>
-    <value>hdfs://nn1-clusterx.example.com:8020/data</value>
-  </property>
-  <property>
-    <name>fs.viewfs.mounttable.ClusterX.link./project</name>
-    <value>hdfs://nn2-clusterx.example.com:8020/project</value>
-  </property>
-  <property>
-    <name>fs.viewfs.mounttable.ClusterX.link./user</name>
-    <value>hdfs://nn3-clusterx.example.com:8020/user</value>
-  </property>
-  <property>
-    <name>fs.viewfs.mounttable.ClusterX.link./tmp</name>
-    <value>hdfs://nn4-clusterx.example.com:8020/tmp</value>
-  </property>
-  <property>
-    <name>fs.viewfs.mounttable.ClusterX.linkFallback</name>
-    <value>hdfs://nn5-clusterx.example.com:8020/home</value>
-  </property>
-</configuration>
-```
-
-`fs.viewfs.mounttable.ClusterX.link./data=hdfs://nn1-clusterx.example.com:8020/data`，表示将`hdfs://nn1-clusterx.example.com:8020/data`挂载到`viewfs://ClusterX/data`，就是通过这一配置，实现了`viewfs://ClusterX/data`和`hdfs://nn1-clusterx.example.com:8020/data`的映射。
-
-**挂载根目录**
-
-直接mount某HDFS集群的根目录到某viewFs。
-
-```xml
-<configuration>
-  <property>
-    <name>fs.viewfs.mounttable.ClusterY.linkMergeSlash</name>
-    <value>hdfs://nn1-clustery.example.com:8020/</value>
-  </property>
-</configuration>
-```
-
-通过上面配置，实现了`viewfs://ClusterY/`和`hdfs://nn1-clustery.example.com:8020/`的映射。
-
-有了viewFs之后访问viewFs的几种方式：
-
-- `/foo/bar` 等价于`viewfs://clusterX/foo/bar`
-
-- `viewfs://clusterX/foo/bar`
-
-- `viewfs://clusterY/foo/bar`
-
-  distcp工具也可以用。
-
-  ```bash
-  distcp viewfs://clusterY/pathSrc viewfs://clusterZ/pathDest
-  ```
-
-- `viewfs://clusterX-webhdfs/foo/bar` 通过webhdfs访问
-
-- `http://namenodeClusterX:http_port/webhdfs/v1/foo/bar` HTTP协议，与没有使用viewFs一样的。
-
-- `http://proxyClusterX:http_port/foo/bar` HTTP协议，与没有使用viewFs一样的。
-
-在viewFs之前，执行如下命令会报错，不支持跨集群的rename。但是通过viewFs可以支持。 
-
-```bash
-rename hdfs://cluster1/user/joe/myStuff hdfs://cluaster2/data/foo/bar
-```
-
-### Nfly挂载点
-
-通过`Nfly`可以实现1个逻辑文件可以被复制到多个文件系统中（如hdfs、s3、本地文件系统等）。配置示例。
-
-```xml
-  <property>
-    <name>fs.viewfs.mounttable.global.linkNfly../ads</name>
-    <value>uri1,uri2,uri3</value>
-  </property>
-```
-
-执行如下命令在viewFs中的ads目录下创建一个文件Z1
-
-假设配置如下：
-
-```xml
-  <property>
-    <name>fs.viewfs.mounttable.global.linkNfly../ads</name>
-    <value>file:/tmp/ads1, file:/tmp/ads2, file:/tmp/ads3</value>
-  </property>
-```
-
-
-
-```bash
-hadoop fs -touchz viewfs://global/ads/z1
-
-# 可以发现挂载点的3个文件系统中都有了此文件。
-ls -al /tmp/ads*/z1
--rw-r--r--  1 user  wheel  0 Mar 11 12:17 /tmp/ads1/z1
--rw-r--r--  1 user  wheel  0 Mar 11 12:17 /tmp/ads2/z1
--rw-r--r--  1 user  wheel  0 Mar 11 12:17 /tmp/ads3/z1
-```
-
-## View File System Overload Scheme
-
-参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/ViewFsOverloadScheme.html
-
-### ViewFs有两个问题：
-
--  要使用ViewFs需要修改`core-site.xml`中的`fs.defaultFS`为(`viewfs://xxx`)。
-- 要使用ViewFs需要将`mount table`的配置分发给所有客户端（包括集群的所有数据/计算节点）。
-
-`ViewFs Overload Scheme`是对`ViewFs`的扩展，它解决了上面两个问题的。
-
-### 启用`ViewFs Overload Scheme`
-
-#### 解决需要修改`fs.defaultFS`的问题
-
-
-
-例子1：
-
-`core-site.xml`
-
-```xml
-<property>
-  <name>fs.defaultFS</name>
-  <value>hdfs://mycluster</value>
-</property>
-<property>
-  <!--<name>fs.<scheme>.impl</name> 这里的<scheme>的值与fs.defaultFS的值保持一致-->
-  <name>fs.hdfs.impl</name>
-  <value>org.apache.hadoop.fs.viewfs.ViewFileSystemOverloadScheme</value>
-</property>
-<!-- viewfs的mount table配置-->
-<!-- hdfs://mycluster/user/fileA 映射到 hdfs://mycluster/user/fileA-->
-<property>
-  <name>fs.viewfs.mounttable.mycluster.link./user</name>
-  <value>hdfs://mycluster/user</value>
-</property>
-
-<!-- hdfs://mycluster/data/fileA 映射到 o3fs://bucket1.volume1/data/fileA -->
-<property>
-  <name>fs.viewfs.mounttable.mycluster.link./data</name>
-  <value>o3fs://bucket1.volume1/data</value>
-</property>
-<!-- hdfs://mycluster/backup/fileA 映射到 s3a://bucket1/backup/fileA -->
-<property>
-  <name>fs.viewfs.mounttable.mycluster.link./backup</name>
-  <value>s3a://bucket1/backup/</value>
-</property>
-<!-- 不匹配上面的mount link规则的都走如下配置 -->
-<property>
-  <name>fs.viewfs.mounttable.mycluster.linkfallback</name>
-  <value>hdfs://mycluster/</value>
-</property>
-```
-
-注意：就算`fs.defualtFS=hdfs://mycluster/data`，按照上述配置，`fs.viewfs.mounttable.mycluster.linkfallback=hdfs://mycluster`。
-
-例子2
-
-`core-site.xml`
-
-```xml
-<property>
-  <name>fs.defaultFS</name>
-  <value>s3a://bucketA/</value>
-</property>
-<property>
-  <!--<name>fs.<scheme>.impl</name> 这里的<scheme>的值与fs.defaultFS的值保持一致-->
-  <name>fs.s3a.impl</name>
-  <value>org.apache.hadoop.fs.viewfs.ViewFileSystemOverloadScheme</value>
-</property>
-<property>
-  <name>fs.viewfs.mounttable.bucketA.link./user</name>
-  <value>hdfs://cluster/user</value>
-</property>
-
-<property>
-  <name>fs.viewfs.mounttable.bucketA.link./data</name>
-  <value>o3fs://bucket1.volume1.omhost/data</value>
-</property>
-
-<property>
-  <name>fs.viewfs.mounttable.bucketA.link./salesDB</name>
-  <value>s3a://bucketA/salesDB/</value>
-</property>
-```
-
-这两个例子，如下图所示：
-
-![img](Hadoop3.x.assets/ViewFSOverloadScheme.png)
-
-
-
-#### 解决mount table配置分发的问题
-
-**中心化的mount table配置**
-
-**方案一：将中心化的mount table配置文件放在HCFS上（如HDFS，COS、OSS、OBS等文件系统上）**
-
-`fs.viewfs.mounttable.path`的值可以是目录，也可以是指定的某个文件。**若为目录，则找符合指定命名规格的最新的mount table配置文件作为当前的配置文件；若为文件，则只会将指定的文件作为当前的配置文件**。
-
-在`core-site.xml`中，`fs.viewfs.mounttable.path`配置为目录
-
-```xml
-<property>
-  <name>fs.viewfs.mounttable.path</name>
-  <value>hdfs://cluster/config/mount-table-dir</value>
-</property>
-```
-
-会在`hdfs://cluster/config/mount-table-dir/`目录下找到文件名为`mount-table.<versionNumber>.xml`格式的文件，并选择`versionNumber`更高的作为mount table的配置文件，所以每次修改mount table 之后需要增加versionNumber。
-
-在`core-site.xml`中，`fs.viewfs.mounttable.path`配置为指定文件
-
-```
-<property>
-  <name>fs.viewfs.mounttable.path</name>
-  <value>hdfs://cluster/config/mount-table-dir/mount-table.<versionNumber>.xml</value>
-</property>
-```
-
-注意：官方的建议是将mount table的mount link配置都写在单独的配置文件中如`mount-table.<versionNumber>.xml`中，而不要直接写在`core-site.xml`中，因为这会搞得特别乱。
-
-**方案二：将mount table的配置文件放在远程Server上，通过xml的xinclude方式获取配置**
-
-```xmla
-<configuration xmlns:xi="http://www.w3.org/2001/XInclude">
-  <xi:include href="http://myserver/mountTable/mountTable.xml" />
-</configuration>
-```
-
-**缺点**：远程server的单点故障问题。
-
-通过配置`fs.viewfs.mounttable.default.name.key`，可以实现不写主机/namespace信息也可以访问集群上的数据，如 `hdfs:///foo/bar`, `hdfs:/foo/bar` or `viewfs:/foo/bar`。如：
-
-```xml
-<property>
-  <name>fs.hdfs.impl</name>
-  <value>org.apache.hadoop.fs.viewfs.ViewFileSystemOverloadScheme</value>
-</property>
-
-<property>
-  <name>fs.defaultFS</name>
-  <value>hdfs://cluster/</value>
-</property>
-
-<property>
-  <name>fs.viewfs.mounttable.default.name.key</name>
-  <value>cluster</value>			<!-- 此值必须等于fs.defaultFS中的主机部分 -->
-</property>
-```
-
-
-
-**ViewFs Overload Scheme的缺点**：
-
-- 每次job启动都会进行一次额外的mount point信息的请求解析，这是否会给server端造成一定的压力？同时这部分会增加少许的latency。
-- 如果在job运行过程中更改了server端的mapping关系，job的task可能会看到不一样的mount point关系，会出问题。
-
-## snapshot
-
-参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsSnapshots.html
-
-**HDFS的快照是只读的。快照的一些常见作用是数据备份、防止用户错误和灾难恢复。**
-
-可以对整个文件系统做snapshot，也可以对文件系统的某个子树（子目录）做snapshot。
-
-快照文件记录块列表和文件大小，但不进行数据复制，也就是说snapshot记录的是目录的元数据。
-
-快照不会对常规HDFS操作产生不利影响：修改按时间倒序记录，以便可以直接访问当前数据。快照数据是通过从当前数据中减去修改来计算的。
-
-
-
-可快照的目录（snapshottable，快照表）最多支持65535个快照。可快照目录的数量无限制。**如果目录中有快照，则在删除所有快照之前，既不能删除也不能重命名该目录**。
-
-**当前不允许使用嵌套的快照表目录。**换句话说，如果目录的祖先/后代之一是快照表目录，则不能将其设置为快照目录。
-
-.snapshot
-
-具体操作（**需要管理员权限（superuser）**）：
-
-允许对指定目录进行快照：
-
-```bash
-hdfs dfsadmin -allowSnapshot <path>
-```
-
-不允许创建目录的快照。在禁止快照之前，必须删除目录的所有快照。
-
-```bash
-hdfs dfsadmin -disallowSnapshot <path>
-```
-
-创建快照
-
-```bash
-hdfs dfs -createSnapshot <path> [<snapshotName>]
-```
-
-删除快照
-
-```bash
-hdfs dfs -deleteSnapshot <path> <snapshotName>
-```
-
-重命名快照
-
-```bash
-hdfs dfs -renameSnapshot <path> <oldName> <newName>
-```
-
-查看当前用户可以做快照的所有目录
-
-```bash
-hdfs lsSnapshottableDir
-```
-
-查看两个快照之间的不同之处，`.`表示当前目录状态
-
-```bash
-hdfs snapshotDiff <path> <fromSnapshot> <toSnapshot>
-
-# 查看快照和当前目录状态的不同
-hdfs snapshotDiff <path> <fromSnapshot> .
-```
-
-输出结果有如下几种：
-
-```bash
-+	The file/directory has been created.
--	The file/directory has been deleted.
-M	The file/directory has been modified.
-R	The file/directory has been renamed.
-```
-
-注意：
-
-> 假设快照目录为D0，有个其他目录为D1。
->
-> 从D0/A重命名为D0/A1，状态为`R`。
->
-> 从D0/A重命名到D1/A，状态为`-`，表示从当前快照目录删除了。
->
-> 从D1/A重命名为D0/A，状态为`+`，表示加入到当前快照目录了。
-
-列出foo目录的所有快照
-
-```bash
-hdfs dfs -ls /foo/.snapshot
-```
-
-列出快照s0的文件/目录
-
-```bash
-hdfs dfs -ls /foo/.snapshot/s0
-```
-
-从快照s0中copy文件/目录
-
-```bash
-hdfs dfs -cp -ptopax /foo/.snapshot/s0/bar /tmp
-```
-
-`-ptopax`表示保留原文件的timestamps, ownership, permission, ACLs and XAttrs。
-
-从不支持快照的旧版本HDFS升级时，需要首先重命名或删除名为`.snapshot`的快照路径，以避免与保留路径（`.snopshot`）冲突。
-
-```bash
-# 1. 允许打快照
-[hadoop@hadoop322-node01 ~]$ hdfs dfsadmin -allowSnapshot /user/sjl
-Allowing snapshot on /user/sjl succeeded
-# 2. 为某目录创建快照
-[hadoop@hadoop322-node01 ~]$ hdfs dfs -createSnapshot /user/sjl 
-Created snapshot /user/sjl/.snapshot/s20230331-103523.634
-# 3. 查看某目录的快照
-[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl 
-Found 1 items
-drwxr-xr-x   - hadoop supergroup          0 2023-02-13 15:58 /user/sjl/test
-[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot
-Found 1 items
-drwxr-xr-x   - hadoop supergroup          0 2023-03-31 10:35 /user/sjl/.snapshot/s20230331-103523.634
-# 4. 重命名
-[hadoop@hadoop322-node01 ~]$ hdfs dfs -renameSnapshot /user/sjl s20230331-103523.634 s230331-01
-[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot
-Found 1 items
-drwxr-xr-x   - hadoop supergroup          0 2023-03-31 10:35 /user/sjl/.snapshot/s230331-01
-
-[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot/s230331-01/test
-Found 2 items
-drwxr-xr-x   - hadoop supergroup          0 2023-02-13 14:49 /user/sjl/.snapshot/s230331-01/test/input
-drwxr-xr-x   - hadoop supergroup          0 2023-02-13 16:02 /user/sjl/.snapshot/s230331-01/test/output
-[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/test
-Found 2 items
-drwxr-xr-x   - hadoop supergroup          0 2023-02-13 14:49 /user/sjl/test/input
-drwxr-xr-x   - hadoop supergroup          0 2023-02-13 16:02 /user/sjl/test/output
-# 5. 删除原始文件，在.snapshot中仍存在旧的文件
-[hadoop@hadoop322-node01 ~]$ hdfs dfs -rm /user/sjl/test/input/LICENSE.txt
-[hadoop@hadoop322-node01 ~]$ hdfs dfs -ls /user/sjl/.snapshot/s230331-01/test/input/LICENSE.txt
--rw-r--r--   3 hadoop supergroup     150569 2023-02-13 14:48 /user/sjl/.snapshot/s230331-01/test/input/LICENSE.txt
-# 6. 查看当前用户可以在哪些目录做快照
-[hadoop@hadoop322-node01 ~]$ hdfs lsSnapshottableDir
-drwxr-xr-x 0 hadoop supergroup 0 2023-03-31 10:35 1 65536 /user/sjl
-# 7. 查看快照的不同
-[hadoop@hadoop322-node01 ~]$ hdfs snapshotDiff /user/sjl s230331-01 .
-Difference between snapshot s230331-01 and current directory under directory /user/sjl:
-M	./test/input
--	./test/input/LICENSE.txt
-```
-
-直接`hdfs dfs -ls /user/sjl`并不能看到是否有`.snapshot`，需要直接`hdfs dfs -ls /user/sjl/.snapshot`。
-
-## Offline Edits Viewer
-
-参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsEditsViewer.html
-
-`Offline Edits Viewer`工具的目的是解析edits log文件。**此工具是基于edits文件来进行解析的，并不是一定要运行hadoop集群。**
-
-支持的input format，对应的参数为`-i`。
-
-- binary，二进制格式。
-- xml。XML格式。
-
-Note: XML/Binary format input file is not allowed to be processed by the same type processor.
-
-**注意：XML/Binary格式作为输入文件，不能选择相同类型的processor。若输入格式为XML，则不能选择xml的processor。**
-
-支持的输出格式，对应的参数为`-o`。
-
-- binary，二进制格式。
-- xml，XML格式。
-- stats，打印统计信息，无法依据此输出转换回edits log文件。
-
-提供了如下几种processor：
-
-- XML Processor。默认
-
-  ```bash
-  bash$ bin/hdfs oev -p xml -i edits -o edits.xml
-  ```
-
-  因为是默认的proseesor，不加`-p xml`也是可以的。
-
-  ```bash
-  bash$ bin/hdfs oev -i edits -o edits.xml
-  ```
-
-- Binary Processor
-
-  根据x.xml重建edits log 文件
-
-  ```bash
-  bash$ bin/hdfs oev -p binary -i edits.xml -o edits
-  ```
-
-  
-
-- Stats Processor
-
-  主要用于获取edits log文件中的统计信息。
-
-  ```bash
-  bash$ bin/hdfs oev -p stats -i edits -o edits.stats
-  ```
-
-  输出如下：
-
-  ```bash
-     VERSION                             : -64
-     OP_ADD                         (  0): 8
-     OP_RENAME_OLD                  (  1): 1
-     OP_DELETE                      (  2): 1
-     OP_MKDIR                       (  3): 1
-     OP_SET_REPLICATION             (  4): 1
-     OP_DATANODE_ADD                (  5): 0
-     OP_DATANODE_REMOVE             (  6): 0
-     OP_SET_PERMISSIONS             (  7): 1
-     OP_SET_OWNER                   (  8): 1
-     OP_CLOSE                       (  9): 9
-     OP_SET_GENSTAMP_V1             ( 10): 0
-     ...some output omitted...
-     OP_APPEND                      ( 47): 1
-     OP_SET_QUOTA_BY_STORAGETYPE    ( 48): 1
-     OP_ADD_ERASURE_CODING_POLICY   ( 49): 0
-     OP_ENABLE_ERASURE_CODING_POLICY  ( 50): 1
-     OP_DISABLE_ERASURE_CODING_POLICY ( 51): 0
-     OP_REMOVE_ERASURE_CODING_POLICY  ( 52): 0
-     OP_INVALID                     ( -1): 0
-  ```
-
-  
-
-## Offline Image Viewer
-
-参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsImageViewer.html
-
-`Offline Image Viewer`工具的目的是将hdfs fsimage文件的内容转储为人类可读的格式，并提供只读的WebHDFS API，以便对Hadoop集群的命名空间进行离线分析和检查。该工具能够相对快速地处理非常大的image文件。该工具处理Hadoop 2.4及更高版本中包含的布局格式。如果您想处理较旧的布局格式，可以使用Hadoop 2.3的`Offline Image Viewer`或[oiv_legacy](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsImageViewer.html#oiv_legacy_Command)命令。如果该工具无法处理图像文件，它将干净地退出。**Offline Image Viewer不需要运行Hadoop集群；它在运行中完全离线。**
-
-**注意：如果要使用`oiv_legacy`命令，需要`dfs.namenode.legacy-oiv-image.dir`，这样standby Namenode或secondary Namenode才会在checkpoint的时候保存旧格式的fsimage到此配置项的目录中。**
-
-`Offline Image Viewer`提供了如下几种输出processor：
-
-- `Web Processor`。默认。它启动一个HTTP服务器，该服务器暴露只读的WebHDFS API。用户可以通过使用HTTP REST API以交互方式查看命名空间。它不支持安全模式，也不支持HTTPS。
-
-  使用方式：
-
-  第一步，启动HTTP服务器，用来暴露只读的WebHDFS API。
-
-  ```bash
-   bash$ bin/hdfs oiv -i fsimage
-     14/04/07 13:25:14 INFO offlineImageViewer.WebImageViewer: WebImageViewer
-     started. Listening on /127.0.0.1:5978. Press Ctrl+C to stop the viewer.
-  ```
-
-  第二步，通过如下命令获取namespace的image信息。
-
-  ```bash
-     bash$ bin/hdfs dfs -ls webhdfs://127.0.0.1:5978/
-     Found 2 items
-     drwxrwx--* - root supergroup          0 2014-03-26 20:16 webhdfs://127.0.0.1:5978/tmp
-     drwxr-xr-x   - root supergroup          0 2014-03-31 14:08 webhdfs://127.0.0.1:5978/user
-  ```
-
-  HTTP接口形式访问：
-
-  ```bash
-     bash$ curl -i http://127.0.0.1:5978/webhdfs/v1/?op=liststatus
-     HTTP/1.1 200 OK
-     Content-Type: application/json
-     Content-Length: 252
-  
-     {"FileStatuses":{"FileStatus":[
-     {"fileId":16386,"accessTime":0,"replication":0,"owner":"theuser","length":0,"permission":"755","blockSize":0,"modificationTime":1392772497282,"type":"DIRECTORY","group":"supergroup","childrenNum":1,"pathSuffix":"user"}
-     ]}}
-  ```
-
-- `XML Processor`。创建fsimage的XML文档，包含fsimage中的所有信息。
-
-  ```bash
-  bash$ bin/hdfs oiv -p XML -i fsimage -o fsimage.xml
-  ```
-
-- `ReverseXML Processor`。这与XML处理器相反；它从一个XML文件重建一个fsimage。该处理器可以轻松创建用于测试的fsimage，并在出现损坏时手动编辑fsimage。
-
-  ```bash
-  bash$ bin/hdfs oiv -p ReverseXML -i fsimage.xml -o fsimage
-  ```
-
-- `FileDistribution Processor`。是**用于分析命名空间image中的文件大小的工具**。分析fsimage中指定大小范围的文件个数。范围为[0, maxSize]，步长为`-step`。
-
-  ```bash
-  bash$ bin/hdfs oiv -p FileDistribution -maxSize maxSize -step size -i fsimage -o output
-        Size	NumFiles
-     4	1
-     12	1
-     16	1
-     20	1
-     totalFiles = 4
-     totalDirectories = 2
-     totalBlocks = 4
-     totalSpace = 48
-     maxFileSize = 21
-  ```
-
-  通过`-format`进行输出格式化
-
-  ```bash
-  bash$ bin/hdfs oiv -p FileDistribution -maxSize maxSize -step size -format -i fsimage -o output
-     Size Range	NumFiles
-     (0 B, 4 B]	1
-     (8 B, 12 B]	1
-     (12 B, 16 B]	1
-     (16 B, 21 B]	1
-     totalFiles = 4
-     totalDirectories = 2
-     totalBlocks = 4
-     totalSpace = 48
-     maxFileSize = 21
-  ```
-
-- `Delimited Processor`。生成一个文本文件，其中包含正在构建的inode和inode共有的所有元素，并用分隔符分隔。默认的分隔符是`\t`，但这可以通过`-demitter`参数进行更改。
-
-  ```bash
-  bash$ bin/hdfs oiv -p Delimited -delimiter delimiterString -i fsimage -o output
-     Path	Replication	ModificationTime	AccessTime	PreferredBlockSize	BlocksCount	FileSize	NSQUOTA	DSQUOTA	Permission	UserName	GroupName
-     /	0	2017-02-13 10:39	1970-01-01 08:00	0	0	0	9223372036854775807	-1	drwxr-xr-x	root	supergroup
-     /dir0	0	2017-02-13 10:39	1970-01-01 08:00	0	0	0	-1	-1	drwxr-xr-x	root	supergroup
-     /dir0/file0	1	2017-02-13 10:39	2017-02-13 10:39	134217728	1	1	0	0	-rw-r--r--	root	supergroup
-     /dir0/file1	1	2017-02-13 10:39	2017-02-13 10:39	134217728	1	1	0	0	-rw-r--r--	root	supergroup
-     /dir0/file2	1	2017-02-13 10:39	2017-02-13 10:39	134217728	1	1	0	0	-rw-r--r--	root	supergroup
-  ```
-
-- `DetectCorruption Processor`。检测image的潜在损坏。以分隔格式输出已发现损坏的image。
-
-  ```bash
-  bash$ bin/hdfs oiv -p DetectCorruption -delimiter delimiterString -t temporaryDir -i fsimage -o output
-     CorruptionType	Id	IsSnapshot	ParentPath	ParentId	Name	NodeType	CorruptChildren
-      MissingChild	16385	false	/	Missing		Node	1
-      MissingChild	16386	false	/	16385	dir0	Node	2
-      CorruptNode	16388	true		16386		Unknown	0
-      CorruptNode	16389	true		16386		Unknown	0
-      CorruptNodeWithMissingChild	16391	true		16385		Unknown	1
-      CorruptNode	16394	true		16391		Unknown	0
-  ```
-
-  
-
-  
-
-## HDFS Router-based Federation（RBF）
-
-TODO
-
-参考文档：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs-rbf/HDFSRouterFederation.html
-
-联邦和viewFs可以解决单个Namenode的内存限制了集群可存储的数据量的问题。**但是如何维护和管理这么多的子集群呢？**
-
-为了解决这个问题，在集群的上层添加了一个federation layer。router组件拥有和namenode相同的接口，它查询`State Store`中记录的信息只有，就可以将客户端的请求转发到正确的集群或namespace。
-
-![Router-based Federation Sequence Diagram | width=800](Hadoop3.x.assets/routerfederation.png)
-
-最简单的配置是在每台NameNode计算机上部署一个路由器。路由器监视本地NameNode及其状态，并将检测信号发送到`State Store`。路由器监视本地NameNode，并将状态检测信号发送到`State Store`。当常规DFS客户端联系任何路由器以访问federation FS中的文件时，路由器会检查`State Store`（即本地缓存）中的`mount table`（子集群的映射关系），以找出包含该文件的子集群。然后，它在State Store（即本地缓存）中的Membership表中检查负责子集群的NameNode。在识别出正确的NameNode之后，路由器代理该请求。客户端直接访问数据节点。
-
-系统中可以有多个具有软状态的路由器。每个路由器有两个角色：
-
-- **federation接口**：向客户端公开单个全局NameNode接口，并将请求转发到正确子集群中的活动NameNode
-
-  Router接收HDFS客户端的请求，并检查State Store，将此请求转发到正确的子集群的Active Namenode。Router是无状态的。Router可以缓存`mount table`信息以提高性能。
-
-- **NameNode heartbeat**：在`State Store`中维护NameNode的信息
-
-  Router会定期发送心跳信息给`State Store`
-
-Router会定期的检查Namenode的状态。为了简单起见，通常可以将Router嵌入在Namenode中。
-
-**RBF的可用性和容错性**
-
-Router可能在多个级别上出现故障：
-
-- federation 接口HA
-
-  Router是无状态的，当一个Router故障了，其他Router可以接管它。需要在客户端配置所有的Router的连接信息。
-
-- State Store不可用
-
-  如过Router无法联系到State Store，则Router会进入安全模式（不能处理客户端请求）。客户端会尝试其他的Router。
-
-  管理router的安全模式。
-
-  ```bash
-  $HADOOP_HOME/bin/hdfs dfsrouteradmin -safemode enter | leave | get
-  ```
-
-- NameNode心跳HA
-
-  为了高可用和灵活性，多个Router监控同一个Namenode，并将心跳信息发送给State Store。状态存储中存在冲突的NameNode信息由每个路由器通过仲裁解决。
-
-- NameNode不可用
-
-  如果Router无法联系到Active Namenode，Router会尝试连接该集群的其他namenode。如果所有namenode都无法连接，则Router抛出异常。
-
-- NameNode过期
-
-  在指定时间内，如果namenode没有将心跳信息记录到State Store，那么监控此Namenode的Router会将此Namenode标记为过期，并且所有的Router都不会再去联系此namenode。只有当namenode的心跳信息恢复后，Router才会恢复和Namenode的连接。
-
-Router暴露了多种接口可以和用户、管理员交互：
-
-- RPC
-- Admin
-- Web UI
-- WebHDFS
-- JMX
-
-**配额管理**
-
-federation支持在`mount table`级别上的全局quota配置。出于性能考虑，Router会缓存quota信息并定期更新它。配置了全局quota之后，不建议直接在子集群级别设置和清除quota（应该在全局级别进行设置）。
-
-**`State Store`***
-
-State Store包含：
-
-- 子集群的块访问负载、可用磁盘空间、HA状态等方面的状态。
-- 文件夹/文件和子集群之间的映射，即远程`mount table`。
-
-State Store是可插拔的，
-
-`State Store`中的主要信息是：
-
-- `membership`
-
-  存储子集群的信息，如存储容量、节点数量。
-
-- `mount table`
-
-  `mount table`中存的是文件夹和子集群的映射关系。类似于ViewFs中的`mount table`。
-
-
-
-```bash
-# -nsQuota表示设置name quota，-ssQuota表示设置space quota。
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -setQuota /path -nsQuota 100 -ssQuota 1024
-# 设置指定storage type的qutoa
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -setStorageTypeQuota <path> -storageType <storage type>
-# 移除指定mount table上的quota
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -clrQuota <path>
-# 移除指定mount table上的storage type的quota
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -clrStorageTypeQuota <path>
-# 查看mount table 条目
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -ls
-Source                    Destinations              Owner                     Group                     Mode                      Quota/Usage
-/path                     ns0->/path                root                      supergroup                rwxr-xr-x                 [NsQuota: 50/0, SsQuota: 100 B/0 B]
-
-# 手动刷新mount table的缓存
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -refresh
-```
-
-
-
-### 部署
-
-默认情况下，Router监控本机的namenode。
-
-通过在配置文件`hdfs-rbf-default.xml`中配置`dfs.federation.router.store.driver.class `之后，Router才知道State Store的endpoint。
-
-**启动Router**
-
-```bash
-$HADOOP_PREFIX/bin/hdfs --daemon start dfsrouter
-```
-
-**停止Router**
-
-```bash
-$HADOOP_PREFIX/bin/hdfs --daemon stop dfsrouter
-```
-
-**mount table管理**
-
-mount table条目类似于ViewFs中的mount table 条目。federation admin工具可用用来管理RBF的mount table，如下所示：
-
-```bash
-# /tmp 映射为命名空间ns1的/tmp
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /tmp ns1 /tmp
-# /data/app1 映射为命名空间ns2的/data/app1
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /data/app1 ns2 /data/app1
-# /data/app2 映射为命名空间ns3的/data/app2
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /data/app2 ns3 /data/app2
-# 查看RBF所有的mount table 条目
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -ls
-# 只读的挂载点
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /readonly ns1 / -readonly
-```
-
-如果没有设置挂载点，Router将之映射到默认命名空间（`dfs.federation.Router.default.nameserviceId`）。
-
-mount table具有类似UNIX的权限，这些权限限制哪些用户和组可以访问mount point。写入权限允许用户添加、更新或删除mount point。读取权限允许用户列出mount point。执行权限未使用。
-
-mount table的权限设置：
-
-```bash
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /tmp ns1 /tmp -owner root -group supergroup -mode 0755
-```
-
-**多子集群**
-
-一个mount point可以映射到多个子集群。
-
-```bash
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -add /data ns1,ns2 /data -order SPACE
-```
-
-**禁用nameservice**
-
-用于下线一整个子集群。
-
-```bash
-# 禁用ns1命名空间
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -nameservice disable ns1
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -getDisabledNameservices
-# 启用ns1命名空间
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -nameservice enable ns1
-```
-
-**刷新Router服务器的配置**
-
-```bash
-# 刷新指定key，而不用重启Router服务。
-$HADOOP_HOME/bin/hdfs dfsrouteradmin -refreshRouterArgs <host:ipc_port> <key> [arg1..argn]
-```
-
-**相关配置**
-
-TODO
-
-## **HDFS权限**
-
-HDFS的文件/目录的权限模型类似于`POSIX model`。每个文件/目录都有owner和groups。
-
-HDFS的权限模型中：
-
-- `r`: 读文件；列出目录的内容。
-- `w`: 写/append文件；创建/删除文件/子目录。
-- `x`: HDFS文件无x；访问子目录。
-
-**`sticky bit`（粘滞位）**是设置在目录上的，目的是阻止非superuser、文件/目录owner的delete、mv操作。
-
-HDFS还提供了`POSIX ACLs`。
-
-**`permission check`**：
-
-- 用户名匹配文件/目录的owner，走owner的权限。
-- 组名匹配文件/目录的group list中的某个，走group的权限。
-- 走other用户的权限。
-
-### 用户身份（user identity）
-
-从`hadoop 0.22`开始支持2种模式来识别用户的身份，由`hadoop.security.authentication`参数决定使用什么模式。
-
-- `simple` 访问HDFS的用户身份由客户端进程所在主机的操作系统来决定。在`Unix-like system`中用户名=`whoami`。
-- `kerberos` 访问HDFS的用户身份由`keberos credentials`决定。
-
-**<font color="red">注意：HDFS本身是没有用户身份机制的，HDFS都是依赖其他机制来确定用户身份的。</font>**
-
-### 组映射（group mapping）
-
-由`hadoop.security.group.mapping`参数决定使用什么group mapping服务。
-
-### 权限检查（permission check）
-
-所有操作都需要遍历访问。
-
-如：假设访问`/foo/bar/baz`，那么要求客户端用户具有 `/`, `/foo` 和`/foo/bar`的`EXECUTION`权限。
-
-改变文件/目录权限的命令
-
-```bash
-hdfs dfs -chmod [-R] 066 文件名|目录名
-hdfs dfs -chgrp [-R] 组名 文件名|目录名
-hdfs dfs -chown [-R] [owner[:group]] 文件名|目录名
-```
-
-**super-user是运行NameNode进程的用户名。**
-
-**HDFS的super-user和NameNode所在机器的操作系统的super-user不必一样。**
-
-### ACLs
-
-HDFS除了支持传统的POSIX 权限模型外，还支持POSIX ACLs。
-
-ACL可以给为某些用户/组设置权限，是对传统的POSIX权限模型（不止ugi）的补充。
-
-NameNode的`hdfs-site.xml`中的`dfs.namenode.acls.enabled`参数决定了是否启用ACL。
-
-ACL由一组ACL条目组成。例如
-
-```bash
-   user::rw-											# 表示一个ACL条目，表示文件的owner具有rw权限
-   user:bruce:rwx                  #effective:r-- 表示用户bruce对此文件具有rwx权限，因为mask的原因，实际权限为r
-   group::r-x                      #effective:r-- 表示文件的group具有rx权限，因为mask的原因，实际权限为r
-   group:sales:rwx                 #effective:r-- 表示组sales对此文件具有rwx权限，因为mask的原因，实际权限为r
-   mask::r--											# 相当于一个过滤器。
-   other::r--											# 表示其他用户具有r权限
-```
-
-ACL条目的格式为`type:用户名或组名:权限字符串`。
-
-每个ACL都必须有一个掩码。只有目录可以具有默认ACL。创建新文件或子目录时，它会自动将其父级的默认ACL复制到自己的访问ACL中。
-
-```bash
-   user::rwx											# 是access acl，表示权限检查时检查的权限
-   group::r-x											# 是access acl，表示权限检查时检查的权限
-   other::r-x											# 是access acl，表示权限检查时检查的权限
-   default:user::rwx							# 是default acl，表示新子文件或子目录在创建后的acl权限。
-   default:user:bruce:rwx          #effective:r-x # 是default acl，表示新子文件或子目录在创建后的acl权限。
-   default:group::r-x							# 是default acl，表示新子文件或子目录在创建后的acl权限。
-   default:group:sales:rwx         #effective:r-x # 是default acl，表示新子文件或子目录在创建后的acl权限。
-   default:mask::r-x							# 是default acl，表示新子文件或子目录在创建后的acl权限。
-   default:other::r-x							# 是default acl，表示新子文件或子目录在创建后的acl权限。
-```
-
-修改了父目录的default acl不会改变已经创建了的子目录/文件的acl权限。
-
-access acl最多32条，default acl最多32条。
-
-如果配置了acl，那么权限检查的算法逻辑为：
-
-- 如果用户名匹配文件owner，走owner权限
-- 如果用户名匹配了acl中的用户名，走这条acl权限，但是要用mask对权限过滤。
-- 如果用户组名匹配group list中的一个，走group权限，但是要用mask对组权限过滤。
-- 如果用户组名匹配acl中的group list中的一个，走acl中的group权限，但是要用mask对组权限过滤。
-- 如果用户组名匹配acl中的group list中的一个，但是没有访问权限，则访问被拒绝。
-- 否则走other用户的权限。
-
-**与只有权限位的文件相比，具有ACL的文件在NameNode中会增加内存成本。**
-
-**acl相关命令**：
-
-```bash
-# 1. 获取文件/目录的access acl和default acl（目录才有）
-hdfs dfs -getfacl [-R] <path>
-# 2. 设置文件/目录的acl
-hdfs dfs -setfacl [-R] [-b |-k -m |-x <acl_spec> <path>] |[--set <acl_spec> <path>]
-# 3. 通过ls可以看到哪些文件/目录具有acl。如果最后面有个"+"表示有acl。
-hdfs dfs -ls <args>
-```
-
-**acl相关配置参数**：
-
-```bash
-# 是否启用permission check，不管true或false，chmod、chgrp、chown、setfacl始终会权限检查
-dfs.permissions.enabled = true
-# web server使用的用户名，如果为super-user那么会允许任何的web client看到所有内容。例如在hdfs web ui查看（此配置为other中用户，那么只能看到other用户有r权限的文件/目录）
-dfs.web.ugi = webuser,webgroup
-# super-users的组，此组中的用户具有superuser权限。
-dfs.permissions.superusergroup = supergroup
-# 创建文件和目录时使用的umask，如022，表示创建出来的目录权限为755。
-fs.permissions.umask-mode = 0022
-# acl的管理员
-dfs.cluster.administrators = ACL-for-admins
-# 是否启用hdfs acl
-dfs.namenode.acls.enabled = true
-# 启用之后，NameNode会把父目录的default acl应用到新创建的子目录/文件上。
-dfs.namenode.posix.acl.inheritance.enabled
-```
-
-## Quota（配额）
-
-HDFS可以为目录设置quota。有两种quota，两种quota相互独立。：
-
-- `name quota` 
-
-  是对指定目录下的文件/目录数量的硬限制。如果数量超过`name quota`的限制，则创建文件/目录会失败。最大的配额是Long.Max_Value。新创建的目录是没有设置name quota的。设置和移除quota也会记录到journalNode的edits log文件中。
-
-- `space quota` 
-
-  是对指定目录下的文件字节数的硬限制。新创建的目录没有关联的配额。最大的配额是Long.Max_Value。零配额仍然允许创建文件，但不能向文件中添加块。目录不计入`space quota`。`space quota`是乘以副本数之后的字节数（不是按单副本算的）。设置和移除quota也会记录到journalNode的edits log文件中。
-
-**Storage Type Quotas**
-
-HDFS还可以为指定目录的存储类型(SSD, DISK, ARCHIVE) 做硬限制。
-
-**quota相关命令**
-
-```bash
-###########管理员命令################
-# 为每个目录设置name quota，N表示个数
-hdfs dfsadmin -setQuota <N> <directory>...<directory>
-# 清除为这些目录设置的name quota
-hdfs dfsadmin -clrQuota <directory>...<directory>
-# 为每个目录设置space quota，N表示字节数。1GB的文件，副本数为3，则占用3GB的space quota。
-hdfs dfsadmin -setSpaceQuota <N> <directory>...<directory>
-# 清除为这些目录设置的space quota
-hdfs dfsadmin -clrSpaceQuota <directory>...<directory>
-# 为这些目录设置storage type quota
-hdfs dfsadmin -setSpaceQuota <N> -storageType <storagetype> <directory>...<directory>
-# 清除为这些目录设置的storage type quota
-hdfs dfsadmin -clrSpaceQuota -storageType <storagetype> <directory>...<directory>
-# 查看quota情况。-h表示人类可读，-v表示显示列头，-t表示显示每种storage type的配额。
-hadoop fs -count -q [-h] [-v] [-t [comma-separated list of storagetypes]] <directory>...<directory>
-```
-
-
-
-## libhdfs（C API）
-
-libhdfs是一个基于JNI的C API，用于Hadoop的分布式文件系统（HDFS）。它是HDFS API的一个子集，通过此C API可以操作HDFS文件和文件系统。
-
-## Web HDFS（REST API）
-
-FileSystem URIs和HTTP URLs的区别
-
-WebHDFS 的scheme是''`webhdfs://`"。
-
-```bash
-# WebHDFS的URI，等价于hdfs://<HOST>:<RPC_PORT>/<PATH>
-webhdfs://<HOST>:<HTTP_PORT>/<PATH>
-
-# 如果webhdfs开启了ssl，则应为
-swebhdfs://<HOST>:<HTTP_PORT>/<PATH>
-
-# 对应的HTTP REST URL
-http://<HOST>:<HTTP_PORT>/webhdfs/v1/<PATH>?op=...
-```
-
-
-
-## HttpFS
-
-HttpFS全称Hadoop HDFS over HTTP。HttpFS是一个提供REST HTTP网关的服务器，支持所有HDFS文件系统操作（读取和写入）。
-
-HttpFS可以用于在运行不同版本Hadoop的集群之间传输数据（克服RPC版本控制问题），例如使用Hadoop DistCP（跨大版本不支持）。
-
-可以使用curl，wget通过HttpFS来访问HDFS。
-
-HttpFS是一个独立于Hadoop NameNode的服务。
-HttpFS本身就是Java Jetty web应用程序。
-HttpFS HTTP Web服务API调用是映射到HDFS文件系统操作的HTTP REST调用。例如，使用curl Unix命令：
-
-```bash
-# 返回/user/foo/README.txt文件的内容
-$ curl 'http://httpfs-host:14000/webhdfs/v1/user/foo/README.txt?op=OPEN&user.name=foo'
-# 以json格式返回/user/foo目录的内容
-$ curl 'http://httpfs-host:14000/webhdfs/v1/user/foo?op=LISTSTATUS&user.name=foo'
-# 返回/user/foo/.Trash的路径，
-$ curl 'http://httpfs-host:14000/webhdfs/v1/user/foo?op=GETTRASHROOT&user.name=foo'
-# 创建/user/foo/bar目录
-$ curl -X POST 'http://httpfs-host:14000/webhdfs/v1/user/foo/bar?op=MKDIRS&user.name=foo'
-```
-
-HttpFS需要单独安装和启动，参考：https://hadoop.apache.org/docs/stable/hadoop-hdfs-httpfs/ServerSetup.html
-
-## 短路本地读（short circuit local read）
-
-在HDFS中，读取数据是通过DataNode进行。当客户端从DataNode读取文件时，DataNode会从磁盘中读取该文件，并通过TCP套接字将数据发送给客户端。所谓的“短路”读取绕过DataNode，允许客户端直接读取文件。显然，这只有在客户端与数据位于同一位置的情况下才有可能实现。短路读取为许多应用程序提供了实质性的性能提升。
-
-`short circuit read`需要使用`unix domain socket`，通过此套接字可以让client和datanode通信。
-
-短路本地读取需要在DataNode和客户端上进行配置。
-
-**短路本地读相关配置**
-
-```xml
-<configuration>
-  <property>
-    <name>dfs.client.read.shortcircuit</name>
-    <value>true</value>
-  </property>
-  <property>
-    <name>dfs.domain.socket.path</name>
-    <value>/var/lib/hadoop-hdfs/dn_socket</value>
-  </property>
-</configuration>
-```
-
-
-
-## 中心化缓存管理（centralized cache management）
-
-集中式缓存管理对于重复访问的文件非常有用。例如，Hive中经常用于联接的一个小表是缓存的一个很好的选择。
-
-通过此机制，用户可以指定需要HDFS缓存的path。NameNode通过心跳发送信息告诉DataNode，将需要缓存的block缓存在off-heap cache中。
-
-![Caching Architecture](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/images/caching.png)
-
-NameNode通过发送cache指令给Datanode，告诉datanode需要缓存哪些block。Datandoe通过心跳报告给Namenode它缓存了哪些block。cache指令会持久化在fsimage和edits log中。**缓存当前是在文件或目录级别上完成的**。可以缓存文件和目录（只缓存目录下的文件，子目录下的文件不缓存）
-
-## NFS Gateway
-
-NFS Gateway支持NFSv3，允许HDFS作为客户端本地文件系统的一部分挂载在本地文件系统。目前，NFS Gateway支持和启用了下面的使用模式：
-
-1.      用户可以在基于NFSv3客户端兼容的操作系统上的本地文件系统上浏览HDFS文件系统。
-
-2.      用户可以从挂载到本地文件系统的HDFS文件系统上下载文件。
-
-3.      用户可以从本地文件系统直接上传文件到HDFS文件系统。
-
-4.      用户可以通过挂载点直接将数据流写入HDFS。目前支持文件append，随机写还不支持。
-
-NFS Gateway机器需要跟运行HDFS Client一样的环境，像Jar包文件，HADOOP_CONF目录等。NFSGateway可以放在跟DataNode，NameNode或者任何一台HDFS Client机器上。
-NFS服务需要三个守护进程rpcbind或portmap（portmap在centos6上被改名为rpcbind）, mountd and nfsd，NFS Gateway已经包含了nfsd和mountd。挂载时会把HDFS根目录作为唯一的挂载点。由于在RHEL6.2等操作系统上rpcbind有bug,推荐使用NFS Gateway软件包里自带的portmap。
-
-## 滚动升级（rolling upgrade）
-
-从`Hadoop 2.4.0`开始才支持滚动升级。
-
-HDFS滚动升级允许升级单个HDFS守护进程。例如，datanode可以独立于namenode进行升级。一个namenode可以独立于其他namenode进行升级。namenode可以独立于datanode和journalnode进行升级。
-
-如果在新软件版本中启用了任何新功能，则升级后可能无法与旧软件版本一起使用。在这种情况下，应通过以下步骤进行升级。
-
-1.禁用新特性
-
-2.升级集群
-
-3.开启新特性
-
-### 升级
-
-只有HDFS HA集群才能不停机升级。
-
-假设NN1为Active NN，NN2为Standby NN。
-
-#### 不停机升级
-
-一般而言，JNs和ZKNs不用升级，只要升级NNs和DNs即可。
-
-**升级非联邦的HA集群**
-
-> 1、准备滚动升级
->
-> （1）创建回滚用的fsimage
->
-> ```bash
-> hdfs dfsadmin -rollingUpgrade prepare
-> ```
->
-> （2）检查rollback用的fsimage。当出现`Proceed with rolling upgrade`表示ok了。
->
-> ```bash
-> hdfs dfsadmin -rollingUpgrade query
-> ```
->
-> 2、升级Active NN和standby NN
->
-> （1）关闭NN2，并升级NN2
->
-> （2）启动NN2，作为standby NN
->
-> ```bash
-> hdfs namenode -rollingUpgrade started
-> ```
->
-> （3）主从切换，NN2成为active NN，NN1成为standby NN。
->
-> ```bash
-> hdfs haadmin -failover nn1 nn2
-> ```
->
-> （4）关闭NN1，升级NN1
->
-> （5）启动NN1，作为standby
->
-> ```bash
-> hdfs namenode -rollingUpgrade started
-> ```
->
-> 3、升级DNs
->
-> （1）选一小批datanode（比如同一个rack的，因为默认副本策略会在多个rack放置副本）。
->
-> 1）关闭一个datanode
->
-> ```bash
-> hdfs dfsadmin -shutdownDatanode <DATANODE_HOST:IPC_PORT> upgrade
-> ```
->
-> 2）检查、等待datanode关闭
->
-> ```bash
-> hdfs dfsadmin -getDatanodeInfo <DATANODE_HOST:IPC_PORT>
-> ```
->
-> 3）升级并重启datanode
->
-> 4）对选择的这一批datanode都执行1-3步。
->
-> （2）重复第一步，直到所有的datanode都升级了。
->
-> 4、完成滚动升级
->
-> 完成rolling upgrade。
->
-> ```bash
-> hdfs dfsadmin -rollingUpgrade finalize
-> ```
->
-> 
-
-**升级联邦HA集群**
-
-升级联邦HA集群和非联邦HA集群类似，不同在于第1步和第4步需要对每个namespace执行，第2步需要对每一对active NN和standby NN执行。
-
-> （1）为每个NameSpace准备滚动升级
->
-> （2）为每个NameSpace升级每对Active和Standby的NN
->
-> （3）升级DNs
->
-> （4）为每个NameSpace完成滚动升级
-
-#### 停机升级
-
-对于非HA集群而言，namenode的升级需要停机。
-
-**升级非HA集群**
-
-与HA集群的升级步骤只有第2步不同。非HA集群升级的第2步为：
-
-> 升级NN和SNN
->
-> （1）关闭SNN
->
-> （2）关闭和升级NN
->
-> （3）使用`hdfs dfsadmin -rollingUpgrade started`启动NN
->
-> （4）升级并重启SNN
-
-### 降级
-
-降级将软件恢复到升级前的版本，并保留用户数据。假设时间T是滚动升级开始时间，并且升级因降级而终止。然后，在T时刻前/后创建的文件在HDFS中仍然可用。在T时刻前/后删除的文件在HDFS中保持删除状态。
-
-只有在NN 的layout version和DN的layout version在这两个版本之间都没有更改的情况下，较新版本才可降级为升级前版本。
-
-在HA集群中，当从旧软件版本到新软件版本的滚动升级正在进行时，可以以滚动方式将升级后的机器降级回旧软件版本。
-
-> 1、降级DNs
->
-> （1）选一小批datanode（比如同一个rack的，因为默认副本策略会在多个rack放置副本）。
->
-> 1）关闭一个datanode
->
-> ```bash
-> hdfs dfsadmin -shutdownDatanode <DATANODE_HOST:IPC_PORT> upgrade
-> ```
->
-> 2）检查/等待datanode关闭
->
-> ```bash
-> hdfs dfsadmin -getDatanodeInfo <DATANODE_HOST:IPC_PORT>
-> ```
->
-> 3）降级并重启datanode
->
-> 4）为这一批datanode都执行1-3步。
->
-> （2）重复第一步，直到所有的datanode都降级了。
->
-> 2、降级Active NN和Standby NN
->
-> （1）关闭和降级NN2
->
-> （2）启动NN2作为standby NN
->
-> （3）主备切换，NN2成为active，NN1成为standby
->
-> ```bash
-> hdfs haadmin -failover nn1 nn2
-> ```
->
-> 
->
-> （4)关闭和降级NN1
->
-> （5）启动NN1，作为standby
->
-> 3、完成滚动降级
->
-> ```bash
-> hdfs dfsadmin -rollingUpgrade finalize
-> ```
->
-> 请注意，在降级NN之前必须降级DN，因为协议可以以向后兼容的方式更改，但不能向前兼容，即旧的DN可以与新的NN通信，但不能反过来。
-
-### 回滚
-
-回滚会将软件恢复到升级前的版本，也会将用户数据恢复到升级前是状态。假设滚动升级的开始时间为T，且升级被回滚所中止。在T时刻之前创建的文件在回滚后会仍然可用，但是在T时刻之后创建的文件在回滚后是不可用的。
-
-在T时刻之前删除的文件在回滚后仍是删除的，在T时刻之后删除的文件在回滚后是未被删除的。
-
-始终支持从较新版本回滚到升级前版本。然而，它不能以滚动的方式完成。它需要集群停机。假设NN1和NN2分别处于活动状态和备用状态。以下是回滚的步骤：
-
-> 1、关闭所有NN和DN。
->
-> 2、在所有机器上恢复升级前的版本。
->
-> 3、使用`hdfs dfsadmin -rollingUpgrade rollback`命令启动NN1，作为active。
->
-> 4、使用`hdfs namenode -bootstrapStandby`，`hdfs --daemon start namenode`命令启动NN，作为standby。
->
-> 5、使用`hdfs --daemon -rollback datanode`命令启动DN。
-
-相关命令介绍：
-
-```bash
-# query表示查询当前滚动升级的状态
-# prepare表示准备新的滚动升级
-# finalize表示完成了当前的滚动升级
-hdfs dfsadmin -rollingUpgrade <query|prepare|finalize>
-
-# 获取指定datanode的信息
-hdfs dfsadmin -getDatanodeInfo <DATANODE_HOST:IPC_PORT>
-
-# 提交指定datanode的shutdown请求。upgrade参数会告诉访问DN的客户端等待DN重启，过一段时间没重启会超时的。
-hdfs dfsadmin -shutdownDatanode <DATANODE_HOST:IPC_PORT> [upgrade]
-
-# rollback 表示恢复NN到升级之前的版本，用户数据也恢复到之前。
-# started 表示
-hdfs namenode -rollingUpgrade <rollback|started>
-```
-
-
-
-## 扩展属性（extended attributes）
-
-Extended attributes缩写为xattrs。允许用户应用程序将额外的元数据与文件或目录相关联。
-
-在HDFS中，有五个有效的命名空间：user、trusted、system、security和raw。这些命名空间中的每一个都有不同的访问限制。
-
-**相关命令**
-
-```bash
-# 获取xattrs
-hadoop fs -getfattr [-R] -n name | -d [-e en] <path>
-# 设置xattrs
-hadoop fs -setfattr -n name [-v value] | -x name <path>
-```
-
-**相关配置参数**
-
-```bash
-dfs.namenode.xattrs.enabled
-dfs.namenode.fs-limits.max-xattrs-per-inode
-dfs.namenode.fs-limits.max-xattr-size
-```
-
-
-
-## 透明加密（transparent encryption）
-
-HDFS实现透明的端到端加密。一旦配置，从特殊HDFS目录读取和写入的数据将透明地加密和解密，而不需要更改用户应用程序代码。
-
-存储加密和传输加密。
-
-HDFS引入了一个新的抽象：encryption zone。加密区是一个特殊的目录，其内容在写入时将被透明地加密，在读取时被透明地解密。每个加密区域都与创建区域时指定的一个加密区域密钥相关联。加密区域内的每个文件都有自己唯一的数据加密密钥（DEK）。HDFS从不直接处理DEK。相反，HDFS只处理加密的数据加密密钥（EDEK）。客户端解密EDEK，然后使用后续的DEK读取和写入数据。HDFS数据节点只看到一个加密字节流。
-
-HDFS允许嵌套加密区域。
-
-需要一个新的集群服务来管理加密密钥：Hadoop密钥管理服务器（KMS）。在HDFS加密的背景下，KMS执行三项基本职责：
-
-提供对存储的加密区域密钥的访问
-
-生成新的加密数据加密密钥以存储在NameNode上
-
-解密加密的数据加密密钥以供HDFS客户端使用。
-
-在加密区域中创建新文件时，NameNode会要求KMS生成一个用加密区域的密钥加密的新EDEK。然后，EDEK作为文件元数据的一部分持久存储在NameNode上。
-
-读取加密区域内的文件时，NameNode会向客户端提供文件的EDEK和用于加密EDEK的加密区域密钥版本。然后，客户端要求KMS解密EDEK，这包括检查客户端是否有权访问加密区域密钥版本。假设成功，客户端将使用DEK来解密文件的内容。
-
-读写路径的所有上述步骤都是通过DFSClient、NameNode和KMS之间的交互自动执行的。
-
-## 多重连接（muilthoming）
-
-在多址网络中，集群节点连接到多个网络接口。这样做可能有多种原因。
-
-- 安全性：安全性要求可能要求将集群内流量限制在与用于在集群内外传输数据的网络不同的网络中。
-- 性能：集群内流量可以使用一个或多个高带宽互连，如光纤通道、Infiniband或10GbE。
-- 故障切换/冗余：节点可能有多个网络适配器连接到单个网络，以处理网络适配器故障。
-
-## storage policies
-
-异构存储即有多种存储类型，不同存储类型对应的是不同的物理存储介质，
-
-HDFS支持的`storage type`:
-
-- `ARCHIVE` 高存储密度，计算性能低，主要用于归档。
-- `DISK` 默认的存储类型。
-- `SSD`
-- `RAM_DISK` 支持在内存中写入单个副本文件。
-
-HDFS支持的`storage policies`:
-
-- `Hot` 用于存储和计算。当一个block为hot时，此块的所有副本都存储在DISK中。
-- `Cold` 计算性能低，主要用于归档的数据。当一个block为cold时，此块的所有副本都存储在ARCHIVE中。
-- `Warm` 数据是部分hot，部分cold。当一个block处于hot时，块的副本存储在DISK，当一个block处于cold时，块的副本存储在ARCHIVE。
-- `All_SSD` 所有副本存储在SSD中。
-- `One_SSD` block的一个副本存储在SSD中，剩余的副本存储在DISK中。
-- `Lazy_Persist` block的一个副本存储在内存中。副本首先写入RAM_DISK，然后lazy 持久化到DISK中。
-- `Provieded` 数据存储在HDFS之外，详情见：https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsProvidedStorage.html
-
-一个storage policy由如下几个字段组成：
-
-- Policy ID
-- Policy name
-- 用于block放置的存储类型的列表
-- A list of fallback storage types for file creation
-- A list of fallback storage types for replication
-
-**相关配置**：
-
-```bash
-# 是否启用storage policy，默认为true
-dfs.storage.policy.enabled
-# datanode的数据目录，格式为[DISK]file:///grid/dn/disk0，支持逗号分隔的多个数据目录。
-dfs.datanode.data.dir
-```
-
-**mover工具**
-
-mover是一个数据迁移工具，它主要作用是将数据归档。此工具会定期扫描HDFS中的文件，检查文件的block是否满足块放置策略，如果不满足，则会将block进行移动，以满足块放置策略。请注意，它总是尽可能在同一节点内移动块副本。如果这不可能（例如，当一个节点没有目标存储类型时），则它将通过网络将块副本复制到另一个节点。
-
-```bash
-hdfs mover [-p <files/dirs> | -f <local file name>]
-```
-
-
-
-相关命令：
-
-```bash
-# 列出所有storage policy
-hdfs storagepolicies -listPolicies
-# 为文件或目录设置storage policy
-hdfs storagepolicies -setStoragePolicy -path <path> -policy <policy>
-# 取消为某路径设置的storage policy
-hdfs storagepolicies -unsetStoragePolicy -path <path>
-# 获取某路径的storage policy
-hdfs storagepolicies -getStoragePolicy -path <path>
-# 根据文件/目录的当前存储策略安排要移动的块。
-hdfs storagepolicies -satisfyStoragePolicy -path <path>
-
-```
-
-
-
-## memory storage support
-
-
-
-![Lazy Persist Writes](Hadoop3.x.assets/LazyPersistWrites.png)
-
-HDFS可以先将数据写入Datanode的内存中，然后返回给客户端说文件/目录写入ok了，然后datanode异步地将数据flush到磁盘中，避免了高昂的磁盘IO和checksum计算。这种方式称为`lazy persist write`。在副本从内存持久化到磁盘前如果namenode重启了，可能会造成数据丢失。
-
-## Synthetic Load Generator
-
-https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/SLGUserGuide.html
-
-SLG是一种用于测试NameNode在不同客户端负载下的行为的工具。用户可以通过指定读取和写入的概率来生成读取、写入和列表请求的不同混合。用户通过调整工作线程的数量和操作之间的延迟的参数来控制负载的强度。当load Generator正在运行时，用户可以评测和监视NameNode的运行。当负载生成器退出时，它会打印一些NameNode统计信息，如每种操作的平均执行时间和NameNode吞吐量。
-
-
-
-```
-    yarn jar <HADOOP_HOME>/share/hadoop/mapreduce/hadoop-mapreduce-client-jobclient-<hadoop-version>.jar NNloadGenerator [options]
-```
-
-structure generator
-
-```
-    yarn jar <HADOOP_HOME>/share/hadoop/mapreduce/hadoop-mapreduce-client-jobclient-<hadoop-version>.jar NNstructureGenerator [options]
-```
-
-data generator
-
-```
-    yarn jar <HADOOP_HOME>/share/hadoop/mapreduce/hadoop-mapreduce-client-jobclient-<hadoop-version>.jar NNdataGenerator [options]
-```
-
-## Erasure Coding（纠删码）
-
-HDFS的3副本导致了存储空间和其他资源（如网络带宽）多了200%的开销。对于warn和cold数据而言，仍然消耗了与第一个副本相同的资源量。
-
-纠删码（EC）是对上面这种情况的改善，通过EC来代替复制。以更少的存储空间内提供了相同级别的容错。在典型的擦除编码（EC）设置中，额外的存储开销不超过50%（未使用EC是200%）。EC文件的复制因子是没有意义的。它总是1，并且不能通过`-setrep`命令进行更改。 
-
-在存储系统中，EC最显著的用途是廉价磁盘冗余阵列（RAID）。
-
-将EC与HDFS集成可以提高存储效率，同时仍然提供与传统的基于复制的HDFS部署类似的数据持久性。例如，一个有6个块的3x复制文件将消耗6*3=18个块的磁盘空间。但使用EC（6个数据，3个奇偶校验）部署，它只会消耗9个磁盘空间块。
-
-## disk balancer（磁盘间数据均衡）
-
-Diskbalancer是一个命令行工具，它的作用是在一个datanode的所有磁盘之前分发数据。Diskbalaner与Balancer是不同的。Balancer是在集群维度（节点之间）进行数据的均衡。
-
-由于某些原因（如由于磁盘故障，更换过磁盘）导致datanode内部的不同磁盘之间的使用率不均匀，使用Diskbalancer工具可以对指定datanode进行操作，将block从一个磁盘移动到另一块磁盘。
-
-### 架构
-
-plan：描述应该在两个磁盘之间移动多少数据的一组语句。一个plan由多个move步骤组成。
-
-move步骤：一个move步骤包括source disk、destination disk和需要移动的字节数。
-
-diskbalaner可以限制每秒copy的数据量以避免影响其他程序，disk balancer在集群中是默认启用的。
-
-第一步，创建一个移动计划。
-
-第二步，在指定datanode上执行此计划。
-
-**相关配置**：
-
-```bash
-dfs.disk.balancer.enabled													# 默认值为true。是否启用diskbalancer
-dfs.disk.balancer.max.disk.throughputInMBperSec		# 默认10MB/s。 diskbalancer用来copy数据的最大可用带宽
-dfs.disk.balancer.max.disk.errors									# 默认5。在终止两个disk之间的diskbalancer任务之前，最大可以忽略的错误数
-dfs.disk.balancer.block.tolerance.percent					# copy的目标百分比，达到此值表示此次copy就ok了。
-dfs.disk.balancer.plan.threshold.percent					# 如果节点volume密度的阈值大于此值，则表示此节点的磁盘之间需要balance
-dfs.disk.balancer.plan.valid.interval							# 默认1d。diskbalancer的plan的有效时间。
-```
-
-
-
-**相关命令**：
-
-```bash
-# 生成指定datanode节点的plan，生成两个文件<nodename>.before.json和<nodename>.plan.json
-hdfs diskbalancer -plan node1.mycluster.com
-
-# 执行指定datanode的plan，这通过从plan文件中读取datanode的地址来执行计划。
-hdfs diskbalancer -execute /system/diskbalancer/nodename.plan.json
-
-# 获取指定datanode的plan执行情况
-hdfs diskbalancer -query nodename.mycluster.com
-
-# 取消指定datanode的正在运行的plan，重启该datanode也会取消正在运行的plan
-hdfs diskbalancer -cancel /system/diskbalancer/nodename.plan.json
-或
-# planID可以通过hdfs diskbalancer -query命令获取到
-hdfs diskbalancer -cancel planID -node nodename
-
-# Report命令提供将从运行disk balancer中受益的指定节点或顶级节点的详细报告。
-hdfs diskbalancer -fs http://namenodeUri -report -node <file://> |[<DatanodeId>|IP|Hostanme>,...]
-或
-hdfs diskbalancer -fs http://namenodeUri -report -top topnum
-```
-
-
-
-## upgrade domain
-
-当前HDFS默认的块放置策略是3个副本需要至少放置在2个rack。在写操作的pipeline时，一个副本写入第一个rack，剩下2个副本都写入另一个rack。
-
-但是，如果做过负载均衡（balance）之后，可能会出现一个块的3个副本分布在3个不同的rack上。
-
-**块放置策略对datanode的滚动升级是有影响的。**如果按照默认的块放置策略，那么在升级datanode时可以按一个rack一个rack的滚动升级。**但是如果在升级时放置了2个副本的rack出现问题，那就就导致了升级期间此block的数据不可用了**。
-
-为了解决默认块放置策略在滚动升级时对datanode可用性的影响，引入了upgrade omain的概念。除了基于rack进行分组，datanode还可以分到不同的upgrade domain。例如任何机架的第一个位置（第一个机柜）分为ud_01，第二个位置（第二个机柜）分为ud_02等。
-
-upgrade domain块放置策略保证block的副本是跨upgrade domain放置的。三个副本放置在3个不同的upgrade domain中。滚动升级时，按upgrade domain来进行升级。这样确保二连同一个时刻只有一个副本的datanode在升级，剩余2个副本所在的block都是可用的。
-
-**在集群中启用upgrade domain的步骤**：
-
-- 将datanode分到不同的upgrade domain
-
-  **如何将datanode映射到upgrade domain id呢？**
-
-  一个常见的方式是根据机器在rack中的位置作为其upgrade domain id。要配置主机名到upgrade domain id的映射，需要使用json格式的配置文件。
-
-  **相关配置**：
-
-  `hdfs-site.xml`
-
-  ```bash
-  dfs.namenode.hosts.provider.classname		# org.apache.hadoop.hdfs.server.blockmanagement.CombinedHostFileManager
-  
-  dfs.hosts																# json格式的hosts文件
-  ```
-
-  `dfs.hosts`的格式示例如下：
-
-  ```json
-  [
-    {
-      "hostName": "dcA­rackA­01",
-      "upgradeDomain": "01"
-    },
-    {
-      "hostName": "dcA­rackA­02",
-      "upgradeDomain": "02"
-    },
-    {
-      "hostName": "dcA­rackB­01",
-      "upgradeDomain": "01"
-    },
-    {
-      "hostName": "dcA­rackB­02",
-      "upgradeDomain": "02"
-    }
-  ]
-  ```
-
-- 启用upgrade domain块放置策略
-
-  **相关配置**：
-
-  `hdfs-site.xml`
-
-  ```bash
-  dfs.block.replicator.classname	# org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyWithUpgradeDomain
-  ```
-
-  然后重启Namenode。
-
-- 将按照就的块放置策略来放置的块迁移，以满足upgrade domain块放置策略的要求
-
-  迁移的工具见 HDFS-8789
-
-upgrade domain是namenode的`JMX`的一部分，
-
-```bash
-# 查看upgrade domain
-hdfs dfsadmin -report
-
-# 查看指定path所在的datanode的upgrade domain
-hdfs fsck <path> -files -blocks -upgradedomains
-```
-
-## datanode admin（datanode管理）
-
-datanode有两大类状态：
-
-- 存活状态：live、dead、stale
-- 服务状态；in service、decommisioned、under maintenance
-
-场景一：datanode需要修复或维护几天以上
-
-下线datanode，状态变化：NORMAL -> DECOMMISSIONED_INPROGRESS -> DECOMMISSIONED
-
-场景二：datanode需要修复或维护几分钟-几个小时
-
-维护datanode，状态变化：NORMAL -> ENTERING_MAINTENANCE -> IN_MAINTENANCE
-
-datanode的admin操作有：
-
-- decommission
-- recommission
-- 进入维护状态
-- 退出维护状态
-
-datanode的管理状态有：
-
-- NORMAL：节点处于服务中
-- DECOMMISSIONED：节点已下线
-- DECOMMISSIONED_INPROGRESS：节点下线中
-- IN_MAINTENANCE：节点维护中
-- ENTERING_MAINTENANCE：节点正在进入维护状态。
-
-**仅主机配置文件**
-
-`dfs.hosts`内容如下
-
-```bash
-host1
-host2
-host3
-host4
-```
-
-`dfs.hosts.exclude`内容如下
-
-```
-host3
-host4
-```
-
-```bash
-# 让namenode重新加载主机级别的配置文件。
-hdfs-dfsadmin[-refreshNodes]
-```
-
-host1和host2处于服务状态，host3和host4处于下线状态。
-
-**json格式的配置文件**
-
-设置`hdfs-site.xml`
-
-```bash
-dfs.namenode.hosts.provider.classname	# org.apache.hadoop.hdfs.server.blockmanagement.CombinedHostFileManager
-dfs.hosts	# json格式的文件
-```
-
-`dfs.hosts`内容如下：
-
-```json
-[
-  {
-    "hostName": "host1"
-  },
-  {
-    "hostName": "host2",
-    "upgradeDomain": "ud0"
-  },
-  {
-    "hostName": "host3",
-    "adminState": "DECOMMISSIONED"
-  },
-  {
-    "hostName": "host4",
-    "upgradeDomain": "ud2",
-    "adminState": "IN_MAINTENANCE"
-  }
-]
-```
-
-**集群级别的配置**
-
-```bash
-dfs.namenode.maintenance.replication.min
-dfs.namenode.decommission.interval
-dfs.namenode.decommission.blocks.per.interval
-dfs.namenode.decommission.max.concurrent.tracked.nodes
-```
-
-相关命令：
-
-```bash
-# 查看datanode的管理状态
-hdfs dfsadmin -report
-
-# 查看指定路径文件所在的datanode的管理状态
-hdfs fsck <path>								# 仅显示下线状态的datanode
-hdfs fsck <path> -maintenance		# 显示下线和maitenance状态的datanode
-```
-
-
-
-## provided storage
-
-用一句话来概括这里的“提供式存储”：
-
-> 通过HDFS能够定位到数据的外部存储。
-
-在现有阶段，这个外部存储只支持读取操作，暂不支持外部存储的写。换句话说，对于用户来说，提供式存储能够使得用户通过现有HDFS逻辑访问到外部存储的数据。而且这个外部存储的空间不受本身HDFS集群容量的限制。
 
 ## 管理员命令
 
