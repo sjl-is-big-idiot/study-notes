@@ -270,7 +270,7 @@ YARN作业的运行图，如下所示：
 
 [1] 《Hadoop-YARN权威指南》
 
-
+yarn.nodemanager.vmem-pmem-ratio [虚拟内存](https://so.csdn.net/so/search?q=虚拟内存&spm=1001.2101.3001.7020)率，Container 的虚拟内存大小的限制，每使用1MB物理内存，最多可用的虚拟内存数
 
 
 
@@ -2306,15 +2306,20 @@ TODO
 
 CGroups是Linux内核的一个特性。YARN通过CGroups可以限制container的资源使用。
 
-**CGroups Configuration**
+**CGroups配置**
 
 ```bash
 yarn.nodemanager.container-executor.class # 设为org.apache.hadoop.yarn.server.nodemanager.LinuxContainerExecutor，实现CGroup的类。使用LinuxContainerExecutor不会强制您使用CGroups。
+
 yarn.nodemanager.linux-container-executor.resources-handler.class # 设为org.apache.hadoop.yarn.server.nodemanager.util.CgroupsLCEResourcesHandler。如果要使用CGroups，则必须将资源处理程序类设置为CGroupsLCEResourceHandler。
-yarn.nodemanager.linux-container-executor.cgroups.hierarchy # 放置YARN进程的cgroups层次结构。如果yarn.nodemanager.linux-container-executor.cgroups.mount为false。
-yarn.nodemanager.linux-container-executor.cgroups.mount #如果找不到，LCE是否应该尝试装载cgroups-可以是true或false。
-yarn.nodemanager.linux-container-executor.cgroups.mount-path # 
-yarn.nodemanager.linux-container-executor.group # NodeManager的Unix group。它应该与“container executor.cfg”中的设置相匹配。此配置是验证容器executor二进制文件的安全访问所必需的。
+
+yarn.nodemanager.linux-container-executor.cgroups.hierarchy # 默认/hadoop-yarn。放置YARN进程的cgroups层次结构。如果yarn.nodemanager.linux-container-executor.cgroups.mount为false（即已经预先设置了cgroups），yarn会创建此cgroup目录。前提yarn.nodemanager.linux-container-executor.resources-handler.class设为org.apache.hadoop.yarn.server.nodemanager.util.CgroupsLCEResourcesHandler。
+
+yarn.nodemanager.linux-container-executor.cgroups.mount # 默认false。表示如果没找到cgroup，LCE是否可以挂载cgroups。前提yarn.nodemanager.linux-container-executor.resources-handler.class设为org.apache.hadoop.yarn.server.nodemanager.util.CgroupsLCEResourcesHandler。
+
+yarn.nodemanager.linux-container-executor.cgroups.mount-path # 可选项。制定cgroups的挂载路径。在此处挂载or使用CGroups。
+
+yarn.nodemanager.linux-container-executor.group # NodeManager的Unix group。应与"container-executor.cfg"中的设置相匹配。此配置是验证容器executor二进制文件的安全访问所必需的。
 ```
 
 一旦CGroups启用了，则可以使用如下配置项进行container的资源限制。
@@ -2328,7 +2333,7 @@ yarn.nodemanager.linux-container-executor.cgroups.strict-resource-usage # 为tru
 
 **CGroups mount options**
 
-YARN通过内核安装到文件系统中的目录结构使用CGroups。有三个选项可附加到CGroups。
+YARN通过内核挂载到文件系统的目录结构使用CGroups。有三个选项可附加到CGroups。
 
 ```bash
 Discover CGroups mounted already
@@ -2339,6 +2344,12 @@ CGroups mounted already or linked but not in /proc/mounts
 
 
 **CGroups and security**
+
+如果在非安全模式下运行container，默认情况下，LinuxContainerExecutor（简称LCE）以"nobody"用户来运行所有job。
+
+如果将配置`yarn.nodemanager.linux-container-executor.nonsecure-mode.local-user`设为yarn，则以yarn用户来运行job。
+
+如果将配置`yarn.nodemanager.linux-container-executor.nonsecure-mode.limit-users`设为false，则以提交job的用户来运行job。
 
 | yarn.nodemanager.linux-container-executor.nonsecure-mode.local-user | yarn.nodemanager.linux-container-executor.nonsecure-mode.limit-users | User running jobs         |
 | :----------------------------------------------------------- | :----------------------------------------------------------- | :------------------------ |
