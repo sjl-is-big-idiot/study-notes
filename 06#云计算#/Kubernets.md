@@ -8,14 +8,28 @@ https://blog.csdn.net/u010099177/article/details/110481186
 
 https://access.redhat.com/documentation/zh-cn/red_hat_enterprise_linux/7/html/resource_management_guide/chap-introduction_to_control_groups#sec-What_are_Control_Groups
 
+https://blog.csdn.net/weixin_43631706/article/details/126159562
+
 目前我们所提到的容器技术、虚拟化技术（不论何种抽象层次下的虚拟化技术）都能做到资源层面上的隔离和限制。
 
 对于容器技术而言，它实现资源层面上的限制和隔离，依赖于 Linux 内核所提供的 cgroup 和 namespace 技术。
 
-cgroup和namespace
+**cgroup**和**namespace**
 
 - cgroup 的主要作用：管理资源的分配、限制；
 - namespace 的主要作用：封装抽象，限制，隔离，使命名空间内的进程看起来拥有他们自己的全局资源；
+
+**cgroups核心概念**
+
+- 任务（task）
+  在cgroup中，任务就是一个进程。
+- 控制组（control group）
+  cgroup的资源控制是以控制组的方式实现，控制组指明了资源的配额限制。进程可以加入到某个控制组，也可以迁移到另一个控制组。
+- 层级（hierarchy）
+  控制组有层级关系，类似树的结构，子节点的控制组继承父控制组的属性(资源配额、限制等)。
+- 子系统（subsystem）
+  一个子系统其实就是一种资源的控制器，比如memory子系统可以控制进程内存的使用。子系统需要加入到某个层级，然后该层级的所有控制组，均受到这个子系统的控制
+
 
 ## **什么是 cgroup**
 
@@ -62,17 +76,23 @@ cgroups 形成了树状结构。（一个给定的 cgroup 可能有多个子 cgr
 
 当然不会。cgroup v2 中，设定了非根 cgroup 只能在没有任何进程时才能将域资源分发给子节点的 cgroup。简而言之，只有不包含任何进程的 cgroup 才能在其 `cgroup.subtree_control` 文件中启用域控制器，这就保证了，进程总在叶子节点上。
 
-什么是cgroup节点
+**什么是cgroup节点**
 
 如下如所示，cgroup的根目录为`/sys/fs/cgroup`，下面的目录就是一个cgroup节点，cgroup目录下就会有该cgroup节点的`cgroup.procs`等文件。
 
 ![image-20230512162019252](Kubernets.assets/image-20230512162019252.png)
 
+![在这里插入图片描述](Kubernets.assets/e03dc09c967846b9b8fc8dcc90b238c2.png)
+
+![在这里插入图片描述](Kubernets.assets/893db41108544c948f316c2d7b851c31.png)
+
+**怎么知道哪些是cgroup节点？**
+
+cgroup节点是一个目录，其目录下有`cgroup.procs`等文件。
+
 # cgroup子系统分类
 
 以5.4的内核为例，cgroup包括cpu，memory，blokio，network...，这里的每一个文件夹都表示cgroup的一个子系统，这里只以cpu，memory为例进行介绍。
-
-
 
 ```rust
 root@iZt4n1u8u50jg1r5n6myn2Z:~# mount -t tmpfs |grep cgroup
@@ -99,25 +119,39 @@ root@iZt4n1u8u50jg1r5n6myn2Z:~#
 
 **这里请注意一个细节**，这里有三层挂载，一个是sysfs，挂载点是/sys/，一个是tmpfs内存文件系统，挂载点是/sys/fs/cgroup，另一个是子系统的挂载，如cpu挂载点是/sys/fs/cgroup/cpu。三层挂载就是三个文件系统，一个是[kernfs](https://links.jianshu.com/go?to=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FKernfs_(Linux))，一个是tmpfs，一个是cgroup文件系统。即使是基于内存的文件系统，也都有superblock，dentry，inode等这些vfs的概念。
 
+<font color="red">*cgroup暴露给用户的API为文件系统，所有对cgroup的操作均可以通过对文件的修改完成，cgroup API对应的路径为：/sys/fs/cgroup/，作为使用方，仅需要对文件系统中的内容进行编辑，即可达到配置对应的cgroup的要求。*</font>
+
 # cgroup的使用
 
 ### 常规使用
 
 1、创建cgroup子系统的子目录
 
-​	在`/sys/fs/cgroup`下创建子目录之后，会自动生成cgroup所需的文件，如：
+​	**在`/sys/fs/cgroup`下创建子目录之后，会自动生成cgroup所需的文件**，如：
 
 - cgroup.clone_children
 - cgroup.procs
 - cpuacct.stat
 - cpuacct.usage
 - cpuacct.usage_percpu
-- cpu.cfs_period_us
-- cpu.cfs_quota_us
-- cpu.shares
+- cpu.cfs_period_us：cpu时间周期，默认为100000
+- cpu.cfs_quota_us：在单位cpu时间周期中，可以使用的cpu时间。默认-1。比如我们要限制一个进程的cpu使用为20%，则此值应为20% * cpu.cfs_period_us
+- cpu.shares：cpu.shares 不是限制进程能使用的绝对的 cpu 时间，而是控制各个组之间的cpu使用比例。
 - cpu.stat
 - notify_on_release
 - tasks
+
+**对于CPU的限制逻辑**：
+
+> cgroup的限制逻辑如下：
+>
+> 1. 限制所有pid在tasks中的进程，
+> 2. 在 cpu.cfs_period_us 周期内，只能使用最多 cpu.cfs_quota_us 的cpu资源。
+> 3. 默认情况下，cpu.cfs_period_us的单位为微秒，默认值为100ms。cpu.cfs_quota_us的值为-1，暨不做限制。
+> 4. 例如： 限制在100ms中，只能使用30ms的cpu资源，暨限制cpu占用率为30%
+>    echo 30000 > cpu.cfs_quota_us
+> 5. 启动测试程序，并添加pid到tasks文件中后，再观察CPU情况，可以清晰的看到被限制在了30%
+>    echo pid(loglistener的进程号) > /sys/fs/cgroup/cpu/rocket/test
 
  2、设置资源配额
  3、将需要限制的进程号写入子目录
@@ -197,18 +231,18 @@ root@iZt4n1u8u50jg1r5n6myn2Z:~# cat /proc/38538/cgroup
 这里我们以 Docker 为例。 创建一个容器，并对其可使用的 CPU 和内存进行限制：
 
 ```text
-➜  ~ docker run --rm -d  --cpus=2 --memory=2g --name=2c2g redis:alpine 
+~ docker run --rm -d  --cpus=2 --memory=2g --name=2c2g redis:alpine 
 e420a97835d9692df5b90b47e7951bc3fad48269eb2c8b1fa782527e0ae91c8e
-➜  ~ cat /sys/fs/cgroup/system.slice/docker-`docker ps -lq --no-trunc`.scope/cpu.max
+~ cat /sys/fs/cgroup/system.slice/docker-`docker ps -lq --no-trunc`.scope/cpu.max
 200000 100000
-➜  ~ cat /sys/fs/cgroup/system.slice/docker-`docker ps -lq --no-trunc`.scope/memory.max
+~ cat /sys/fs/cgroup/system.slice/docker-`docker ps -lq --no-trunc`.scope/memory.max
 2147483648
-➜  ~ 
-➜  ~ docker run --rm -d  --cpus=0.5 --memory=0.5g --name=0.5c0.5g redis:alpine
+~ 
+~ docker run --rm -d  --cpus=0.5 --memory=0.5g --name=0.5c0.5g redis:alpine
 8b82790fe0da9d00ab07aac7d6e4ef2f5871d5f3d7d06a5cdb56daaf9f5bc48e
-➜  ~ cat /sys/fs/cgroup/system.slice/docker-`docker ps -lq --no-trunc`.scope/cpu.max       
+~ cat /sys/fs/cgroup/system.slice/docker-`docker ps -lq --no-trunc`.scope/cpu.max       
 50000 100000
-➜  ~ cat /sys/fs/cgroup/system.slice/docker-`docker ps -lq --no-trunc`.scope/memory.max
+~ cat /sys/fs/cgroup/system.slice/docker-`docker ps -lq --no-trunc`.scope/memory.max
 536870912
 ```
 
