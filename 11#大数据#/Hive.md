@@ -4036,9 +4036,9 @@ set hive.exec.mode.local.auto.input.files.max=10;
 
    （1）设置自动选择Mapjoin
 
-       ```sql
+   ```sql
    set hive.auto.convert.join = true; 默认为true;
-       ```
+   ```
 
    （2）大表小表的阈值设置（默认25M一下认为是小表）
 
