@@ -2872,3 +2872,77 @@ yarn.nodemanager.webapp.cross-origin.enabled
 **使用**
 
 浏览器地址栏：`rm-address:8088/ui2`
+
+## YARN调优
+
+参考文章：https://www.cnblogs.com/zsql/p/13969179.html
+
+思路：
+
+- CPU、内存资源配置调优
+
+  在YARN中可供分配和管理的资源有内存和CPU资源，在Hadoop 3.0中将GPU、FPGA资源也纳入可管理的资源中。
+
+  　　既然yarn是用来管理资源的，所以资源的来源还是来源于服务器的cpu和内存。所以也就是我们配置服务器的多少资源作为yarn的资源。这里有两种配置，一种是自己更具服务器的资源，自己判断预留给服务器多少资源提供给其他服务，其他配置给yarn作为资源，还有一种就是让yarn去扫描服务器的资源，按照比例进行配置（这个理论上可行，没有实践）
+
+  　　这里再说一句，优化这个东西呢其他在集群没有出现瓶颈的时候就不要去优化，一个是看不出效果，还有就是浪费时间，反正资源够用，没啥好优化的，优化的目的就是在有限的资源下，保证集群的稳定，又能挺高资源的利用率和提高集群的并发能力。
+
+  首先我们说**第一种：手动配置固定的资源给yarn**
+
+  **yarn.nodemanager.resource.cpu-vcores**，默认值为-1。默认表示集群中每个节点可被分配的虚拟CPU个数为8。为什么这里不是物理CPU个数？因为考虑一个集群中所有的机器配置不可能一样，即使同样是16核心的CPU性能也会有所差异，所以YARN在物理CPU和用户之间加了一层虚拟CPU，一个物理CPU可以被划分成多个虚拟的CPU。这里确实可以配置超过物理cpu的个数，确实能够提高并发，但是尝试了一把，这样子服务器的负载就很大了，基本上是处理不过来，而且这样配置没有个服务器留有空余的cpu去执行其他的任务或者其他的集群。因为是生产环境，也没敢去做压测，检测到服务器的负载都是cpu核数的十倍了，所以负载太大，不太敢太激进，所以最终配置是比物理cup核数少那么几个，预留几个cpu给服务器或者其他服务使用。
+
+   **yarn.nodemanager.resource.memory-mb**，默认值为-1。当该值为-1时，默认表示集群中每个节点可被分配的物理内存是8GB。这个一般配置是给服务器预留20%的内存即可。
+
+   
+
+  接下来说说**第二种：让yarn自动探测服务器的资源**，然后预留一定比例给服务器，然后就可以把vcore调的大一些，这样既能提高cpu的使用率，有能保证给服务器留有一定的cpu
+
+  首先yarn.nodemanager.resource.cpu-vcores和yarn.nodemanager.resource.memory-mb都要采用默认值-1，这样如下的配置才会生效：
+
+  - yarn.nodemanager.resource.detect-hardware-capabilities 配置为true，表示可以让yarn自动探测服务器的资源，比如cpu和内存等然后我们就配置可以留给服务器的内存和可以使用物理cpu的比例：
+
+  - yarn.nodemanager.resource.system-reserved-memory-mb：YARN保留的物理内存，给非YARN任务使用，该值一般不生效，只有当yarn.nodemanager.resource.detect-hardware-capabilities为true的状态才会启用，会根据系统的情况自动计算
+
+  - yarn.nodemanager.resource.percentage-physical-cpu-limit：默认是100，表示100%使用，这里我们比如可以配置80%，表示预留给服务器或者其他应用20%的cpu
+
+  - yarn.nodemanager.resource.pcores-vcores-multiplier：默认为1，表示一个物理cpu当做一个vcore使用，如果我们已经预留给了服务器cpu的话，那我们这里可以调整问题2或者3，这样一个物理cpu可以当做2个或者3个vcore使用，毕竟每个map和reduce作业都要配置cpu，但是有些map和reduce作业又不是计算型作业，所以这样就可以更合理的利用资源。类似把蛋糕切小块，少需的拿一块，多需求的多拿几块，这样提高了cpu的利用率和提高了集群的并发能力。（这么配置的前提是集群的瓶颈在于cpu不够使用）
+
+  - yarn.nodemanager.vmem-pmem-ratio，默认值为2.1。该值为可使用的虚拟内存除以物理内存，即YARN 中任务的单位物理内存相对应可使用的虚拟内存。例如，任务每分配1MB的物理内存，虚拟内存最大可使用2.1MB，如果集群缺内存，可以增大该值。
+
+    注意：如果集群的资源很充足，就不要把一个物理cpu当2个或者3个使用，也不要吧虚拟内存比例调大，资源够用就是不用优化，优化只是在资源不够的情况进行的。
+
+    如上我们配置yarn集群的资源，cpu和内存，但是在作业的执行的过中是以container为单位的，现在我们来配置container的资源。
+
+  - yarn.scheduler.minimum-allocation-mb：默认值1024MB，是每个容器请求被分配的最小内存。如果容器请求的内存资源小于该值，会以1024MB 进行分配；如果NodeManager可被分配的内存小于该值，则该NodeManager将会被ResouceManager给关闭。
+  - yarn.scheduler.maximum-allocation-mb：默认值8096MB，是每个容器请求被分配的最大内存。如果容器请求的资源超过该值，程序会抛出InvalidResourceRequest Exception的异常。
+  - yarn.scheduler.minimum-allocation-vcores：默认值1，是每个容器请求被分配的最少虚拟CPU 个数，低于此值的请求将被设置为此属性的值。此外，配置为虚拟内核少于此值的NodeManager将被ResouceManager关闭。
+  - yarn.scheduler.maximum-allocation-vcores：默认值4，是每个容器请求被分配的最少虚拟CPU个数，高于此值的请求将抛出InvalidResourceRequestException的异常。如果开发者所提交的作业需要处理的数据量较大，需要关注上面配置项的配置
+
+- 线程配置调优
+
+  资源配置固然重要，但是影响yarn性能的不单单只是资源，还有各个组件之间的配合，线程的数量直接影响到并发的能力，当然也不能配置的太高，这样会给集群造成不小的压力，所以要根据自己集群的状态进行合理的配置。
+
+  - yarn.resourcemanager.client.thread-count：默认50，用于处理应用程序管理器请求的线程
+  - yarn.resourcemanager.amlauncher.thread-count：默认50，用于启动/清理AM的线程
+  - yarn.resourcemanager.scheduler.client.thread-count：默认50，处理来自ApplicationMaster的RPC请求的Handler数目，比较重要
+  - yarn.resourcemanager.resource-tracker.client.thread-count：默认50，处理来自NodeManager的RPC请求的Handler数目，比较重要
+  - yarn.resourcemanager.admin.client.thread-count：默认1，用于处理RM管理接口的线程数。
+  - yarn.nodemanager.container-manager.thread-count：默认20，container 管理器使用的线程数。
+  - yarn.nodemanager.collector-service.thread-count：默认5，收集器服务使用的线程数
+  - yarn.nodemanager.delete.thread-count：默认4，清理使用的线程数。
+  - yarn.nodemanager.localizer.client.thread-count：默认5，处理本地化请求的线程数
+  - yarn.nodemanager.localizer.fetch.thread-count：默认4，用于本地化获取的线程数
+  - yarn.nodemanager.log.deletion-threads-count：默认4，在NM日志清理中使用的线程数。在禁用日志聚合时使用
+  - yarn.timeline-service.handler-thread-count：用于服务客户端RPC请求的处理程序线程计数。
+
+- log日志和文件目录配置调优
+
+  - yarn.nodemanager.log-dirs：日志存放地址（建议配置多个目录），默认值：${yarn.log.dir}/userlogs
+  - yarn.nodemanager.local-dirs：中间结果存放位置，建议配置多个目录，分摊磁盘IO负载，默认值：${hadoop.tmp.dir}/nm-local-dir
+  - yarn.log-aggregation-enable：默认false，是否启用日志聚合
+  - yarn.log-aggregation.retain-seconds：聚合日志的保留时长，设置到3-7天即可，默认-1
+  - yarn.nodemanager.remote-app-log-dir：默认/tmp/logs，本地聚合在hdfs上的日志目录
+  - yarn.nodemanager.remote-app-log-dir-suffix：{yarn.nodemanager.remote-app-log-dir}/${user}/{thisParam}用于存放聚合后的日志
+  - yarn.nodemanager.recovery.dir：默认${hadoop.tmp.dir}/yarn-nm-recovery，本地文件系统目录，当启用恢复时，nodemanager将在其中存储状态。只有当yarn.nodemanager.recovery.enabled为true的情况下才有用，该值默认false
+  - yarn.resourcemanager.recovery.enabled：默认fasle，当RM启用高可用的时候默认启用，但是必须配
+  - yarn.resourcemanager.store.class，该值默认为org.apache.hadoop.yarn.server.resourcemanager.recovery.FileSystemRMStateStore，最好配置配org.apache.hadoop.yarn.server.resourcemanager.recovery.ZKRMStateStore
