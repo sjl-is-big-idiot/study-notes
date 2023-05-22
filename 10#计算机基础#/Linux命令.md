@@ -660,3 +660,155 @@ setenforce 0
 setenforce 1
 ```
 
+## date
+
+参考文章：https://blog.csdn.net/rhn_111/article/details/128991625
+
+date用于显示或者设置系统日期与时间信息的
+
+语法
+
+```bash
+[root@localhost ~]# date --help
+用法：date [选项]... [+格式]
+```
+
+常用参数
+
+- -d datestr	显示 datestr 中所设定的时间 (非系统时间)
+- -s datestr	将系统时间设为 datestr 中所设定的时间
+- -u	显示目前的格林威治时间
+- %Y	年份
+- %m	月份
+- %d	天数
+- %M	分钟
+- %S	秒数
+- %H	小时
+- %s	从1970-01-01到现在的秒数
+- %F	显示当前日期，和%Y-%m-%d效果一样
+- %j	查看今天是今年当中的第几天
+- %e	查看今天是一个月当中的第几天
+- %T	显示当前时间 ，和%H:%M:%S
+- %X	显示当前时间，xx时xx分xx秒
+- -r	显示指定文件的最后修改时间
+
+使用示例
+
+### 以默认格式输出系统当前的时间和日期；
+
+```bash
+[root@localhost ~]# date
+2023年 02月 12日 星期日 08:28:59 CST
+```
+
+### 3.2 按照"年-月-日"的指定格式输出系统当前的日期时间； 有两种方法
+
+```bash
+[root@localhost ~]# date "+%Y-%m-%d"
+2023-02-12
+[root@localhost ~]# date +%F
+2023-02-12
+```
+
+
+
+### 3.3 按照"小时：分钟：秒"的指定格式输出系统当前的时间信息； 三种方法
+
+```bash
+[root@localhost ~]# date "+%H:%M:%S"
+08:34:17
+[root@localhost ~]# date +%T
+08:34:24
+[root@localhost ~]# date +%X
+08时34分32秒
+[root@localhost ~]# 
+```
+
+
+
+### 3.4 设置当前系统为指定的日期和时间；
+
+```bash
+[root@localhost ~]# date -s "20230724 00:00:00"
+2023年 07月 24日 星期一 00:00:00 CST
+[root@localhost ~]# date 
+2023年 07月 24日 星期一 00:00:14 CST
+```
+
+
+
+### 3.5 同步时间
+
+```bash
+[root@localhost ~]# ntpdate -u ntp1.aliyun.com
+12 Feb 08:48:24 ntpdate[52619]: step time server 120.25.115.20 offset -13965783.026585 sec
+[root@localhost ~]# ntpdate -u ntp.api.bz
+[root@localhost ~]# date
+2023年 02月 12日 星期日 08:49:21 CST
+```
+
+
+
+### 3.6 修改时区
+
+```bash
+[root@localhost ~]# timedatectl set-timezone America/New_York 
+[root@localhost ~]# timedatectl status 
+      Local time: 六 2023-02-11 19:50:41 EST
+  Universal time: 日 2023-02-12 00:50:41 UTC
+        RTC time: 日 2023-02-12 00:50:41
+       Time zone: America/New_York (EST, -0500)
+     NTP enabled: yes
+NTP synchronized: yes
+ RTC in local TZ: no
+      DST active: no
+ Last DST change: DST ended at
+                  日 2022-11-06 01:59:59 EDT
+                  日 2022-11-06 01:00:00 EST
+ Next DST change: DST begins (the clock jumps one hour forward) at
+                  日 2023-03-12 01:59:59 EST
+                  日 2023-03-12 03:00:00 EDT
+[root@localhost ~]# date -u
+2023年 02月 12日 星期日 00:50:49 UTC
+[root@localhost ~]# date 
+2023年 02月 11日 星期六 19:51:07 EST
+```
+
+
+
+### 3.7 可以设定时间（非系统时间）
+
+```bash
+[root@localhost ~]# date -d "20230724"
+2023年 07月 24日 星期一 00:00:00 EDT
+```
+
+
+
+### 3.8 查看文件最后的修改时间
+
+```bash
+[root@localhost ~]# date -r anaconda-ks.cfg 
+2023年 02月 08日 星期三 00:02:25 CST
+```
+
+
+
+### 3.9 查看今天是一年中的第几天 ，还有查看今天是一个月中的第几天
+
+```bash
+[root@localhost ~]# date +%j
+043
+[root@localhost ~]# date +%e
+12
+```
+
+
+
+### 3.10 显示UTC从1970-01-01到当前时间的秒数
+
+```bash
+[root@localhost ~]# date +%s
+1676163423
+```
+
