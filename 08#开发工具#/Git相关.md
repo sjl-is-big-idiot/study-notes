@@ -204,19 +204,21 @@ git branch -a
 
 [git 官方文档](https://git-scm.com/docs)
 
+https://www.cnblogs.com/softidea/p/5511880.html
+
 #### 2.3.1 什么是VCS？
 
 Version Control System，简称VCS。
 
 VCS可分为3类：
 
-1. 本地版本控制系统
+1. **本地版本控制系统**
 
    采用某种简单的数据库来记录文件的历次更新差异
 
    ![本地版本控制图解](Git相关.assets/local.png)
 
-2. 集中化的版本控制系统（Centralized Version Control Systems，简称 CVCS）
+2. **集中化的版本控制系统**（`Centralized Version Control Systems`，简称 `CVCS`）
 
    优点：可与其他人共享，可管理每个开发的读写权限
 
@@ -224,7 +226,7 @@ VCS可分为3类：
 
    ![集中化的版本控制图解](Git相关.assets/centralized.png)
 
-3. 分布式版本控制系统（Distributed Version Control System，简称 DVCS）
+3. **分布式版本控制系统**（`Distributed Version Control System`，简称 `DVCS`）
 
    户端并不只提取最新版本的文件快照， 而是把代码仓库完整地镜像下来，包括完整的历史记录。 这么一来，任何一处协同工作用的服务器发生故障，事后都可以用任何一个镜像出来的本地仓库恢复。 因为每一次的克隆操作，实际上都是一次对代码仓库的完整备份。
 
@@ -233,6 +235,8 @@ VCS可分为3类：
 
 
 Git与其他 版本控制系统的不同之处是：**直接记录快照，而非差异比较**。Git 更像是把数据看作是对小型文件系统的一系列快照。 在 Git 中，每当你提交更新或保存项目状态时，它基本上就会对当时的全部文件创建一个快照并保存这个快照的索引。 为了效率，如果文件没有修改，Git 不再重新存储该文件，而是只保留一个链接指向之前存储的文件。 Git 对待数据更像是一个 **快照流**。
+
+![img](Git相关.assets/aHR0cHM6Ly9waWMzLnpoaW1nLmNvbS84MC92Mi1hZjNiZjZmZWU5MzU4MjBkNDgxODUzZTQ1MmVkMmQ1NV83MjB3LmpwZw)
 
 **三种状态**
 
@@ -470,6 +474,14 @@ $ git reset HEAD CONTRIBUTING.md
 
 # 3. 撤销对文件的修改，回到上一次提交的样子，工作区中该文件的内容会发生改变哦。
 $ git checkout -- CONTRIBUTING.md
+
+# 撤销git commit命令和撤销git add
+# 作用：删除工作空间修改过的代码，撤销commit&撤销add
+git reset --hard HEAD^
+
+# 仅撤销git commit 命令
+# 作用：不删除工作空间修改过的代码，仅撤销commit
+git reset --soft HEAD^
 ```
 
 ##### 2.3.4.5 远程仓库的使用
