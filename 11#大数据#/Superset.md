@@ -109,3 +109,212 @@ FAQ
 
 
 
+# 3. Superset使用
+
+## Superset配置到presto+https的连接
+
+**背景**：客户在腾讯云搭建了emr-hadoop集群其中使用到了presto，且为presto继承了ssl+ldap。现在客户要使用superset作为BI分析软件。
+
+**需求**：需要在superset中配置presto的连接，以做BI分析。
+
+部署好superset之后，浏览器打开superset的地址。然后进入`Data` > `Databases`。
+
+在Databases中，我们就可以创建superset想要连接的数据源了。
+
+superset是使用python语言开发的。
+
+在配置过程中可能会出现如下几种错误：
+
+**旧版superset**
+
+- Error：could not load database driver：presto
+
+  ![image-20230525134651645](Superset.assets/image-20230525134651645.png)
+
+  这是因为superset后台时通过sqlalchemy去连接每个数据源的，而要通过sqlalchemy访问presto需要使用到pyhive。需要先安装pyhive。
+
+- (bultins.ValueError) Protocol must be https when passing a password [SQL: SHOW SCHEMAS]
+
+  ![image-20230525134921373](Superset.assets/image-20230525134921373.png)
+
+  在presto集成ldap时，则必须为presto使用https才能集成ldap，所以客户侧当时是使用自签名证书来实现的ssl。
+
+  而在superset中配置presto的连接时，也得使用https才可以。
+
+  解决办法：
+
+  在配置presto连接的页面，在`Extra`栏填入如下内容：
+
+  ```json
+  {
+      "metadata_params": {},
+      "engine_params": {
+        "connect_args": {
+          "protocol": "https"
+        }
+      },
+      "metadata_cache_timeout": {},
+      "schemas_allowed_for_csv_upload": []
+  }
+  ```
+
+  启动`"protocol":"https"`表示我们的连接使用的是https协议。这样就不会再报此错误了。
+
+旧版superset的成功配置：
+
+```bash
+# 连接名
+test1-presto
+# 连接串，其中如果密码部分有@等特殊字符，可以使用 用urlparse对其进行编码之后的字符串代替特殊字符
+# import urllib
+# urllib.parse.quote('@')
+# %40
+# 表示如果密码中有@，则用%40代替@
+presto://hadoop:hadoop@192.168.0.1:8443/hive/default
+
+# Extra参数
+{
+    "metadata_params": {},
+    "engine_params": {
+      "connect_args": {
+        "protocol": "https"
+      }
+    },
+    "metadata_cache_timeout": {},
+    "schemas_allowed_for_csv_upload": []
+}
+```
+
+
+
+**新版superset**，的数据源连接配置在`Data` > `Databases` 。由于客户的presto+https+ldap。因此除了填写连接名、连接串之外，还需要在`Advanced`中找到`engine_args`栏，然后填入额外的连接参数。如下图所示：
+
+![image-20230525135126067](Superset.assets/image-20230525135126067.png)
+
+- Error：could not load database driver: PrestoEngineSpec
+
+  ![image-20230525135055273](Superset.assets/image-20230525135055273.png)
+
+  看前台的报错不明确，后台查看superset的日志发现如下报错：
+
+  ```bash
+  CommandException
+  Traceback (most recent call last):
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/databases/commands/test_connection.py", line 81, in run
+      engine = database.get_sqla_engine()
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/utils/memoized.py", line 50, in __call__
+      value = self.func(*args, **kwargs)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/models/core.py", line 401, in get_sqla_engine
+      raise self.db_engine_spec.get_dbapi_mapped_exception(ex)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/models/core.py", line 399, in get_sqla_engine
+      return create_engine(sqlalchemy_url, **params)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/sqlalchemy/engine/__init__.py", line 525, in create_engine
+      return strategy.create(*args, **kwargs)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/sqlalchemy/engine/strategies.py", line 61, in create
+      entrypoint = u._get_entrypoint()
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/sqlalchemy/engine/url.py", line 172, in _get_entrypoint
+      cls = registry.load(name)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/sqlalchemy/util/langhelpers.py", line 277, in load
+      raise exc.NoSuchModuleError(
+  sqlalchemy.exc.NoSuchModuleError: Can't load plugin: sqlalchemy.dialects:presto
+  
+  The above exception was the direct cause of the following exception:
+  
+  Traceback (most recent call last):
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/flask/app.py", line 1516, in full_dispatch_request
+      rv = self.dispatch_request()
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/flask/app.py", line 1502, in dispatch_request
+      return self.ensure_sync(self.view_functions[rule.endpoint])(**req.view_args)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/flask_appbuilder/security/decorators.py", line 89, in wraps
+      return f(self, *args, **kwargs)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/views/base_api.py", line 113, in wraps
+      raise ex
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/views/base_api.py", line 110, in wraps
+      duration, response = time_function(f, self, *args, **kwargs)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/utils/core.py", line 1507, in time_function
+      response = func(*args, **kwargs)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/utils/log.py", line 245, in wrapper
+      value = f(*args, **kwargs)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/views/base_api.py", line 83, in wraps
+      return f(self, *args, **kwargs)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/databases/api.py", line 709, in test_connection
+      TestConnectionDatabaseCommand(g.user, item).run()
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/databases/commands/test_connection.py", line 133, in run
+      raise DatabaseTestConnectionDriverError(
+  superset.databases.commands.exceptions.DatabaseTestConnectionDriverError: Could not load database driver: PrestoEngineSpec
+  ```
+
+  哦，原来是客户重装了新版的superset之后，又没有装pyhive包。
+
+  需要先确认客户是否使用了，虚拟环境安装superset。如果使用了虚拟环境，则需要先进入虚拟环境。
+
+  ```bash
+  # 假设superset运行在virtualenv中
+  
+  # 进入名为superset的虚拟环境
+  source /root/Python-3.9.15/superset/bin/activate
+  
+  # 查看pip，是否为Python3.9的包管理工具
+  pip -V
+  
+  # 查看是否有pyhive
+  pip freeze |grep -i pyhive
+  
+  # 安装pyhive
+  pip install pyhive
+  
+  # 重新启动superset
+  export FLASK_APP=superset
+  cd /root/Python-3.9.15/superset
+  nohup bin/superset run -h 0.0.0.0 -p 8088 --with-threads --reload --debugger >/tmp/superset.log 2>&1 &
+  ```
+
+  重启superset之后，再次尝试仍报上述错误，后台查看superset的日志发现如下报错：
+
+  ```bash
+  superset.databases.commands.exceptions.DatabaseTestConnectionDriverError: Could not load database driver: PrestoEngineSpec
+  2023-05-24 11:40:19,045:WARNING:superset.views.base:CommandException
+  Traceback (most recent call last):
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/databases/commands/test_connection.py", line 81, in run
+      engine = database.get_sqla_engine()
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/utils/memoized.py", line 50, in __call__
+      value = self.func(*args, **kwargs)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/models/core.py", line 401, in get_sqla_engine
+      raise self.db_engine_spec.get_dbapi_mapped_exception(ex)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/superset/models/core.py", line 399, in get_sqla_engine
+      return create_engine(sqlalchemy_url, **params)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/sqlalchemy/engine/__init__.py", line 525, in create_engine
+      return strategy.create(*args, **kwargs)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/sqlalchemy/engine/strategies.py", line 61, in create
+      entrypoint = u._get_entrypoint()
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/sqlalchemy/engine/url.py", line 172, in _get_entrypoint
+      cls = registry.load(name)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/sqlalchemy/util/langhelpers.py", line 275, in load
+      return impl.load()
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/pkg_resources/__init__.py", line 2517, in load
+      return self.resolve()
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/pkg_resources/__init__.py", line 2523, in resolve
+      module = __import__(self.module_name, fromlist=['__name__'], level=0)
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/pyhive/sqlalchemy_presto.py", line 21, in <module>
+      from pyhive import presto
+    File "/root/Python-3.9.15/superset/lib/python3.9/site-packages/pyhive/presto.py", line 22, in <module>
+      import requests
+  ModuleNotFoundError: No module named 'requests'
+  ```
+
+  这次是缺`requests`包。
+
+  解决方法：
+
+  > 按照上面的思路，再次去名为superset的虚拟环境中使用pip install requests，安装requests包。
+  >
+  > 再重启superset应用之后尝试。
+
+当弹出`Connection looks good!`，表示配置的数据库连接正确了。
+
+![image-20230525135111541](Superset.assets/image-20230525135111541.png)
+
+在`SQL Lab`中执行SQL，验证presto的数据库连接是否真的ok了。
+
+![image-20230525135117654](Superset.assets/image-20230525135117654.png)
+
