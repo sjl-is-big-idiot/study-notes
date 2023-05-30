@@ -24,54 +24,11 @@
 | /var        | 用于存放运行时需要改变数据的文件，也是某些大文件的溢出区，比方说各种服务的日志文件（系统启动日志等。）等。 |
 | /lost+found | 这个目录平时是空的，系统非正常关机而留下“无家可归”的文件（windows下叫什么.chk）就在这里 |
 
-###  查看文件最新的修改时间
-
-```shell
-[atguigu@hadoop102 ~]$ stat test.txt 
-  File: ‘test.txt’
-  Size: 612       	Blocks: 8          IO Block: 4096   regular file
-Device: fd02h/64770d	Inode: 87          Links: 1
-Access: (0775/-rwxrwxr-x)  Uid: ( 1001/ atguigu)   Gid: ( 1001/ atguigu)
-Context: unconfined_u:object_r:home_bin_t:s0
-Access: 2021-08-28 18:32:58.415382468 +0800
-Modify: 2021-06-15 12:56:25.036031722 +0800
-Change: 2021-06-15 12:56:25.039031722 +0800
- Birth: -
-```
 
 
 
-### 单用户模式修改密码
 
-[常见 LInux 系统进入单用户模式](https://blog.csdn.net/gaofei0428/article/details/115323647)
-
-以centos7为例，
-
-开机在 grub 引导界面，在默认选项上按下 e 键进入编辑模式：
-
-![20210330141115194](Linux命令.assets/20210330141115194.png)
-
-
-找到 linux 这一行，在行末添加 rd.break（注意这里是一整行），使用 Ctrl + x 进入单用户模式：
-
-![20210330141350236](Linux命令.assets/20210330141350236.png)
-
-看到如下画面就证明成功进入单用户模式
-
-![20210330141549915](Linux命令.assets/20210330141549915.png)
-
-然后执行以下操作
-
-![20210330142022942](Linux命令.assets/20210330142022942.png)
-
-
-exit 退出后 reboot 系统
-
-![2021033014211558](Linux命令.assets/2021033014211558.png)
-
-
-
-### 29. linux 如何设置开机自启动程序
+## 29. linux 如何设置开机自启动程序
 
 1. 最简单粗暴的方式直接在脚本`/etc/rc.d/rc.local`(和`/etc/rc.local`是同一个文件，软链)末尾添加自己的脚本；然后，增加脚本执行权限
 
@@ -86,19 +43,23 @@ exit 退出后 reboot 系统
 
 4. 在`/etc/rc[0-6].d/`目录建立软链接，软链接指向`/etc/init.d/`目录下的控制脚本
 
-### 30. linux查看某个服务所用的端口是多少？
+## 端口相关
+
+### linux查看某个服务所用的端口是多少？
 
 ```bash
 netstat –tunlp | grep <pid>
 ```
 
-### 31. 查看某端口的占用情况
+### 查看某端口的占用情况
 
 ```bash
 lsof –i:<port>
 或者
 netstat –tunlp | grep <port>
 ```
+
+## Crontab相关
 
 ### Crontab定时任务的时间间隔是相对于什么时间而言？
 
@@ -135,7 +96,7 @@ netstat –tunlp | grep <port>
 
 结论：是相对于当前的整点时间而言的。
 
-改成没7秒输出一次
+改成每7秒输出一次
 
 ```bash
 2020/10/14 19:56:00
@@ -204,6 +165,8 @@ service crond restart
 ```
 
 查看`/etc/localtime`是否正常了。
+
+## SSH相关
 
 ###  ssh配置免密登录
 
@@ -290,8 +253,6 @@ done
 
 
 
-
-
 ### ssh 远程登录主机并执行命令
 
 ```shell
@@ -300,7 +261,7 @@ ssh root@ip "your command"
 ssh root@192.168.0.3 "df -h |grep -w /"
 ```
 
-### 查看系统版本信息
+## 查看系统版本信息
 
 ```bash
 uname -a
@@ -313,7 +274,7 @@ cat /prov/version
 cat /etc/redhat-release
 ```
 
-### 用户和用户组相关
+## 用户和用户组相关
 
 参考文章：https://huaweicloud.csdn.net/635611c4d3efff3090b59b01.html
 
@@ -376,21 +337,51 @@ root	ALL=(ALL)	ALL
 下添加可有使用sudo的用户的和用户组。
 ```
 
-### 文件权限相关
+### 单用户模式修改密码
 
-#### 修改文件权限
+[常见 LInux 系统进入单用户模式](https://blog.csdn.net/gaofei0428/article/details/115323647)
+
+以centos7为例，
+
+开机在 grub 引导界面，在默认选项上按下 e 键进入编辑模式：
+
+![20210330141115194](Linux命令.assets/20210330141115194.png)
+
+
+找到 linux 这一行，在行末添加 rd.break（注意这里是一整行），使用 Ctrl + x 进入单用户模式：
+
+![20210330141350236](Linux命令.assets/20210330141350236.png)
+
+看到如下画面就证明成功进入单用户模式
+
+![20210330141549915](Linux命令.assets/20210330141549915.png)
+
+然后执行以下操作
+
+![20210330142022942](Linux命令.assets/20210330142022942.png)
+
+
+exit 退出后 reboot 系统
+
+![2021033014211558](Linux命令.assets/2021033014211558.png)
+
+
+
+## 文件权限相关
+
+### 修改文件权限
 
 ```shell
 chmod 642 filename
 ```
 
-#### 修改文件所属用户
+### 修改文件所属用户
 
 ```shell
 chown -R userName:groupName filename
 ```
 
-#### root用户且有读写权限，但是仍然无法修改文件
+### root用户且有读写权限，但是仍然无法修改文件
 
 ```shell
 # 取消文件的`immutable`
@@ -398,8 +389,6 @@ chmod -i 文件路径
 # 让该文件变为`immutable`，不可变的
 chmod +i 文件路径
 ```
-
-
 
 ### 查看文件md5和sha56值
 
@@ -434,6 +423,48 @@ certutil -hashfile 文件路径 SHA1
 
 certutil -hashfile 文件路径 SHA256
 ```
+
+###  查看文件最新的修改时间
+
+```shell
+[atguigu@hadoop102 ~]$ stat test.txt 
+  File: ‘test.txt’
+  Size: 612       	Blocks: 8          IO Block: 4096   regular file
+Device: fd02h/64770d	Inode: 87          Links: 1
+Access: (0775/-rwxrwxr-x)  Uid: ( 1001/ atguigu)   Gid: ( 1001/ atguigu)
+Context: unconfined_u:object_r:home_bin_t:s0
+Access: 2021-08-28 18:32:58.415382468 +0800
+Modify: 2021-06-15 12:56:25.036031722 +0800
+Change: 2021-06-15 12:56:25.039031722 +0800
+ Birth: -
+```
+
+
+
+## 磁盘相关
+
+### 查看磁盘，分区
+
+```bash
+# 列出了有关所有可用或指定块设备的信息
+lsblk
+
+# 用于列出、创建、操作分区表，例如创建，删除，修改分区。
+fdisk -l
+
+# 列出所有可用磁盘及其各自的大小
+parted -l
+```
+
+### hpparm
+
+测试磁盘速度
+
+```bash
+hpparm -t /dev/sda1
+```
+
+
 
 ### 卸载数据盘
 
@@ -499,9 +530,18 @@ umount /data1
 #############查看是否存在挂载点/data###################
 ls /data
 ############创建逻辑卷、格式化、开机自动挂载############
+# pvcreate将分区/dev/vdb标记为物理卷，创建物理卷
 pvcreate /dev/vdb
+
+# vgcreate命令将一个或多个物理卷结合为一个卷组，创建卷组
 vgcreate vg_data /dev/vdb
+
+# lvcreate命令根据卷组中的可用物理区块,创建逻辑卷
+## lvcreate -n 设置LV名称
+## lvcreate -L 设置LV大小（以字节为单位）
+## lvcreate -l 设置LV大小（以区块数为单位）以及托管此逻辑卷的卷组的名称
 lvcreate -l 100%VG -n lv_data vg_data
+# mkfs 在新逻辑卷上创建EXT4文件系统。
 mkfs.ext4 /dev/vg_data/lv_data
 echo "/dev/vg_data/lv_data /data ext4 defaults 0 0" >> /etc/fstab
 ###########挂载###################################
@@ -635,15 +675,9 @@ xfs_growfs /dev/mapper/vg_data-lv_data
 
 查看文件描述符限制
 
-## hpparm
+## 防火墙相关
 
-测试磁盘速度
-
-```bash
-hpparm -t /dev/sda1
-```
-
-## selinux相关
+### selinux相关
 
 查看当前调度selinux
 
