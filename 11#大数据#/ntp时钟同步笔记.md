@@ -1,5 +1,7 @@
 在大数据集群中，要求服务器之间的时间要保持基本一致，因此都会用到ntpd服务，用来同步服务器上的时钟。
 
+参考文章：https://cloud.tencent.com/document/product/213/30393
+
 # Linux时钟介绍
 
 ## 什么是ntp？
