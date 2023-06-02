@@ -159,8 +159,6 @@ mysql> insert into company.staff(name, sex) values('Thomas', 'Male');
 mysql> insert into company.staff(name, sex) values('catalina', 'Female')
 ```
 
-
-
 （3）导入数据
 
 ​	1）全部导入
@@ -176,8 +174,6 @@ $ bin/sqoop import \
 --num-mappers 1 \
 --fields-terminated-by "\t"
 ```
-
-
 
 ​	2） 查询导入
 
@@ -213,8 +209,6 @@ $ bin/sqoop import \
 ```
 
 <span style="color:red;">提示：columns中如果涉及到多个列，用逗号（comma）分隔，分隔时不要添加空格。</span>
-
-
 
 ​	4）使用`--where`关键字筛选导入数据
 
@@ -335,8 +329,6 @@ $ mkdir opt
 $ touch opt/job_HDFS2RDBMS.opt
 ```
 
-
-
 （2）编写sqoop脚本
 
 ```shell
@@ -364,8 +356,6 @@ staff
 ```shell
 $ bin/sqoop --options-file opt/job_HDFS2RDBMS.opt
 ```
-
-
 
 # 5. Sqoop一些常用命令及参数
 
@@ -433,10 +423,6 @@ https://sqoop.apache.org/docs/1.4.7/SqoopUserGuide.html
 
 
 目前，Sqoop不支持增量迁移导入/导出数据，这也许是Sqoop的一大缺点。
-
-
-
-
 
 # sqoop使用
 
