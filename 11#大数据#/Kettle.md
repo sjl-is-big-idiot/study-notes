@@ -161,6 +161,8 @@ Kettle中有两种脚本文件，**transformation**和**job**。
 
 **Kettle是用Java语言开发的，因此在使用Kettle命令行时需要注意匹配Java版本**。例如Kettle8.2.0版本需要JDK 1.8的支持。这样就能**在Spoon的图形界面下进行设计开发调试，然后用命令行执行保存的转换或作业（.ktr或.kjb文件）**，秉承Java程序一次编译到处运行的理念。
 
+`.ktr`文件为XML格式。
+
 ### 1.2.3 Carte
 
 **Carte服务用于执行一个作业，就想Kitchen一样。但和Kitchen不同的是，Carte是一个服务，一直在后台运行，而Kitchen只是运行一个作业就退出。**
@@ -173,7 +175,7 @@ Carte是Kettle集群中一个重要的构建快。集群可将单个工作或转
 
 参考自：[大数据ETL开发之图解Kettle工具（入门到精通）](https://cloud.tencent.com/developer/article/2037789)
 
-在实际企业开发中，都是在本地Windows环境下进行 kettle 的 job 和 Transformation 开发的，可以在本地运行，也可以连接远程机器运行
+在实际企业开发中，都是在本地Windows环境下进行 kettle 的 job 和 Transformation 开发的，可以在本地运行，也可以连接远程机器运行。
 
 ## 2.1 下载kettle
 
