@@ -225,7 +225,7 @@ Github源码下载：https://github.com/pentaho/pentaho-kettle
 
 # 4. 使用kettle
 
-## 4.1 转换案例
+## 4.1 转换
 
 ### csv文件转换为excel文件
 
@@ -257,11 +257,95 @@ Github源码下载：https://github.com/pentaho/pentaho-kettle
 
 ![img](Kettle.assets/5cacc882fd2aebc44eff76ea9af05607.jpeg)
 
-## 4.2 作业案例
+## 4.2 作业
 
+TODO
 
+# 5. Kettle资源库
 
-# 5. 常见报错
+- pentaho repository
+
+  ![image-20230607174732322](Kettle.assets/image-20230607174732322.png)
+
+- 数据库资源库
+
+   数据库资源库是将作业和转换相关的信息存储在数据库中，执行的时候直接去数据库读取信息，很容易跨平台使用 
+
+  
+
+  ![image-20230607174746565](Kettle.assets/image-20230607174746565.png)
+
+  1）点击右上角connect，选择Other Resporitory 
+
+   2) 选择Database Repository 
+
+   3) 建立新连接 
+
+   4) 填好之后，点击finish，会在指定的库中创建很多表，至此数据库资源库创建完成 
+
+  ![img](Kettle.assets/24fc188c4666124f3a4dc9f65dade3b8.jpeg)
+
+   5) 连接资源库，默认账号密码为admin 
+
+   6) 将之前做过的转换导入资源库
+
+  ​     (1)选择从xml文件导入 
+
+  ​     (2)随便选择一个转换 
+
+  ​     (3)点击保存，选择存储位置及文件名 
+
+  ​     (4)打开资源库查看保存结果 
+
+- 文件资源库
+
+  ![image-20230607174803701](Kettle.assets/image-20230607174803701.png)
+
+# 6. kettle调优
+
+1、调整JVM大小进行性能优化，修改Kettle根目录下的Spoon脚本。 
+
+![img](Kettle.assets/f82dc631b652aee99e57fa69eab32447.jpeg)
+
+ 参数参考：
+
+-Xmx2048m：设置JVM最大可用内存为2048M。
+
+-Xms1024m：设置JVM促使内存为1024m。此值可以设置与-Xmx相同，以避免每次垃圾回收完成后JVM重新分配内存。
+
+-Xmn2g：设置年轻代大小为2G。整个JVM内存大小=年轻代大小 + 年老代大小 + 持久代大小。持久代一般固定大小为64m，所以增大年轻代后，将会减小年老代大小。此值对系统性能影响较大，Sun官方推荐配置为整个堆的3/8。
+
+-Xss128k：设置每个线程的堆栈大小。JDK5.0以后每个线程堆栈大小为1M，以前每个线程堆栈大小为256K。更具应用的线程所需内存大小进行调整。在相同物理内存下，减小这个值能生成更多的线程。但是操作系统对一个进程内的线程数还是有限制的，不能无限生成，经验值在3000~5000左右。
+
+2、 调整提交（Commit）记录数大小进行优化，Kettle默认Commit数量为：1000，可以根据数据量大小来设置Commitsize：1000~50000
+
+3、尽量使用数据库连接池；
+
+4、尽量提高批处理的commit size；
+
+5、尽量使用缓存，缓存尽量大一些（主要是文本文件和数据流）；
+
+6、Kettle是Java做的，尽量用大一点的内存参数启动Kettle；
+
+7、可以使用sql来做的一些操作尽量用sql；Group , merge , stream lookup,split field这些操作都是比较慢的，想办法避免他们.，能用sql就用sql；
+
+8、插入大量数据的时候尽量把索引删掉；
+
+9、尽量避免使用update , delete操作，尤其是update,如果可以把update变成先delete, 后insert；
+
+10、能使用truncate table的时候，就不要使用deleteall row这种类似sql合理的分区，如果删除操作是基于某一个分区的，就不要使用delete row这种方式（不管是deletesql还是delete步骤）,直接把分区drop掉，再重新创建；
+
+11、尽量缩小输入的数据集的大小（增量更新也是为了这个目的）；
+
+12、尽量使用数据库原生的方式装载文本文件(Oracle的sqlloader, mysql的bulk loader步骤)。
+
+# 7.  案例数据和ETL开发岗位资料下载
+
+**案例数据下载地址**：https://pan.baidu.com/s/1_lzc93xprEaJt6IyflxcZg?pwd=ydao，提取码：ydao
+
+**资料下载地址**：[ ETL开发从入门到就业：基础知识、真实项目、面试资料.zip ](https://download.csdn.net/download/yuan2019035055/76092454)
+
+# 8. 常见报错
 
 Q. 打开kettle后一闪而过就没了
 
