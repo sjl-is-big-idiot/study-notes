@@ -339,13 +339,83 @@ TODO
 
 12、尽量使用数据库原生的方式装载文本文件(Oracle的sqlloader, mysql的bulk loader步骤)。
 
-# 7.  案例数据和ETL开发岗位资料下载
+# 7. 在linux上执行kettle作业和转换
+
+参考：https://blog.csdn.net/weixin_42326851/article/details/127810698
+
+## 在linux环境中安装kettle
+
+## 在windows中配置转换和作业
+
+**1.本机打开kettle**
+建立数据库连接, 填写需要连接的数据库地址、端口、账号还有密码，点击测试连接，成功如下图：
+
+![链接数据库成功](Kettle.assets/80f991b82a744c128985ec898026e29d.png)
+
+**2.配置转换任务**
+在表输入和表输出中配置基本信息：
+
+![转换](Kettle.assets/093d229664d04eb9885dd65b2d7a6a3c.png)
+
+**3.配置作业**
+在转换过程中添加刚才的任务，transformation中如果是绝对路径，替换成如下地址>（${Internal.Entry.Current.Directory}，转换和作业放在同一目录下）
+
+![创建作业](Kettle.assets/59a3a6293a4944408ec6a90247503cc2.png)
+
+**4.本地测试**
+验证抽取数据是否成功，成功后将保存的转换和作业放在linux服务器上。
+
+## 在linux上执行转换
+
+```bash
+/pan.sh -file=/usr/local/kettle/bjyd/t_sdrs_xsjbxx.ktr -norep
+```
+
+| 命令     | 描述                                                       |
+| -------- | ---------------------------------------------------------- |
+| -file    | job或trans文件路径                                         |
+| -norep   | 标明不是资源库里的文件                                     |
+| -param   | 参数设置                                                   |
+| -logfile | log输出文件名                                              |
+| -level   | log级别 (Basic, Detailed, Debug, Rowlevel, Error, Nothing) |
+
+## 在linux上执行作业
+
+```bash
+kitchen.sh -file=/data/kettle/data-integration/test.kjb
+```
+
+## 定时执行
+
+**编写shell脚本**
+
+```bash
+#!/bin/sh
+JAVA_HOME=/data/jdk1.8.0_281
+export JRE_HOME=$JAVA_HOME/jre
+export CLASSPATH=$JAVA_HOME/lib:$JRE_HOME/lib:$CLASSPATH
+export PATH=$JAVA_HOME/bin:$JRE_HOME/bin:$PATH
+#createDate=`date +"%Y%m%d%H%M%S"`
+createDate=`date +"%Y%m%d"`
+cd /data/data-integration;./kitchen.sh -file=/data/kettle-sh-day/wlhy/kjb/prod/wlhy-job-driver.kjb >> /data/kettle-sh-day/wlhy/logs/$createDate-wlhy-job-driver.log &
+```
+
+**使用crontab定时执行shell脚本**
+
+```bash
+# 每天3:00执行如下脚本。
+00 03 * * * /data/kettle/data-integration/testfile.sh
+```
+
+
+
+# 8.  案例数据和ETL开发岗位资料下载
 
 **案例数据下载地址**：https://pan.baidu.com/s/1_lzc93xprEaJt6IyflxcZg?pwd=ydao，提取码：ydao
 
 **资料下载地址**：[ ETL开发从入门到就业：基础知识、真实项目、面试资料.zip ](https://download.csdn.net/download/yuan2019035055/76092454)
 
-# 8. 常见报错
+# 9. 常见报错
 
 Q. 打开kettle后一闪而过就没了
 
