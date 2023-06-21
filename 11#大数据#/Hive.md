@@ -409,9 +409,7 @@ Caused by: java.net.ConnectException: Call From hadoop102/192.168.1.102 to hadoo
 
 ```shell
 [atguigu@hadoop102 hive-2.3.9]$ sudo vim /etc/profile
-
 export HADOP_HOME=/opt/moudle/HA/hadoop-2.7.2
-
 [atguigu@hadoop102 hive-2.3.9]$ source /etc/profile
 ```
 
@@ -529,21 +527,19 @@ hive>
    sudo rpm -ivh mysql-community-server-5.7.28-1.el7.x86_64.rpm
    ```
 
-   
-
    <font color=red>注意：按照顺序依次执行</font>
 
    <font color=red>如果Linux是最小化安装的，在安装`mysql-community-server-5.7.28-1.el7.x86_64rpm`时可能会出现如下错误</font>：
 
    ```shell
-   [atguigu@hadoop103 software]$ sudo rpm -ivh mysql-community-server-5.7.28-1.el7.x86_64.rpm 
+[atguigu@hadoop103 software]$ sudo rpm -ivh mysql-community-server-5.7.28-1.el7.x86_64.rpm 
    [sudo] password for atguigu: 
    warning: mysql-community-server-5.7.28-1.el7.x86_64.rpm: Header V3 DSA/SHA1 Signature, key ID 5072e1f5: NOKEY
    error: Failed dependencies:
    	mysql-community-client(x86-64) >= 5.7.9 is needed by mysql-community-server-5.7.28-1.el7.x86_64
    	mysql-community-common(x86-64) = 5.7.28-1.el7 is needed by mysql-community-server-5.7.28-1.el7.x86_64
    ```
-
+   
    <font color=red>通过 yum 安装缺少的依赖,然后重新安装 mysql-community-server-5.7.28-1.el7.x86_64 即可</font>
 
 5. 创建用于启动MySQL的用户，如mysql
@@ -707,8 +703,6 @@ hive>
        </propertiy>
    </configuration>
    ```
-
-   
 
 2. 登录MySQL
 
@@ -908,11 +902,9 @@ hive其实就是解析对应HDFS目录的下的文件内容，然后得到表中
 
 <font color="red">**注意：从`hive 4.0.0`开始`Hive Metastore`支持基于`ZooKeeper`的动态服务发现，配置方式见文档：https://cwiki.apache.org/confluence/display/Hive/AdminManual+Metastore+Administration**</font>
 
-#### 2.2.2.6 启动hiveserver2
+### 2.2.3 启动hiveserver2
 
 使用JDBC方式访问Hive
-
-
 
 1. 在 hive-site.xml 文件中添加如下配置信息
 
@@ -1024,6 +1016,9 @@ hive其实就是解析对应HDFS目录的下的文件内容，然后得到表中
    
        5. Connect using LDAP authentication
        $ beeline -u jdbc:hive2://hs2.local:10013/default <ldap-username> <ldap-password>
+       
+       6. 通过zookeeper实现hiveserver2的HA的连接方式
+       beeline -u "jdbc:hive2://hadoop322-node01:2181,hadoop322-node02:2181,hadoop322-node03:2181/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2_zk" -n sjl ""
    ```
 
    用beeline连接看看
@@ -1300,7 +1295,7 @@ DELETE { FILE[S] | JAR[S] | ARCHIVE[S] } [<filepath1> <filepath2> ..]
 
 - `JAR`
 
-  JAR类Hive资源会被add到Java classpath中。通常在UDF中会用到。
+  **JAR类Hive资源会被add到Java classpath中。通常在UDF中会用到。**
 
 - `ARCHIVE`
 
@@ -1519,6 +1514,20 @@ Beeline会结合`beeline-hs2-connection.xml`和classpath中的`hive-site.xml`来
 
 ## 2.5 Hive其他命令
 
+连接HS2
+
+```bash
+# 一、在shell命令行连接
+
+
+# 二、进入beeline后再连接，此类命令末尾都不能加分号！
+!connect jdbc:hive2://xxx
+## 重新连接
+!reconnect
+```
+
+
+
 1. 退出hive窗口：
 
    ```sql 
@@ -1552,7 +1561,21 @@ Beeline会结合`beeline-hs2-connection.xml`和classpath中的`hive-site.xml`来
    [atguig2u@hadoop102 ~]$ cat .hivehistory 
    ```
 
-   
+
+常用命令：
+
+```sql
+-- 查看当前连接hive的用户
+select current_user();
+
+
+
+
+add jar <path of jar>; -- 本地路径或hdfs路径均可
+list jars;
+```
+
+
 
 ### 2.9 Hive常见属性配置
 
@@ -3407,9 +3430,11 @@ FAILED: SemanticException [Error 10061]: Numerator should not be bigger than den
 
 # 8. 函数
 
+所有的Hive关键字都是大小写敏感的，包括hive的`库名`, `表名`, `字段名`, `操作符`,`函数`等。
+
 ## 8.1 系统内置函数
 
-1. 查看系统自带的函数，应该显示的是所有函数吧，包括用于自定义的函数 TODO
+1. 查看系统自带的函数，应该显示的是所有函数吧，包括用于自定义的函数
 
    ```sql
    hive > show functions;
@@ -3417,21 +3442,25 @@ FAILED: SemanticException [Error 10061]: Numerator should not be bigger than den
 
 2. 查看某些函数
 
+   自定义的函数是`库名.函数名`，因此使用`like`查询时，需要加上`库名`，否则是查询不到。
+
    ```sql
    hive > show functions like 'u*';
    ```
 
-   
-
 3. 显示自带函数的用法
 
    ```sql
+   hive > DESCRIBE FUNCTION <function_name>;
+   如
    hive > desc function upper;
    ```
 
 4. 详细显示自带函数的用法
 
    ```sql
+   hive > DESCRIBE FUNCTION EXTENDED <function_name>;
+   如
    hive > desc function extended upper;
    ```
 
@@ -3441,9 +3470,174 @@ FAILED: SemanticException [Error 10061]: Numerator should not be bigger than den
 
 ### 8.3 自定义函数
 
+Hive的内置函数也是三种，分别对应UDF、UDAF、UDTF。
+
+- **Built-in Functions**
+- **Built-in Aggregation  Functions**
+- **Built-in Table  Functions**
+
+分为三种：
+
+- **UDF** 
+
+  User Defined Function。用户自定义标量值函数，输入和输出是一对一的关系，**输入一行，输出一行**。
+
+- **UDAF**
+
+  User defined aggregation function。用户自定义聚合函数，输入和输出是多对一的关系，**输入多行，输出一行**，功能和聚合函数类似，可以和group by一起使用，和内置函数max,min,sum等类似。
+
+- **UDTF**
+
+  User defined table function。用户自定义表值函数，输入和输出是一对多的关系，**输入一行，输出多行**。是用来解决一次函数调用输出多行数据的场景的。
+
 ## 8.4 自定义UDF函数
 
-## 8.5 自定义UDTF函数
+使用自己编写的UDF函数。
+
+> 参考：https://blog.csdn.net/houzhizhen/article/details/122825706
+>
+> https://cwiki.apache.org/confluence/display/Hive/HivePlugins
+>
+> 可以有**两种函数**：
+>
+> - `temporary function`
+>
+>   TEMPORARY FUNCTION 的作用域仅在当前会话中，重新进入hive，或者重新连接 HiveServer2，需要重新创建。**temporary function的信息并不会存储在metastore所在的后端数据库中。**
+>
+>   ```SQL
+>   ADD JAR <path of Jar>; --路径可以是 hdfs 或者 本地文件, 路径不能加引号！
+>   CREATE TEMPORARY FUNCTION <functionName> AS 'com.xxx.xxx.ClassName';
+>   或者
+>   CREATE TEMPORARY FUNCTION <functionName> AS 'com.xxx.xxx.ClassName' using jar <path of jar>; -- 本地文件或hdfs文件均可。
+>   
+>   DROP  [TEMPORARY] FUNCTION IF EXISTS <functionName>; -- 删除函数
+>   ```
+>
+>   在当前会话中，show functions 能看到temporary function，
+>
+> - `permanent function`
+>
+>   **持久函数的作用域是全局的**，在一个会话创建的持久函数，在其他会话可以看到。**持久函数的信息存储在 MetaStore后端数据库里**，所以重启 Hive 环境，重启 HiveServer 或者重启 MetaStore 都不影响持久函数的使用。
+>   <font color="red">持久函数属于一个数据库，不同的数据库可以有相同名称的持久函数。通常的做法是专门创建一个名为udf或类似名字的hive数据库，将所有函数都创建在此库之下，然后通过`库名.函数名(参数)`方式使用。</font>
+>
+>   只要没有drop function xxx。show functions 永远能看到temporary function，
+>
+>   对于PERMANENT FUCTION必须先将函数的jar包上传到hdfs上，然后才能创建持久函数，下面这种方式创建的函数并不能持久，会话关闭则丢失：
+>   
+>   ```sql
+>   ADD JAR <path of Jar>; --本地文件
+> CREATE PERMANENT FUNCTION <functionName> AS 'com.xxx.xxx.ClassName'; -- 会报错
+>   ```
+>
+>   **正确方式**
+>   
+>   ```sql
+>   hadoop fs -mkdir -p /user/hive/udf-jars
+>   hadoop fs -put /home/hadoop/MyHiveUDF-1.0-SNAPSHOT.jar /user/hive/udf-jars
+>   
+>   beeline
+>   -- 创建持久函数，这种方式也会将hdfs上的jar复制到本地的/tmp目录下的某临时目录中，
+>   ```
+> > create function  udf.helloworld as 'ccom.sjl.hive.udf.HelloUDF'  using jar '/user/hive/udf-jar/MyHiveUDF-1.0-SNAPSHOT.jar';
+>
+> > list jars;	-- 也只是在当前会话能查看到。
+>   +----------------------------------------------------+
+>   |                      resource                      |
+>   +----------------------------------------------------+
+>   | /tmp/60948ff5-6b0a-4478-af58-ca9ca529e57a_resources/MyHiveUDF-1.0-SNAPSHOT.jar |
+>   +----------------------------------------------------+
+> 
+>   ```
+>   
+>   ```
+>
+>   **持久函数的基本信息存储在 FUNCS 表中。**
+>
+> ```sql
+>   mysql> select * from metastore.FUNCS;
+> +---------+--------------------------------------------------------+-------------+-------+------------------+-----------+------------+------------+
+>   | FUNC_ID | CLASS_NAME                                             | CREATE_TIME | DB_ID | FUNC_NAME        | FUNC_TYPE | OWNER_NAME | OWNER_TYPE |
+>   +---------+--------------------------------------------------------+-------------+-------+------------------+-----------+------------+------------+
+>   |       1 | org.apache.hadoop.hive.ql.udf.generic.GenericUDFLength |  1644303366 |     5 | genericudflength |         1 | NULL       | USER       |
+>   +---------+--------------------------------------------------------+-------------+-------+------------------+-----------+------------+------------+
+>   1 row in set (0.00 sec)
+> ```
+>
+>   **持久函数的 Jar 包位置信息存储在 FUNC_RU 表中。**
+>
+>   ```sql
+>   mysql> select * from metastore.FUNC_RU;
+>   +---------+---------------+-----------------------------------------------------+-------------+
+>   | FUNC_ID | RESOURCE_TYPE | RESOURCE_URI                                        | INTEGER_IDX |
+>   +---------+---------------+-----------------------------------------------------+-------------+
+>   |       1 |             1 | hdfs://localhost:9000/apps/hive/hive-exec-3.1.2.jar |           0 |
+>   +---------+---------------+-----------------------------------------------------+-------------+
+>   1 row in set (0.00 sec)
+>   ```
+>
+> 1. IDEA编写UDF函数，并maven打包为my_hive_udf.jar
+>
+>    ```java
+>    package com.sjl.hive.udf;
+>    
+>    import org.apache.hadoop.hive.ql.exec.UDF;
+>    
+>    public class HelloUDF extends UDF {
+>        public String evaluate(String input) {
+>            return "Hello " + input;
+>        }
+>    }
+>    ```
+>
+> 2. 将my_hive_udf.jar上传到集群某服务器node1中
+>
+> 3. 将自定义的jar包添加到hive的classpath
+>
+>    ```sql
+>    beeline
+>    -- 将jar添加到hive的classpath
+>    > add jar /tmp/my_hive_udf.jar;
+>    -- 查看jar
+>    > list jars; 
+>    ```
+>
+> 4. 使用导入到hive classpath的jar来创建函数。
+>
+>    ```sql
+>    > CREATE  FUNCTION 函数名 AS '全限定的类名';
+>    ```
+>
+>    3、4也可以合成一条来实现：
+>
+>    ```sql
+>    > CREATE temporary FUNCTION 函数名 AS '全限定的类名' USING JAR 'hdfs:///path/to/jar';
+>    ```
+>
+> 5. 使用
+>
+>    ```sql
+>    0: jdbc:hive2://hadoop322-node01:10000> select helloworld("世界");
+>    INFO  : Compiling command(queryId=hadoop_20230608165033_1dc1df89-a663-4176-b622-11e0e12fab01): select helloworld("世界")
+>    INFO  : Concurrency mode is disabled, not creating a lock manager
+>    INFO  : Semantic Analysis Completed (retrial = false)
+>    INFO  : Returning Hive schema: Schema(fieldSchemas:[FieldSchema(name:_c0, type:string, comment:null)], properties:null)
+>    INFO  : Completed compiling command(queryId=hadoop_20230608165033_1dc1df89-a663-4176-b622-11e0e12fab01); Time taken: 1.72 seconds
+>    INFO  : Concurrency mode is disabled, not creating a lock manager
+>    INFO  : Executing command(queryId=hadoop_20230608165033_1dc1df89-a663-4176-b622-11e0e12fab01): select hellworld("世界")
+>    INFO  : Completed executing command(queryId=hadoop_20230608165033_1dc1df89-a663-4176-b622-11e0e12fab01); Time taken: 0.0 seconds
+>    +-----------+
+>    |    _c0    |
+>    +-----------+
+>    | Hello 世界  |
+>    +-----------+
+>    1 row selected (1.764 seconds)
+>    ```
+>
+>    
+
+## 8.5 自定义UDAF函数
+
+## 8.6 自定义UDTF函数
 
 
 
@@ -4962,11 +5156,11 @@ Spark上的Hive仅使用特定版本的Spark进行测试，因此给定版本的
 
 ### 13.2.2 Hive配置
 
-注意：上面提到的jar包（slf4j和guava这两个包与hadoop的冲突）冲突要解决，要不然配置之后也会发现Hive on Spark无法提交创建spark session。
+注意：上面提到的jar包（**slf4j和guava这两个包与hadoop的冲突**）冲突要解决，要不然配置之后也会发现Hive on Spark无法提交创建spark session。
 
 #### 13.2.2.1 在Hive中添加Spark的依赖
 
-`Hive 2.2.0` 之前，需要将spark-assembly jar链接到`$HIVE_HOME/lib`。
+`Hive 2.2.0` 之前，需要将`spark-assembly jar`链接到`$HIVE_HOME/lib`。
 
 从`Hive 2.2.0`开始，Hive on Spark运行的Spark版本为Spark 2.0.0及以上，不需要任何assembly jar了。
 
@@ -5078,15 +5272,12 @@ export MAVEN_OPTS="-Xmx2g -XX:MaxPermSize=512M -XX:ReservedCodeCacheSize=512m"
 # 官方提供的命令
 ./dev/make-distribution.sh --name "hadoop2-without-hive" --tgz "-Pyarn,hadoop-provided,hadoop-2.7,parquet-provided,orc-provided"
 
-
 # 如果官方命令编译出来的spark集成到Hive on Spark有问题的话，可能是因为"hadoop-provided"这个配置导致编译之后没有yarn的包。
 # 那么可以使用如下的命令重新进行编译。
 ./dev/make-distribution.sh --name "hadoop3.2-without-hive" --tgz "-Pyarn,hadoop-3.2,parquet-provided,orc-provided"
 
 # 重新编译了35min后，亲测可用了。
 ```
-
-
 
 Hive on Spark 应用程序中，常见的需要调整的spark配置如下：
 
@@ -5168,15 +5359,49 @@ https://cwiki.apache.org/confluence/display/Hive/Kudu+Integration
 
 TODO
 
-
-
 # 附录：常见错误及解决方案
 
-### 1. SELECT COUNT(*) 不执行MR任务的说明。
+### Q. hive3 on spark3 和spark3 on hive3
 
+**spark3 on hive3**
 
+以腾讯云emr3.2.1为例，其`$SPARK_HOME/jars/`下的hive的jar基本都是默认支持的hive2.3.7的jar包。如下图所示：
 
-### Hive的临时目录
+![image-20230620165402469](Hive.assets/image-20230620165402469.png)
+
+​																					emr3.2.1的spark/jars
+
+这也就是说，要想实现spark3 on hive3只需要让spark支持hive即可。所以按照如下的编译命令即可满足要求：
+
+```bash
+./dev/make-distribution.sh --name "hadoop3.2.2-spark" --tgz "-Pyarn,hadoop-3.2.2,parquet-provided,orc-provided,hive-thriftserver,hive" -DskipTests clean package
+```
+
+**尽管按照上述命令编译之后的hive的jar都是2.3.7的，但是也与腾讯云emr3.2.1中编译后的spark的hive的jar包是一致的，所以完全ok。主要我修改了spark3.0.2的pom.xml中的hive为3.1.2之后编译总是报错，不会解决。后来对比才发现就直接这样编译就可以用了。**
+
+**hive3 on spark3**
+
+以腾讯云emr3.2.1为例，其`$HIVE_HOME/lib/`下的spark的jar基本都是默认支持的spark2.3.0的jar包。如下图所示：
+
+![image-20230620174011314](Hive.assets/image-20230620174011314.png)
+
+​																				emr3.2.1 hive/lib
+
+我们通常会重新编译hive3.1.2以让其兼容spark3，重新编译后的spark的jar包如下所示：
+
+![image-20230620174346330](Hive.assets/image-20230620174346330.png)
+
+​																			重新编译hive3.1.2后 hive/lib
+
+spark-*这些jar都是从`$SPAR_HOME/jars`中拷贝到`$HIVE_HOME/lib`下的。
+
+==对比发现，腾讯云emr3.2.1应该都没有重新编译hive3.1.2。也许hive3.1.2也是兼容spark3.0.2的。不确定哦==
+
+### Q. SELECT COUNT(*) 不执行MR任务的说明。
+
+TODO
+
+### Q. Hive的临时目录
 
 在hive client和HDFS（或其他文件系统）会使用临时目录。目的是用于存储查询过程中的临时/中间数据集。当query完成之后，hive client会清除这些临时/中间数据集。但是，如果hive client的本次query异常终止，则会保留这些临时/中间文件。
 
