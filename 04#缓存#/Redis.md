@@ -1551,6 +1551,12 @@ Redis可以使用主从同步，从从同步。第一次同步时，主节点做
 
 **Redis Cluster** 着眼于扩展性，在单个redis内存不足时，使用Cluster进行分片存储。
 
+### redis-cluster 不可用 的情况
+
+1、集群主库半数宕机（无论是否从库存活）
+
+2、集群某一节点的主从全数宕机。
+
 ## 面试结束
 
 ### 小伙子你可以的，什么时候有时间来上班啊，要不明天就来吧？
@@ -1800,7 +1806,7 @@ redis重启之后密码就会失效
 > **master修改**
 >
 > 1. redis.conf
->   requirepass 123456        #添加密码
+>     requirepass 123456        #添加密码
 >
 >   sentinel.conf
 >   sentinel auth-pass mymaster 123456     #连接master密码
@@ -1808,10 +1814,10 @@ redis重启之后密码就会失效
 > **slave修改**
 >
 > 1. redis.conf
->   masterauth 123456    #连接master密码
->   slaveof 10.100.134.109 6379  #slaveof表示该机器是slave，后边ip为master地址和端口
+>     masterauth 123456    #连接master密码
+>     slaveof 10.100.134.109 6379  #slaveof表示该机器是slave，后边ip为master地址和端口
 > 2. sentinel.conf
->   sentinel auth-pass mymaster 123456     #连接master密码
+>     sentinel auth-pass mymaster 123456     #连接master密码
 >
 > **启动redis**
 > bin/redis-server conf/redis.conf
