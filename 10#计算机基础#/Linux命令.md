@@ -1,6 +1,6 @@
 
 
-### Linux中各目录的作用
+## Linux中各目录的作用
 
 ![img](Linux命令.assets/20181220143703134)
 
@@ -28,7 +28,7 @@
 
 
 
-## 29. linux 如何设置开机自启动程序
+## linux 如何设置开机自启动程序
 
 1. 最简单粗暴的方式直接在脚本`/etc/rc.d/rc.local`(和`/etc/rc.local`是同一个文件，软链)末尾添加自己的脚本；然后，增加脚本执行权限
 
@@ -261,18 +261,43 @@ ssh root@ip "your command"
 ssh root@192.168.0.3 "df -h |grep -w /"
 ```
 
-## 查看系统版本信息
+## 系统信息
+
+### 查看系统版本信息
 
 ```bash
 uname -a
 lsb_release -a
 cat /etc/issue
-<<<<<<< HEAD
 cat /prov/version
-=======
->>>>>>> 3777eaa39c5bdf7bdd5ad246caaca1cf3fe248ab
 cat /etc/redhat-release
 ```
+
+### 查看系统调用
+
+strace
+
+### 查看机器平均负载
+
+使用 `uptime` 和 `w` 可打印出系统过去 1, 5, 15 分钟内的平均负载。同时，你可以使用 `sar -q` 查看动态的平均负载。
+
+### 查看系统内存
+
+free
+
+### 查看系统CPU信息
+
+`cat /proc/cpuinfo`查看cpu基本信息。
+
+如何查看 CPU 个数
+
+如何查看 CPU model
+
+如何查看 CPU 主频
+
+## 可以查看CPU使用率，内存使用率等信息
+
+htop/top
 
 ## 用户和用户组相关
 
@@ -846,3 +871,35 @@ NTP synchronized: yes
 1676163423
 ```
 
+
+
+
+
+## 查看进程信息
+
+```bash
+# 查看 122 PID 进程
+$ ps 122
+
+# 根据命令名(command)找到 PID
+$ pgrep -a node
+26464 node /code/node_modules/.bin/ts-node index.ts
+30549 node server.js
+
+# 根据命令名以及参数找到 PID
+$ pgrep -af ts-node
+26464 node /code/node_modules/.bin/ts-node index.ts
+
+# 查看 122 PID 进程的信息
+$ cat /proc/122/status
+$ cat /proc/122/*
+
+# 打印父进程树
+# -s --show-parents: 显示父进程
+# -a --arguments: 显示参数，如 echo hello 中 hello 为参数
+$ pstree 122 -sap
+```
+
+## 列出的文件
+
+lsof（全程list open files）
