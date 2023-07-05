@@ -40,15 +40,21 @@ x.sout	println
 
 
 
-# 问题
+# 常见问题
 
-## IDEA如何打jar包？
+Q. IDEA使用maven package打包后没有target目录，也没有xxx.jar
+
+问题原因：
+
+> 在pom.xml中的`<project><packaging>pom</packaging></project>`中，指定了打包格式为pom并不为jar，删除此行重新打包即可。
+
+## Q. IDEA如何打jar包？
 
 https://blog.csdn.net/u013733643/article/details/124242741
 
 ![image-20230131153843616](IntelliJ.assets/image-20230131153843616.png)
 
-## IDEA 的Plugins 连不上、打不开
+## Q. IDEA 的Plugins 连不上、打不开
 
 参考文档：https://blog.csdn.net/loulanyue_/article/details/105779350
 

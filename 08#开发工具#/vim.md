@@ -3,6 +3,7 @@
 ```vimrc
 set nocompatible
 syntax on
+colorscheme evening
 set showmode
 set showcmd
 set mouse=a
@@ -51,6 +52,14 @@ set wildmode=longest:list,full
 
 
 
+## vim配色方案
+
+参考文章：[Vim设置colorscheme小技巧](https://cloud.tencent.com/developer/article/2146904)
+
+Vim的颜色主题在`/usr/share/vim/vim74/colors`文件夹里。打开vim后在normal模式下输入`:colorscheme`查看当前的主题，修改主题使用命令`:colorscheme mycolor`，其中mycolor是你`/usr/share/vim/vim74/colors`文件夹包含的文件名。也可以把这个命令写入`~/.vimrc`配置文件中，这样每次打开Vim都是你设定的主题。
+
+<font color="red">注意：不同的OS版本可能vim的文件夹不一样，有的可能是`/usr/share/vim/vim73/colors`，需要根据自己的系统进行调整。</font>
+
 Q. tab转为2个空格
 
 ```bash
@@ -59,3 +68,8 @@ Q. tab转为2个空格
 :%rerab!
 ```
 
+# 参考
+
+[]
+
+[2] [Vim设置colorscheme小技巧](https://cloud.tencent.com/developer/article/2146904)

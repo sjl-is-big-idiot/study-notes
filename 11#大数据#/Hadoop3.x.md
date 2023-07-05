@@ -4241,6 +4241,61 @@ Usage: haadmin
 
 <font color="red">**注意：不执行fence，因此一般不建议使用这两个命令，而是建议使用`hdfs haadmin -failover`。**</font>
 
+## distCp
+
+参考：[Hadoop DistCp工具简介及其参数](https://blog.csdn.net/weixin_43786255/article/details/109243378)
+
+**distcp作用是从hdfs复制一个或多个\**数据文件或数据目录到一个指定目录下。\**会启动Map任务去复制，不会启动Reduce任务。**
+
+适合的场景及其有点
+  适合场景：数据异地灾；机房下线，数据迁移等。
+  优点：①可以限制带宽，使用bandwidth参数对distcp的每个map任务限流，同时控制map并发数量即可控制整个拷贝任务的带宽，防止拷贝任务将带宽打满，影响其它业务。
+  ②支持overwrite（覆盖写，无条件覆盖目标文件，即使它们存在），update（增量写，如果dest文件的名称和大小与src文件不同，则覆盖；若目的文件大小和名称与源文件相同则跳过），delete（删除写，删除dst中存在的文件，但在src中不存在）等多种源和目的校验的拷贝方式，大量数据的拷贝必然要做到数据拷贝过程中的校验，来保证源和目的数据的一致性。
+
+2 参数说明
+  此参数为Hadoop2.x版本
+
+```bash
+# hadoop distcp
+
+usage: distcp OPTIONS [source_path...] <target_path>
+              OPTIONS
+ -append                       重用目标文件中的现有数据，并在可能的情况下添加新数据，新增进去而不是覆盖它
+ -async                        是否应该阻塞distcp执行
+ -atomic                       提交所有更改或不提交更改
+ -bandwidth <arg>              以MB/second为单位指定每个map的带宽
+ -delete                       删除目标文件中存在的文件，但在源文件中不存在，走HDFS垃圾回收站
+ -diff <arg>                   使用snapshot diff报告来标识源和目标之间的差异
+ -f <arg>                      需要复制的文件列表
+ -filelimit <arg>              （已弃用！）限制复制到<= n的文件数
+ -filters <arg>                从复制的文件列表中排除
+ -i                            忽略复制过程中的失败
+ -log <arg>                    HDFS上的distcp执行日志文件夹保存
+ -m <arg>                      限制同步启动的map数，默认每个文件对应一个map，每台机器最多启动20个map
+ -mapredSslConf <arg>          配置ssl配置文件，用于hftps：//
+ -numListstatusThreads <arg>   用于构建文件清单的线程数(最多40个)，当文件目录结构复杂时应该适当增大该值
+ -overwrite                    选择无条件覆盖目标文件，即使它们存在。
+ -p <arg>                      保留源文件状态（rbugpcaxt）（复制，块大小，用户，组，权限，校验和类型，ACL，XATTR，时间戳）
+ -sizelimit <arg>              （已弃用！）限制复制到<= n的文件数字节
+ -skipcrccheck                 是否跳过源和目标路径之间的CRC检查。
+ -strategy <arg>               选择复制策略，默认值uniformsize，每个map复制的文件总大小均衡；可以设置为dynamic，使更快的map复制更多的文件，以提高性能
+ -tmp <arg>                    要用于原子的中间工作路径承诺
+ -update                       如果目标文件的名称和大小与源文件不同，则覆盖；如果目标文件大小和名称与源文件相同则跳过
+```
+
+注意：如果设置了-overwrite或-update，则每个源URI和目标URI保持同级一致，如
+
+`-overwrite`的作用是覆盖同名文件（不是覆盖路径），如果目的路径下不存在该源文件则是复制过来！（目的路径下的其他文件依然存在且无变化！）
+
+`-update` 只会复制目的路径下不存在文件、同名且文件大小不一致的文件。目的路径下的其他文件依然存在且无变化！
+
+```bash
+hadoop distcp -i  -p hdfs://192.168.40.100:8020/user/hive/warehouse/iot.db/dwd_pollution_distcp hdfs://192.168.40.200:8020/user/hive/warehouse/iot.db/
+hadoop distcp -i -update -delete -p hdfs://192.168.40.100:8020/user/hive/warehouse/iot.db/dwd_pollution_distcp hdfs://192.168.40.200:8020/user/hive/warehouse/iot.db/dwd_pollution_distcp
+```
+
+
+
 # 4. 调优
 
 HDFS参数调优

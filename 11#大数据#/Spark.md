@@ -2353,13 +2353,13 @@ Spark程序受到：CPU、网络带宽、内存的资源限制。
 
 Spark提供了两个序列化的库：
 
-- Java serialization
+- `Java serialization`
 
-  默认情况下，Spark使用Java的`ObjectOutputStream`框架对对象进行序列化，兼容任何实现`Java.io.Serializable`的类。还可以通过扩展`java.io.Externalizable`来控制序列化的性能。Java序列化是灵活的，但通常非常慢。
+  默认情况下，Spark使用Java的`ObjectOutputStream`框架对对象进行序列化，兼容任何实现`Java.io.Serializable`的类。还可以通过扩展`java.io.Externalizable`来控制序列化的性能。**Java序列化是灵活的，但通常非常慢**。
 
-- Kryo serialization
+- `Kryo serialization`
 
-  Spark还可以使用Kryo库（版本4）更快地序列化对象。Kryo比Java序列化快得多，也更紧凑（通常高达10倍），但它不支持所有的Serializable类型，需要您预先注册程序中使用的类以获得最佳性能。
+  Spark还可以使用Kryo库（版本4）更快地序列化对象。**Kryo比Java序列化快得多，也更紧凑（通常高达10倍）**，但它不支持所有的Serializable类型，需要您预先注册程序中使用的类以获得最佳性能。
 
 
 
@@ -2568,7 +2568,84 @@ Spark通常做的是等待一段时间，希望繁忙的CPU能够释放出来。
 
 TODO
 
+# 7. SpakCore
 
+# 8. SparkSQL
+
+## 8.1 介绍
+
+Spark SQL 是 Spark 用于结构化数据(structured data)处理的 Spark 模块。
+
+SparkSQL 的前身是 Shark，给熟悉 RDBMS 但又不理解 MapReduce 的技术人员提供快速上手的工具。
+
+Hive 是早期唯一运行在 Hadoop 上的 SQL-on-Hadoop 工具。但是 MapReduce 计算过程中大量的中间磁盘落地过程消耗了大量的 I/O，降低的运行效率，为了提高 SQL-on-Hadoop的效率，大量的 SQL-on-Hadoop 工具开始产生，其中表现较为突出的是：
+
+⚫ `Drill`
+
+⚫ `Impala`
+
+⚫ `Shark`
+
+2014 年 6 月 1 日 Shark 项目和 SparkSQL 项目的主持人 Reynold Xin 宣布：停止对 Shark 的开发，团队将所有资源放 SparkSQL 项目上，至此，Shark 的发展画上了句话，但也因此发展出两个支线：**SparkSQL** 和 **Hive on Spark**.
+
+其中 SparkSQL 作为 Spark 生态的一员继续发展，而不再受限于 Hive，只是兼容 Hive；
+
+而Hive on Spark 是一个 Hive 的发展计划，该计划将 Spark 作为 Hive 的底层引擎之一，也就是说，Hive 将不再受限于一个引擎，可以采用 Map-Reduce、Tez、Spark 等引擎。
+
+对于开发人员来讲，SparkSQL 可以简化 RDD 的开发，提高开发效率，且执行效率非常快，所以实际工作中，基本上采用的就是 SparkSQL。Spark SQL 为了简化 RDD 的开发，提高开发效率，提供了 2 个编程抽象，类似 Spark Core 中的 RDD
+
+➢ DataFrame
+
+➢ DataSet
+
+## 8.2 SparkSQL 特点
+
+- **易整合** ：无缝的整合了 SQL 查询和 Spark 编程
+- **统一的数据访问**：使用相同的方式连接不同的数据源
+- **兼容** **Hive**：在已有的仓库上直接运行 SQL 或者 HiveQL
+- **标准数据连接**：通过 JDBC 或者 ODBC 来连接
+
+
+
+## SPARK on Hive
+
+使用如下命令编译，以支持hive和hive thriftserver。以spark3.0.2, hive3.1.2, hadoop3.2.2为例
+
+```bash
+./dev/make-distribution.sh --name "hadoop3.2.2-spark" --tgz "-Pyarn,hadoop-3.2.2,parquet-provided,orc-provided,hive-thriftserver,hive" -DskipTests clean package
+```
+
+尽管spark3.0.2默认的hive为2.3.7，但是这样编译出来的spark3.0.2也是能和hive3.1.2兼容的。
+
+`Spark on Hive`主要就是spark去连接hive metastore获取hive中库表的元数据，而sql语句的解析、优化、执行等都是由spark sql负责。
+
+**配置SparkSQL on Hive**
+
+1、第一步
+把hive的配置文件hive-site.xml拷贝到spark的conf的目录下（**最好是做个软连接，避免在两个地方维护同一个文件**），然后在spark目录下的hive-site.xml中添加如下配置：
+
+```xml
+<property>
+	<name>hive.metastore.uris</name>
+	<value>thrift://panda-pro01.xiong.com:9083</value>
+</property>
+```
+
+2、第二步
+把hive目录下lib中MySQL的jar包拷贝spark的jars目录下
+
+```bash
+cp mysql-connector-java-5.1.46-bin.jar /opt/Hadoop/spark/jars
+scp mysql-connector-java-5.1.46-bin.jar xiong@10.34.102.251:/opt/modules/spark-2.2.0-bin-custom-spark/jars
+```
+
+注：当hive和spark不在同一台机器时，可以scp发过去。
+3、第三步
+检查spark-env.sh文件中的hadoop的配置项
+
+```bash
+HADOOP_CONF_DIR=/opt/modules/hadoop-2.5.0/etc/hadoop
+```
 
 # 7. Spark迁移
 

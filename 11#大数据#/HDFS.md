@@ -1532,6 +1532,8 @@ hdfs://haoop102:9000/user/atguigu/hello.txt hdfs://hadoop103:9000/user/atguigu/h
 
 ![快照管理](HDFS.assets/wps3.png)
 
+开启快照的目录不允许被删除。
+
 **案例实操**
 
 1. 开启/禁用指定目录的快照功能
@@ -1576,19 +1578,22 @@ hdfs://haoop102:9000/user/atguigu/hello.txt hdfs://hadoop103:9000/user/atguigu/h
 
     ```shell
     [atguigu@hadoop102 hadoop-2.7.2]$ hdfs snapshotDiff
-    
      /user/atguigu/input/  .  .snapshot/atguigu170508	
     ```
-
+    
 7. 恢复快照
 
    ```shell
    [atguigu@hadoop102 hadoop-2.7.2]$ hdfs dfs -cp
-   
    /user/atguigu/input/.snapshot/s20170708-134303.027 /user
    ```
+   
+8. 列出快照
 
-
+   ```bash
+   #列出HDFS集群所有开启快照功能的目录
+   hdfs lsSnapshottableDir
+   ```
 
 ## 8. HDFS HA高可用
 

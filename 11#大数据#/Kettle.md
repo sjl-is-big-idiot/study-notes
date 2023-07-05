@@ -181,7 +181,7 @@ Carte是Kettle集群中一个重要的构建快。集群可将单个工作或转
 
 Github源码下载：https://github.com/pentaho/pentaho-kettle
 
-
+http://www.kettle.org.cn/download
 
 ## 2.2 安装kettle
 
