@@ -48,6 +48,12 @@ presto把每个worker节点可分配内存（jvm Xmx）分成三份，分别是�
 
     我理解为**(JVM内存 - query.max-total-memory-per-node - memory.heap-headroom-per-node)*worker数**。
 
+## presto web ui
+
+参考：https://cloud.tencent.com/developer/article/1673005
+
+presto web ui各参数的说明
+
 # 2. 部署
 
 TODO
