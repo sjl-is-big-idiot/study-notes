@@ -4447,6 +4447,79 @@ hdfs-site.xml文件中有一个参数：
 
 net.core.somaxconn是Linux中的一个kernel参数，表示socket监听（listen）的backlog上限。什么是backlog呢？backlog就是socket的监听队列，当一个请求（request）尚未被处理或建立时，它会进入backlog。而socket server可以一次性处理backlog中的所有请求，处理后的请求不再位于监听队列中。当server处理请求较慢，以至于监听队列被填满后，新来的请求会被拒绝。在Hadoop 1.0中，参数ipc.server.listen.queue.size控制了服务端socket的监听队列长度，即backlog长度，默认值是128。而Linux的参数net.core.somaxconn默认值同样为128。当服务端繁忙时，如NameNode或JobTracker，128是远远不够的。这样就需要增大backlog，例如我们的集群就将ipc.server.listen.queue.size设成了32768，为了使得整个参数达到预期效果，同样需要将kernel参数net.core.somaxconn设成一个大于等于32768的值。
 
+# HDFS小文件存储
+
+参考：https://www.cnblogs.com/ballwql/p/8944025.html
+
+针对小文件问题，HDFS自身也有考虑这种场景，目前已知的主要有三种方案来实现这种存储，HAR、SequenceFile、CombineFile。
+
+## HAR
+
+HAR即Hadoop归档文件，文件以`*.har`结果。归档的意思就是将多个小文件归档为一个文件
+
+![HDFS HAR组成](Hadoop3.x.assets/275962-20180520093131674-427412296.png)
+
+图中，左边是原始小文件，右边是har组成。主要包括：`_masterindex`、`_index`、`part-0...part-n`。其中_masterindex和_index就是相应的元数据信息，part-0...part-n就是相应的小文件内容。
+
+```bash
+hadoop archive -archiveName test.har -p /user/archive/  /tmp/archive/
+```
+
+要从HAR读取一个小文件的话，需要用distcp方式，原理也是mapreduce, 指定har路径和输出路径，命令如下：
+`hadoop distcp har:///user/archive/test.har/file-1 /tmp/archive/output`
+
+HAR总体比较简单，它有什么缺点呢?
+
+> 1.archive文件一旦创建不可修改即不能append，如果其中某个小文件有问题，得解压处理完异常文件后重新生成新的archive文件;
+
+> 2.对小文件归档后，原文件并未删除，需要手工删除;
+
+> 3.创建HAR和解压HAR依赖MapReduce，查询文件时耗很高;
+
+> 4.归档文件不支持压缩。
+
+## SequenceFile
+
+SequenceFile本质上是一种二进制文件格式，类似key-vallue存储，通过map/reduce的input/output format方式生成。文件内容由Header、Record/Block、SYNC标记组成，根据压缩方式的不同，组织结构也不同，主要分为Record组织模式和Block组织模式。
+
+**创建SequenceFile**
+
+这里以存储5个小的图片文件为例，演示下如何创建SequenceFile。首先将图片文件上传至hdfs的一个目录。
+
+![图片文件示例](Hadoop3.x.assets/275962-20180520093543684-853926292.png)
+
+其次，编写一个MR程序来对上述图片进行转换，将生成的文件存放到/tmp/sequencefile/seq下，MR程序源码在附件SmallFiles.zip中，可自行查看，如下所示：
+
+![MR程序转换](Hadoop3.x.assets/275962-20180520093620961-441955364.png)
+
+转换后，会在/tmp/sequencefile/seq目录生成一个part-r-00000文件，这个文件里面就包含了上述5个图片文件的内容，如下所示：
+
+![SequenceFile目录结构](Hadoop3.x.assets/275962-20180520093658131-672342277.png)
+
+如果要从该SequenceFile中获取所有图片文件，再通过MR程序从文件中将图片文件取出，如下所示：
+
+![SequenceFile取文件](Hadoop3.x.assets/275962-20180520093734475-87689634.png)
+
+#### SequenceFile优缺点
+
+##### 优点
+
+> - A.支持基于记录或块的数据压缩;
+> - B. 支持splitable,能够作为mr 的输入分片;
+> - C. 不用考虑具体存储格式，写入读取较简单.
+
+##### 缺点
+
+> - A. 需要一个合并文件的过程
+> - B. 依赖于MapReduce
+> - C. 二进制文件，合并后不方便查看
+
+## CombineFile
+
+其原理也是基于Map/Reduce将原文件进行转换，通过CombineFileInputFormat类将多个文件分别打包到一个split中，每个mapper处理一个split，提高并发处理效率，对于由大量小文件的场景，通过这种方式能够快速将小文件进行整合。最终的合并文件将是将多个小文件内容整合到一个文件中，每一行开始包含小文件的完整hdfs路径名，这就会出现一个问题，如果要合并的小文件很多，那么最终合并的文件会包含过多的额外信息，浪费过多的空间，所以这种方案目前相对用得比较少，下面是使用CombineFile的示例：
+
+TODO
+
 # MapReduce和Yarn技术原理
 
 原文章：https://www.bbsmax.com/A/l1dybyAqze/
