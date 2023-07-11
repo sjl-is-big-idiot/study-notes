@@ -68,6 +68,18 @@ Q. tab转为2个空格
 :%rerab!
 ```
 
+# VIM问题
+
+## linux中用xshell工具vim编辑文件不能鼠标右键粘贴复制问题
+
+**解决方法**：
+
+```bash
+:set mouse=c
+```
+
+
+
 # 参考
 
 []
