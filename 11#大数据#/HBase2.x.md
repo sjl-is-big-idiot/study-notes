@@ -539,6 +539,10 @@ bin/hbase-daemon.sh start master
 hbase shell
 
 > help "command"
+
+status
+status 'simple'
+...
 ```
 
 ### 3.1.2 namespace操作
@@ -701,6 +705,213 @@ delete 'ns1:student', '1001', 'info:name', 时间戳
 ```bash
 deleteall 'ns1:student', '1001', 'info:name'
 ```
+
+**快照操作**
+
+```bash
+# 做快照
+snapshot '表名', '快照名'
+
+# 根据快照创建新的表（不涉及数据拷贝），对新表的改动不会影响原始表，
+# 注意不会将原表的ACL权限恢复到新表
+clone_snapshot '快照名', '新表名'
+
+# 根据快照（需要先disable表），将数据恢复到原来的状态（包括schema也会恢复到快照时的状态）
+# 注意会将原表的ACL权限也进行恢复
+disable '表名'
+restore_snapshot '快照名'
+```
+
+如果由于客户端操作不当，丢失了部分数据，那么如何解决？
+
+> 1、clone_snapshot '快照名', '新表名'
+>
+> 2、使用MapReduce job从新表中copy出丢失的数据到原表。
+
+**Replication操作**
+
+```bash
+# 创建peer
+add_peer <ID> <CLUSTER_KEY>
+# 查看所有peer
+list_peer
+# 启用指定id 的peer
+enable_peer <peer_id>
+# 禁用指定id的peer，不再发送WAL的改动给peer集群，但是仍会跟踪需要发送给peer集群的WAL，以便启用peer之后，进行复制。
+disable_peer <peer_id>
+# 禁用并移除指定id的peer，不再发送WAL的改动也不再跟踪WAL。
+remove_peer <peer_id>
+# 启用指定表的所有列族的复制，如果目标集群不存在此表，自动创建表和列族，需要先创建peer
+enable_table_replication <TABLE_NAME>
+# 禁用指定表的所有列族的复制
+disable_table_replication <TABLE_NAME>
+peer_modification_switch <enable_or_disable>, <drain_procedures>
+# 检查是否启用peer modification
+peer_modification_enabled
+# 设置指定id的peer的serial flag为false或true
+set_peer_serial <ID>, false
+```
+
+HBase提供了replication的方式，可以在将A集群的状态同步至B集群。原理是使用源端集群的WAL来传递状态的变化给其他集群。
+
+replication是列族级别的复制
+
+前提：
+
+- 在启用replication之前，需要在目标HBase集群创建replication的表和replication的列族。
+
+常用于：
+
+- backup和灾难恢复
+- 数据聚合
+- 地理数据分布
+- 在离线数据结合分析
+
+Replication分为两种：
+
+- `asynchronous`，异步发送WAL，如果期间master崩溃，由于WAL不全，可能导致数据丢失。**目前为此种方式**，符合最终一致性。
+- `synchronous`，同步发送WAL，无数据丢失。按照客户端请求的顺序将WAL发送给peer集群。
+
+目前Replication和WAL compression有兼容性问题，不建议同时使用。要使用Replication需要将`hbase.regionserver.wal.enablecompression`设为`false`。
+
+**在HBase数据迁移中，peer集群可以理解为目标集群。一般将peer集群认为是源集群的backup集群。**
+
+在源端启用了replication的列族发生改变，则会将此列族涉及到的region所属的RegionServer上的WAL发送给peer集群。只要需要复制数据到其他HBase集群，每个涉及到的RegionServer都必须将WAL保存在HDFS上。每个RegionServer从旧往新读取WAL，并在ZK中记录处理进度，记录待处理的WAL的queue。
+
+`hbase 2.6.0``开始引入了`ReplicationPeerStorage`的文件系统，用于在HFile文件系统中存储replication peer state。
+
+**Serial replication（串行复制）**
+
+在底层有一个WAL日志的队列，按照创建时间的顺序将WAL放在队列中，按照顺序读取WAL日志，将其中的变化push给peer集群。因为默认的replication是异步的，可能存在数据不一致的问题：
+
+> This treatment can possibly lead to data inconsistency between source and destination clusters:
+>
+> 1. there are put and then delete written to source cluster.
+> 2. due to region-move / RS-failure, they are pushed by different replication-source threads to peer cluster.
+> 3. if delete is pushed to peer cluster before put, and flush and major-compact occurs in peer cluster before put is pushed to peer cluster, the delete is collected and the put remains in peer cluster, but in source cluster the put is masked by the delete, hence data inconsistency between source and destination clusters.
+
+```bash
+# 创建一个 serial replication的peer
+hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase", SERIAL => true
+
+# 修改已创建的peer的serial flag，1为peer的id
+set_peer_serial '1', false
+set_peer_serial '1', true
+```
+
+**验证Replication数据**
+
+HBase提供了一个名为`VerifyReplication`的mapreduce job用于验证replication的数据。**源端集群执行**
+
+```bash
+$ HADOOP_CLASSPATH=`${HBASE_HOME}/bin/hbase classpath` "${HADOOP_HOME}/bin/hadoop" jar "${HBASE_HOME}/hbase-mapreduce-VERSION.jar" verifyrep --starttime=<timestamp> --endtime=<timestamp> --families=<myFam> <ID> <tableName>
+```
+
+- `<ID>` 指peer id
+- `<tableName>`指需要校验的表
+- `--families`指需要检验的cf
+- `--starttime`, `--endtime` 指校验指定时间范围内的数据
+
+Replication复制原理
+
+![replication overview](HBase2.x.assets/replication_overview.png)
+
+
+
+**配置同步peer**
+
+同步replication要求HBase集群间具有相同的peer id。peer只支持`table-level`的replication，不支持cluster-level、namspace-level，cf-level的replication。
+
+命令
+
+```bash
+add_peer <ID> <CLUSTER_KEY>
+```
+
+- id表示peer的id，源目集群在进行replication时，要求peer id相同
+- CLUSTER_KEY，格式为`hbase.zookeeper.quorum:hbase.zookeeper.property.clientPort:zookeeper.znode.parent`，为**其他集群的`hbase.zookeeper.quorum`地址**
+
+```bash
+# 创建id为1的peer，默认peer状态为enabled
+hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase"
+# 创建id为1的peer，且peer状态设为enabled
+hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase", STATE => "ENABLED"
+# 创建id为1的peer，且peer状态设为disabled
+hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase", STATE => "DISABLED"
+# 创建id为2的peer，将哪些表的哪些列族复制到peer集群
+hbase> add_peer '2', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod", TABLE_CFS => { "table1" => [], "table2" => ["cf1"], "table3" => ["cf1", "cf2"] }
+# 创建id为2的peer，将这些namespace下的所有表复制到peer集群
+hbase> add_peer '2', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod",
+    NAMESPACES => ["ns1", "ns2", "ns3"]
+# 创建id为2的peer，将ns1和ns2的所有表，ns3:table，ns3:table的指定列族复制到peer集群
+hbase> add_peer '2', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod",
+    NAMESPACES => ["ns1", "ns2"], TABLE_CFS => { "ns3:table1" => [], "ns3:table2" => ["cf1"] }
+  # 创建id为3的peer，将这些namespace下的所有表，以串行复制的方式复制到peer集群
+hbase> add_peer '3', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod",
+    NAMESPACES => ["ns1", "ns2", "ns3"], SERIAL => true
+
+ 
+```
+
+**源集群**
+
+```bash
+hbase> add_peer  '1', CLUSTER_KEY => 'lg-hadoop-tst-st01.bj:10010,lg-hadoop-tst-st02.bj:10010,lg-hadoop-tst-st03.bj:10010:/hbase/test-hbase-slave', REMOTE_WAL_DIR=>'hdfs://lg-hadoop-tst-st01.bj:20100/hbase/test-hbase-slave/remoteWALs', TABLE_CFS => {"ycsb-test"=>[]}
+```
+
+**peer集群**
+
+```bash
+hbase> add_peer  '1', CLUSTER_KEY => 'lg-hadoop-tst-st01.bj:10010,lg-hadoop-tst-st02.bj:10010,lg-hadoop-tst-st03.bj:10010:/hbase/test-hbase', REMOTE_WAL_DIR=>'hdfs://lg-hadoop-tst-st01.bj:20100/hbase/test-hbase/remoteWALs', TABLE_CFS => {"ycsb-test"=>[]}
+```
+
+将peer集群的同步设置为standby状态
+
+```bash
+hbase> transit_peer_sync_replication_state '1', 'STANDBY'
+```
+
+将源集群的同步设置为active状态
+
+```bash
+hbase> transit_peer_sync_replication_state '1', 'ACTIVE'
+```
+
+配置完成之后，HBase客户端只能向源集群请求，如果向peer集群请求，则现在处于`STANDBY`状态的peer集群将拒绝读/写请求。
+
+- **如果在同步replication过程中，peer集群崩溃了或不可达**。
+
+  将源集群的同步状态修改为`DOWNGRADE_ACTIVE`，表示**源端集群不再远程写WAL**到peer集群。
+
+  ```bash
+  hbase> transit_peer_sync_replication_state '1', 'DOWNGRADE_ACTIVE'
+  ```
+
+  peer集群恢复后，使用如下命令，重新启用同步replication。
+
+  ```bash
+  hbase> transit_peer_sync_replication_state '1', 'ACTIVE'
+  ```
+
+- **如果在同步replication过程中，源集群崩溃了或不可达**。
+
+  将peer集群的同步状态修改为`DOWNGRADE_ACTIVE`，这样就会将所有对源集群的请求重定向给peer 集群。
+
+  ```bash
+  hbase> transit_peer_sync_replication_state '1', 'DOWNGRADE_ACTIVE'
+  ```
+
+  如果源集群恢复了，则使用如下命令，将源集群的状态改为`STANDBY`。为什么？因为此时原来的peer集群已经在处理读写请求了。
+
+  ```bash
+  hbase> transit_peer_sync_replication_state '1', 'STANDBY'
+  ```
+
+  然后将peer集群改为新的active集群。
+
+  ```bash
+  hbase> transit_peer_sync_replication_state '1', 'ACTIVE'
+  ```
 
 
 
