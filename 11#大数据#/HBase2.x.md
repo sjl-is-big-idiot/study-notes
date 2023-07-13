@@ -1021,6 +1021,8 @@ Region的拆分是由`HRegionServer`完成的，在操作之前需要通过ZK汇
 
   HBase 2.0引入了新的split策略：如果当前RegionServer上该表只有一个Region，按照`2 * hbase.hregion.memstore.flush.size（默认128MB）`分裂，否则按照`hbase.hregion.max.filezise`分裂。
 
+# 6. HBase生产调优
+
 ## 6.1 RowKey设计
 
 一条数据的唯一标识就是rowkey，那么这条数据存储于哪个分区，取决于rowkey处于哪一个预分区的区间内，**设计rowkey的主要目的，就是让数据均匀的分布于所有的region中，在一定程度上防止数据倾斜**。接下来我们就谈一谈rowkey常用的设计方案。
@@ -1133,6 +1135,8 @@ stopRow => 1122021-12.
 startRow => 1192021-12
 stopRow => 1192021-12.
 ```
+
+## 6.2 参数优化
 
 - **ZooKeeper会话超时时间**
 
