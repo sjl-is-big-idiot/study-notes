@@ -109,33 +109,35 @@ HBase数据的底层存储文件为`StoreFile`。
 
 ### 1.2.3 数据模型
 
-- NameSpace
+- **NameSpace**
 
   命令空间，**类似于关系型数据库中的database的概念**，每个命名空间下有多个表。HBase有两个自带的命名空间：`hbase`和`default`。`hbase`中存放的是HBase内置的表，`default`是用户默认使用的命名空间。
 
-- Table
+- **Table**
 
   类似于关系型数据库中的表的概念，不同的是，**HBase定义表时只需要声明列族即可**，不需要声明具体的列。因为数据存储是稀疏的，所有往HBase写入数据时，字段可以**动态**、**按需**制定。因此，和关系型数据库相比，HBase能够轻松应对字段变更的场景。
 
-- Row
+- **Row**
 
   HBase表中的每行数据都由一个**RowKey**和多个**Column**组成，数据是按照RowKey的字典序存储的，并且**查询数据时只能根据RowKey进行检索**，所以RowKer的设计十分重要。
 
-- Column
+- **Column**
 
   HBase中的每个列都由**Column Family(列族)**和**Column Qualifier(列限定符)**进行限定，例如 `info:name`, `info:age`。建表时，只需制定列族，而列限定符无需预先定义。
 
-- Time Stamp
+- **Time Stamp**
 
   用于表示数据的不同版本（version），每条数据写入时，系统会自动为其加上该字段，其值为写入HBase的时间。
 
-- Cell
+- **Cell**
 
   由`{rowkey, column Family, column Qualifier, timestamp}` 唯一确定的单元。cell中的数据全部是字节码形式存储。即同样的rowkey，列族，列，不同的时间戳代表是两个不同的cell。
 
 ## 1.3 HBase的架构
 
 ### 1.3.1 HBase的基础架构
+
+![img](HBase2.x.assets/500fd9f9d72a6059fb4c3b59aa1f3597023bbac9.jpeg@f_auto)
 
 ![image-20230625095719302](HBase2.x.assets/image-20230625095719302.png)
 
@@ -179,6 +181,10 @@ HBase数据的底层存储文件为`StoreFile`。
 
   HDFS为HBase提供底层数据存储，同时为HBase提供高容错的支持。
 
+### 1.3.2 HBase的HA架构
+
+TODO
+
 ## 1.4 HBase 在 HDFS 上的目录说明
 
 ```bash
@@ -212,49 +218,48 @@ drwx--x--x   - hadoop supergroup          0 2023-06-25 14:17 /hbase/staging
     
     ##  在每个子目录下有多个HLog文件（因为日志滚动） 
     hbase/WALs/data-hbase.com,60020,1542159360923/data-hbase.com%2C60020%2C1542159360923.1453787240598
-    
     ```
-
-  - `/hbase/oldWALs`
-
-    当/hbase/WALs 中的HLog文件被持久化到存储文件中，不再需要日志文件时，它们会被移动到/hbase/oldWALs目录。
-
-    ```bash
+    
+- `/hbase/oldWALs`
+  
+  当/hbase/WALs 中的HLog文件被持久化到存储文件中，不再需要日志文件时，它们会被移动到/hbase/oldWALs目录。
+  
+  ```bash
     ## /hbase/oldWALs/data-hbase.com%2C60020%2C1542159360923.1443787452518
     具体的oldWALs文件。
     ```
-
-  - `/hbase/hbase.id`
-
-    集群的唯一ID 
-
-  - `/hbase/hbase.version`
-
-    集群的文件格式版本信息
-
-  - `/hbase/corrupt`
-
-    损坏的日志文件，一般为空，不存在损坏的文件
-
-  - `/hbase/archive`
-
-    特别重要！！
+  
+- `/hbase/hbase.id`
+  
+  集群的唯一ID 
+  
+- `/hbase/hbase.version`
+  
+  集群的文件格式版本信息
+  
+- `/hbase/corrupt`
+  
+  损坏的日志文件，一般为空，不存在损坏的文件
+  
+- `/hbase/archive`
+  
+  特别重要！！
     **存储表的归档和快照**，HBase 在做 Split或者 compact 操作完成之后，会将 HFile 移到archive 目录中，然后将之前的 hfile 删除掉，该目录由 HMaster 上的一个定时任务定期去清理。
     存储表的归档和快照具体目录:/hbase/archive/data/default/表名/region名/列族名/fd2221d8d1ae4e572c21882f0ec7cdsa6
-
-  - `/hbase/.tmp`
-
-    当对表做创建或者删除操作的时候，会将表move 到该 tmp 目录下，然后再去做处理操作。
-
-  - `/hbase/.hbase-snapshot`
-
-    如果hbase由快照，则会存在此目录，用于存放hbase的表的快照。
-
-  - `/hbase/data`
-
-    hbase存储数据的核心目录
-
-    ```bash
+  
+- `/hbase/.tmp`
+  
+  当对表做创建或者删除操作的时候，会将表move 到该 tmp 目录下，然后再去做处理操作。
+  
+- `/hbase/.hbase-snapshot`
+  
+  如果hbase由快照，则会存在此目录，用于存放hbase的表的快照。
+  
+- `/hbase/data`
+  
+  hbase存储数据的核心目录
+  
+  ```bash
     # 该目录存储了存储了 HBase 的 namespace、meta 和acl 三个系统级表。
     # namespace 中存储了 HBase 中的所有 namespace 信息，包括预置的hbase 和 default。acl 则是表的用户权限控制。
     /hbase/data/hbase
@@ -288,28 +293,28 @@ drwx--x--x   - hadoop supergroup          0 2023-06-25 14:17 /hbase/staging
     # 为Region拆分时的临时数据
     /hbase/data/default/表名/region名/recovered.edits
     ```
+  
+- `/hbase/MasterData`
+  
+  TODO
+  
+- `/hbase/.hbck`
+  
+  当遇到元数据不一致时，使用hbck 工具修复，修复过程中会使用该目录作为临时目录。
+  
+  但是对于HBase2.0.0及其以后版本这个工具已经不能用来修复HBase了,要使用hbck2。
+  
+- `/hbase/mobdir`
+  
+  此目录对应MOB文件。
+  
+- `/hbase/staging`
+  
+  在bulkload时会创建并使用这个文件夹，通过查看官方文档可以证实这一点，原文如下：
+  
+  ![cb6a4c81c08048e1931137fa44e04301.png](HBase2.x.assets/cb6a4c81c08048e1931137fa44e04301.png)
 
-  - `/hbase/MasterData`
 
-    TODO
-
-  - `/hbase/.hbck`
-
-    当遇到元数据不一致时，使用hbck 工具修复，修复过程中会使用该目录作为临时目录。
-
-    但是对于HBase2.0.0及其以后版本这个工具已经不能用来修复HBase了,要使用hbck2。
-
-  - `/hbase/mobdir`
-
-    此目录对应MOB文件。
-
-  - `/hbase/staging`
-
-    在bulkload时会创建并使用这个文件夹，通过查看官方文档可以证实这一点，原文如下：
-
-    ![cb6a4c81c08048e1931137fa44e04301.png](HBase2.x.assets/cb6a4c81c08048e1931137fa44e04301.png)
-
-### 1.3.2 HBase的HA架构
 
 # 2. 部署
 
@@ -557,7 +562,7 @@ list_namespace 'abc.*'
 list_namespace_tables
 ```
 
-### 3.1.3 DLL操作
+### 3.1.3 DDL操作
 
 ```bash
 alter
@@ -706,6 +711,8 @@ delete 'ns1:student', '1001', 'info:name', 时间戳
 deleteall 'ns1:student', '1001', 'info:name'
 ```
 
+### 3.1.5 其他操作
+
 **快照操作**
 
 ```bash
@@ -751,167 +758,6 @@ peer_modification_enabled
 # 设置指定id的peer的serial flag为false或true
 set_peer_serial <ID>, false
 ```
-
-HBase提供了replication的方式，可以在将A集群的状态同步至B集群。原理是使用源端集群的WAL来传递状态的变化给其他集群。
-
-replication是列族级别的复制
-
-前提：
-
-- 在启用replication之前，需要在目标HBase集群创建replication的表和replication的列族。
-
-常用于：
-
-- backup和灾难恢复
-- 数据聚合
-- 地理数据分布
-- 在离线数据结合分析
-
-Replication分为两种：
-
-- `asynchronous`，异步发送WAL，如果期间master崩溃，由于WAL不全，可能导致数据丢失。**目前为此种方式**，符合最终一致性。
-- `synchronous`，同步发送WAL，无数据丢失。按照客户端请求的顺序将WAL发送给peer集群。
-
-目前Replication和WAL compression有兼容性问题，不建议同时使用。要使用Replication需要将`hbase.regionserver.wal.enablecompression`设为`false`。
-
-**在HBase数据迁移中，peer集群可以理解为目标集群。一般将peer集群认为是源集群的backup集群。**
-
-在源端启用了replication的列族发生改变，则会将此列族涉及到的region所属的RegionServer上的WAL发送给peer集群。只要需要复制数据到其他HBase集群，每个涉及到的RegionServer都必须将WAL保存在HDFS上。每个RegionServer从旧往新读取WAL，并在ZK中记录处理进度，记录待处理的WAL的queue。
-
-`hbase 2.6.0``开始引入了`ReplicationPeerStorage`的文件系统，用于在HFile文件系统中存储replication peer state。
-
-**Serial replication（串行复制）**
-
-在底层有一个WAL日志的队列，按照创建时间的顺序将WAL放在队列中，按照顺序读取WAL日志，将其中的变化push给peer集群。因为默认的replication是异步的，可能存在数据不一致的问题：
-
-> This treatment can possibly lead to data inconsistency between source and destination clusters:
->
-> 1. there are put and then delete written to source cluster.
-> 2. due to region-move / RS-failure, they are pushed by different replication-source threads to peer cluster.
-> 3. if delete is pushed to peer cluster before put, and flush and major-compact occurs in peer cluster before put is pushed to peer cluster, the delete is collected and the put remains in peer cluster, but in source cluster the put is masked by the delete, hence data inconsistency between source and destination clusters.
-
-```bash
-# 创建一个 serial replication的peer
-hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase", SERIAL => true
-
-# 修改已创建的peer的serial flag，1为peer的id
-set_peer_serial '1', false
-set_peer_serial '1', true
-```
-
-**验证Replication数据**
-
-HBase提供了一个名为`VerifyReplication`的mapreduce job用于验证replication的数据。**源端集群执行**
-
-```bash
-$ HADOOP_CLASSPATH=`${HBASE_HOME}/bin/hbase classpath` "${HADOOP_HOME}/bin/hadoop" jar "${HBASE_HOME}/hbase-mapreduce-VERSION.jar" verifyrep --starttime=<timestamp> --endtime=<timestamp> --families=<myFam> <ID> <tableName>
-```
-
-- `<ID>` 指peer id
-- `<tableName>`指需要校验的表
-- `--families`指需要检验的cf
-- `--starttime`, `--endtime` 指校验指定时间范围内的数据
-
-Replication复制原理
-
-![replication overview](HBase2.x.assets/replication_overview.png)
-
-
-
-**配置同步peer**
-
-同步replication要求HBase集群间具有相同的peer id。peer只支持`table-level`的replication，不支持cluster-level、namspace-level，cf-level的replication。
-
-命令
-
-```bash
-add_peer <ID> <CLUSTER_KEY>
-```
-
-- id表示peer的id，源目集群在进行replication时，要求peer id相同
-- CLUSTER_KEY，格式为`hbase.zookeeper.quorum:hbase.zookeeper.property.clientPort:zookeeper.znode.parent`，为**其他集群的`hbase.zookeeper.quorum`地址**
-
-```bash
-# 创建id为1的peer，默认peer状态为enabled
-hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase"
-# 创建id为1的peer，且peer状态设为enabled
-hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase", STATE => "ENABLED"
-# 创建id为1的peer，且peer状态设为disabled
-hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase", STATE => "DISABLED"
-# 创建id为2的peer，将哪些表的哪些列族复制到peer集群
-hbase> add_peer '2', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod", TABLE_CFS => { "table1" => [], "table2" => ["cf1"], "table3" => ["cf1", "cf2"] }
-# 创建id为2的peer，将这些namespace下的所有表复制到peer集群
-hbase> add_peer '2', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod",
-    NAMESPACES => ["ns1", "ns2", "ns3"]
-# 创建id为2的peer，将ns1和ns2的所有表，ns3:table，ns3:table的指定列族复制到peer集群
-hbase> add_peer '2', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod",
-    NAMESPACES => ["ns1", "ns2"], TABLE_CFS => { "ns3:table1" => [], "ns3:table2" => ["cf1"] }
-  # 创建id为3的peer，将这些namespace下的所有表，以串行复制的方式复制到peer集群
-hbase> add_peer '3', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod",
-    NAMESPACES => ["ns1", "ns2", "ns3"], SERIAL => true
-
- 
-```
-
-**源集群**
-
-```bash
-hbase> add_peer  '1', CLUSTER_KEY => 'lg-hadoop-tst-st01.bj:10010,lg-hadoop-tst-st02.bj:10010,lg-hadoop-tst-st03.bj:10010:/hbase/test-hbase-slave', REMOTE_WAL_DIR=>'hdfs://lg-hadoop-tst-st01.bj:20100/hbase/test-hbase-slave/remoteWALs', TABLE_CFS => {"ycsb-test"=>[]}
-```
-
-**peer集群**
-
-```bash
-hbase> add_peer  '1', CLUSTER_KEY => 'lg-hadoop-tst-st01.bj:10010,lg-hadoop-tst-st02.bj:10010,lg-hadoop-tst-st03.bj:10010:/hbase/test-hbase', REMOTE_WAL_DIR=>'hdfs://lg-hadoop-tst-st01.bj:20100/hbase/test-hbase/remoteWALs', TABLE_CFS => {"ycsb-test"=>[]}
-```
-
-将peer集群的同步设置为standby状态
-
-```bash
-hbase> transit_peer_sync_replication_state '1', 'STANDBY'
-```
-
-将源集群的同步设置为active状态
-
-```bash
-hbase> transit_peer_sync_replication_state '1', 'ACTIVE'
-```
-
-配置完成之后，HBase客户端只能向源集群请求，如果向peer集群请求，则现在处于`STANDBY`状态的peer集群将拒绝读/写请求。
-
-- **如果在同步replication过程中，peer集群崩溃了或不可达**。
-
-  将源集群的同步状态修改为`DOWNGRADE_ACTIVE`，表示**源端集群不再远程写WAL**到peer集群。
-
-  ```bash
-  hbase> transit_peer_sync_replication_state '1', 'DOWNGRADE_ACTIVE'
-  ```
-
-  peer集群恢复后，使用如下命令，重新启用同步replication。
-
-  ```bash
-  hbase> transit_peer_sync_replication_state '1', 'ACTIVE'
-  ```
-
-- **如果在同步replication过程中，源集群崩溃了或不可达**。
-
-  将peer集群的同步状态修改为`DOWNGRADE_ACTIVE`，这样就会将所有对源集群的请求重定向给peer 集群。
-
-  ```bash
-  hbase> transit_peer_sync_replication_state '1', 'DOWNGRADE_ACTIVE'
-  ```
-
-  如果源集群恢复了，则使用如下命令，将源集群的状态改为`STANDBY`。为什么？因为此时原来的peer集群已经在处理读写请求了。
-
-  ```bash
-  hbase> transit_peer_sync_replication_state '1', 'STANDBY'
-  ```
-
-  然后将peer集群改为新的active集群。
-
-  ```bash
-  hbase> transit_peer_sync_replication_state '1', 'ACTIVE'
-  ```
 
 
 
@@ -967,7 +813,7 @@ Meta表介绍：（<font color="red">警告：不要去改这个表</font>）
 
   写缓存，**由于HFile中的数据要求是有序的**，所以数据是先存储在MemStore中，排好序后，等到达刷写时机才会刷写到HFile，**每次刷写都会形成一个新的HFile**，写入到对应的文件夹store中。
 
-  一个MemStore对应一个store。store之间是无序的。
+  **一个MemStore对应一个store。store之间是无序的。**
 
 - **WAL**
 
@@ -1204,7 +1050,7 @@ Compaction分为两种：
   }
   ```
 
-  不推荐
+  **不推荐**
 
 ### 5.7.2 系统拆分
 
@@ -1231,6 +1077,399 @@ Region的拆分是由`HRegionServer`完成的，在操作之前需要通过ZK汇
 - 2.0版本之后=>`SteppingSplitPolicy`
 
   HBase 2.0引入了新的split策略：如果当前RegionServer上该表只有一个Region，按照`2 * hbase.hregion.memstore.flush.size（默认128MB）`分裂，否则按照`hbase.hregion.max.filezise`分裂。
+
+## 5.8 Snapshot
+
+HBase snapshot只需消耗很少的性能就能对table做内容和元数据的copy。snapshot是不可改变的，它包含**table的元数据信息**、做快照时刻此表的**HFile列表**。无论表时enable还是disable状态都可以做快照，**快照操作不涉及底层数据的拷贝**。
+
+- clone快照是根据快照创建了一个新表。
+- restore快照是将表的内容恢复到创建此快照的时刻的内容。
+
+clone和restore操作不需要进行任何数据拷贝，因为table底层的HFile文件不会因为做了这两个操作而发生改变。
+
+**0.94.6之前要对HBase的表做backup或clone**，只能使用：
+
+- **CopyTble**/**ExportTable**
+
+  **缺点**是会严重影响RegionServer的性能。
+
+- **disable表之后，拷贝该表的HFile文件**
+
+  缺点是因为disable了表，导致期间无法读写此表。
+
+要对table做snapshot如需要保证`hbase-site.xml`中参数`hbase.snapshot.enabled`为`true`。0.94.5以后默认为true。
+
+```xml
+  <property>
+    <name>hbase.snapshot.enabled</name>
+    <value>true</value>
+  </property>
+```
+
+### 5.8.1 **做快照**
+
+```bash
+$ ./bin/hbase shell
+# 1、默认的snapshot，会将当前memstore中的写数据flush（刷盘）之后再做快照，目的保证做出的快照中也包含此时刻内存中的数据。
+hbase> snapshot 'myTable', 'myTableSnapshot-122112'
+
+# 2、在snapshot时不将当前memstore中的数据flush（刷盘）
+hbase> snapshot 'mytable', 'snapshot123', {SKIP_FLUSH => true}
+
+# 3、打一个带TTL的快照，快照的生命周期与表的生命周期相互独立，TTL单位秒，TTL<-1也表示永久保存此snapshot
+hbase> snapshot 'mytable', 'snapshot1234', {TTL => 86400}
+
+# 4、设置快照的MAX_FILESIZE，当根据此快照clone出表之后，会在表的元数据中添加MAX_FILESIZE=此值，对应的配置
+#    项为hbase.hregion.max.filesize，代表HFile的最大大小，超过则会切分。
+#		当在hbase快照迁移中，如果源hbase集群的hbase.hregion.max.filesize源大于目的，那么会导致打的快照对应的HFile会很大
+#   结果是在目标端需要对这些HFile做切分，可能会出现region切分的风暴
+snapshot 'table01', 'snap01', {MAX_FILESIZE => 21474836480}
+
+# 5、启用/禁用快照自动清理，默认是启用的。
+	# 禁用
+	hbase> snapshot_cleanup_switch false
+	# 启用
+	hbase> snapshot_cleanup_switch true
+	# 查看是否启用了快照自动清理
+	snapshot_cleanup_enabled
+```
+
+目前无法确定打的快照中是否包含memstore中的数据。快照TTL相关参数`hbase.master.snapshot.ttl`，若配置了，则作为快照的默认TTL；若未配置则默认snapshot永不过期。
+
+**快照的生命周期**
+
+- 创建快照时，显式指定TLL，若TTL<-1,永久保存此snapshot
+
+- 创建快照时，显式指定TLL，若TTL > 0，则指定秒数之后，自动删除此snapshot（前提是启用了快照自动清理）
+
+- 创建快照时，没有显式指定TTL的使用`hbase.master.snapshot.ttl（默认0，永不过期）`作为快照的TTL。
+
+  
+
+Since Replication works at log level and snapshots at file-system level, after a restore, the replicas will be in a different state from the master. If you want to use restore, you need to stop replication and redo the bootstrap.
+
+### 5.8.2 拷贝快照到新集群
+
+**ExportSnapshot 工具**可以将snapshot相关的数据（HFiles、logs、snapshot元数据）拷贝到其他集群。ExportSnapshot工具执行MapReduce job来将文件从原集群拷贝到新集群，属于**HDFS文件级别的操作**。
+
+```bash
+$ bin/hbase org.apache.hadoop.hbase.snapshot.ExportSnapshot -snapshot MySnapshot -copy-to hdfs://srv2:8082/hbase -mappers 16 -bandwidth 20
+```
+
+- `-snapshot` 指定要复制的快照名
+- `-copy-to` 指定快照文件复制到哪个HDFS路径
+- `-mappers`指定使用多少个线程来进行文件的拷贝
+- `-bandwidth` 指定每个mapper在文件复制所用的带宽，如20MB/s
+
+## 5.9 Replication
+
+HBase提供了replication的方式，可以在将A集群的状态同步至B集群。原理是使用源端集群的WAL来传递状态的变化给其他集群。
+
+**replication是列族级别的复制**
+
+**前提**：
+
+- 在启用replication之前，需要在目标HBase集群创建replication的表和replication的列族。
+
+常用于：
+
+- backup和灾难恢复
+- 数据聚合
+- 地理数据分布
+- 在离线数据结合分析
+
+Replication分为两种：
+
+- `asynchronous`，异步发送WAL，如果期间master崩溃，由于WAL不全，可能导致数据丢失。**目前为此种方式**，符合最终一致性。
+
+- `synchronous`，同步发送WAL，无数据丢失。按照客户端请求的顺序将WAL发送给peer集群。
+
+  原文链接：https://blog.csdn.net/weixin_42011858/article/details/129348651
+
+  通常，我们所说的HBase复制指的是异步复制，即HBase客户端写入数据到主集群之后就返回了，然后主集群再异步地把数据依次推送到备份集群。这样存在的一个问题是，若主集群因意外或者Bug无法提供服务时，备份集群的数据是比主集群少的。这时，HBase的可用性将受到极大影响，如果把业务切换到备份集群，则必须接受备份集群比主集群少的这个事实。
+  事实上，有些在线服务业务对可用性和数据一致性要求极高，这些业务期望能为在线集群搭建备份集群，一旦主集群可用性发生抖动，甚至无法提供服务时，就马上切换到备份集群上去，同时还要求备份集群的数据和主集群数据保持一致。这种需求是异步复制没法保证的，而HBase 2.1版本上实现的同步复制可以满足这类需求。
+  ![在这里插入图片描述](HBase2.x.assets/9be48ebbb8ac440884c5d7bc822b41d0.png)
+
+  同步复制的核心思想是，RegionServer在收到写入请求之后，不仅会在主集群上写一份HLog日志，还会同时在备份集群上写一份RemoteWAL日志，如图10-8所示。只有等主集群上的HLog和备集群上的RemoteWAL都写入成功且MemStore写入成功后，才会返回给客户端，表明本次写入请求成功。除此之外，主集群到备集群之间还会开启异步复制链路，若主集群上的某个HLog通过异步复制完全推送到备份集群，那么这个HLog在备集群上对应的RemoteWAL则被清理，否则不可清理。因此，可以认为，RemoteWAL是指那些已经成功写入主集群但尚未被异步复制成功推送到备份集群的数据。
+  对主集群的每一次写入，备份集群都不会丢失这次写入数据。一旦主集群发生故障，只需要回放RemoteWAL日志到备集群，备集群马上就可以为线上业务提供服务。这就是同步复制的核心设计。
+
+  **同步复制**
+
+  同步replication要求HBase集群间具有相同的peer id。peer只支持`table-level`的replication，不支持cluster-level、namspace-level，cf-level的replication。
+
+  命令
+
+  ```bash
+  add_peer <ID> <CLUSTER_KEY>
+  ```
+
+  - id表示peer的id，源目集群在进行replication时，要求peer id相同
+  - CLUSTER_KEY，格式为`hbase.zookeeper.quorum:hbase.zookeeper.property.clientPort:zookeeper.znode.parent`，为**其他集群的`hbase.zookeeper.quorum`地址**
+
+  ```bash
+  # 创建id为1的peer，默认peer状态为enabled
+  hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase"
+  # 创建id为1的peer，且peer状态设为enabled
+  hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase", STATE => "ENABLED"
+  # 创建id为1的peer，且peer状态设为disabled
+  hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase", STATE => "DISABLED"
+  # 创建id为2的peer，将哪些表的哪些列族复制到peer集群
+  hbase> add_peer '2', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod", TABLE_CFS => { "table1" => [], "table2" => ["cf1"], "table3" => ["cf1", "cf2"] }
+  # 创建id为2的peer，将这些namespace下的所有表复制到peer集群
+  hbase> add_peer '2', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod",
+      NAMESPACES => ["ns1", "ns2", "ns3"]
+  # 创建id为2的peer，将ns1和ns2的所有表，ns3:table，ns3:table的指定列族复制到peer集群
+  hbase> add_peer '2', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod",
+      NAMESPACES => ["ns1", "ns2"], TABLE_CFS => { "ns3:table1" => [], "ns3:table2" => ["cf1"] }
+    # 创建id为3的peer，将这些namespace下的所有表，以串行复制的方式复制到peer集群
+  hbase> add_peer '3', CLUSTER_KEY => "zk1,zk2,zk3:2182:/hbase-prod",
+      NAMESPACES => ["ns1", "ns2", "ns3"], SERIAL => true
+  ```
+
+  **源集群**
+
+  ```bash
+  hbase> add_peer  '1', CLUSTER_KEY => 'lg-hadoop-tst-st01.bj:10010,lg-hadoop-tst-st02.bj:10010,lg-hadoop-tst-st03.bj:10010:/hbase/test-hbase-slave', REMOTE_WAL_DIR=>'hdfs://lg-hadoop-tst-st01.bj:20100/hbase/test-hbase-slave/remoteWALs', TABLE_CFS => {"ycsb-test"=>[]}
+  ```
+
+  **peer集群**
+
+  ```bash
+  hbase> add_peer  '1', CLUSTER_KEY => 'lg-hadoop-tst-st01.bj:10010,lg-hadoop-tst-st02.bj:10010,lg-hadoop-tst-st03.bj:10010:/hbase/test-hbase', REMOTE_WAL_DIR=>'hdfs://lg-hadoop-tst-st01.bj:20100/hbase/test-hbase/remoteWALs', TABLE_CFS => {"ycsb-test"=>[]}
+  ```
+
+  将peer集群的同步设置为standby状态
+
+  ```bash
+  hbase> transit_peer_sync_replication_state '1', 'STANDBY'
+  ```
+
+  将源集群的同步设置为active状态
+
+  ```bash
+  hbase> transit_peer_sync_replication_state '1', 'ACTIVE'
+  ```
+
+  配置完成之后，HBase客户端只能向源集群请求，如果向peer集群请求，则现在处于`STANDBY`状态的peer集群将拒绝读/写请求。
+
+  - **如果在同步replication过程中，peer集群崩溃了或不可达**。
+
+    将源集群的同步状态修改为`DOWNGRADE_ACTIVE`，表示**源端集群不再远程写WAL**到peer集群。
+
+    ```bash
+    hbase> transit_peer_sync_replication_state '1', 'DOWNGRADE_ACTIVE'
+    ```
+
+    peer集群恢复后，使用如下命令，重新启用同步replication。
+
+    ```bash
+    hbase> transit_peer_sync_replication_state '1', 'ACTIVE'
+    ```
+
+  - **如果在同步replication过程中，源集群崩溃了或不可达**。
+
+    将peer集群的同步状态修改为`DOWNGRADE_ACTIVE`，这样就会将所有对源集群的请求重定向给peer 集群。
+
+    ```bash
+    hbase> transit_peer_sync_replication_state '1', 'DOWNGRADE_ACTIVE'
+    ```
+
+    如果源集群恢复了，则使用如下命令，将源集群的状态改为`STANDBY`。为什么？因为此时原来的peer集群已经在处理读写请求了。
+
+    ```bash
+    hbase> transit_peer_sync_replication_state '1', 'STANDBY'
+    ```
+
+    然后将peer集群改为新的active集群。
+
+    ```bash
+    hbase> transit_peer_sync_replication_state '1', 'ACTIVE'
+    ```
+
+  
+
+目前Replication和WAL compression有兼容性问题，不建议同时使用。要使用Replication需要将`hbase.regionserver.wal.enablecompression`设为`false`。
+
+**在HBase数据迁移中，peer集群可以理解为目标集群。一般将peer集群认为是源集群的backup集群。**
+
+在源端启用了replication的列族发生改变，则会**将此列族涉及到的region所属的RegionServer上的WAL发送给peer集群**。只要需要复制数据到其他HBase集群，每个涉及到的RegionServer都必须将WAL保存在HDFS上。每个RegionServer从旧往新读取WAL，并在ZK中记录处理进度，记录待处理的WAL的queue。
+
+`hbase 2.6.0``开始引入了`ReplicationPeerStorage`的文件系统，用于在HFile文件系统中存储replication peer state。
+
+HBase默认采用异步复制的方式同步数据，即客户端执行完put之后，RegionServer的后台线程不断地推送HLog的Entry到Peer集群。这种方式一般能满足大多数场景的需求，例如跨集群数据备份、HBase集群间数据迁移等。但是HBase 1.x版本的复制功能，无法保证Region迁移前后的HLog的Entry按照严格一致的顺序推送到备集群，某些极端情况下可能造成主从集群数据不一致。为此，社区在HBase 2.x版本上实现了串行复制来解决这个问题。
+另外，默认的异步复制无法满足强一致性的跨机房热备需求。因为备份机房的数据肯定会落后主集群，一旦主集群异常，无法直接切换到备份集群，因此，社区提出并研发了同步复制。
+
+**Serial replication（串行复制）**
+
+原文链接：https://blog.csdn.net/weixin_42011858/article/details/129348651
+
+非串行复制导致的问题
+
+> 设想这样一个场景：现在有一个源集群往Peer集群同步数据，其中有一个Region-A落在RegionServer0（简称RS0）上。此时，所有对Region-A的写入，都会被记录在RegionServer0对应的HLog-0内。但是，一旦Region-A从RegionServer0移到RegionServer1上，之后所有对Region-A的写入，都会被RegionServer1记录在对应的HLog-1内。这时，就至少存在两个HLog同时拥有Region-A的写入数据了，而RegionServer0和RegionServer1都会为Peer开一个复制线程（ReplicationSource）。也就是说，RegionServer0和RegionServer1会并行地把HLog-0和HLog-1内包含Region-A的数据写入Peer集群。
+> 
+>
+> **可能会导致的问题**：
+>
+> 第一个问题：
+> 写入操作在源集群的执行顺序和Peer集群的执行顺序不一致。
+>
+> ![在这里插入图片描述](HBase2.x.assets/08c413a68b874cd5bdc6e3dbecb7adf9.png)
+>
+> Region-A在源集群的写入顺序为：
+> 1）t1时间点执行：Put，K0，V0，t1。
+> 2）t2时间点执行：Put，K0，V0，t2。
+> 3）在t3时间点，Region-A从RegionServer0移到RegionServer1上。
+> 4）t4时间点执行：Put，K0，V0，t5。
+> 由于RegionServer可能并行地把同一个Region的数据往Peer推送，那么数据到了Peer集群的写入顺序可能变成：
+> 1）t6时间点执行：Put，K0，V0，t1。
+> 2）t7时间点执行：Put，K0，V0，t5。
+> 3）t8时间点执行：Put，K0，V0，t2。
+> 可以看到，时间戳为t5的Put操作反而在时间戳为t2的Put操作之前写入到Peer集群。那么，在Peer集群的［t7，t8）时间区间内，用户可以读取到t1和t5这两个版本的Put，但这种状态在源集群是永远读取不到的。
+> 对于那些依赖HBase复制功能的消息系统来说，这意味着消息的发送顺序可能在复制过程中被颠倒。对那些要求消息顺序严格一致的业务来说，发生这种情况是不可接受的。
+>
+> 第二个问题：
+> 在极端情况下，可能导致主集群数据和备集群数据不一致。
+>
+> ![在这里插入图片描述](HBase2.x.assets/aebc5bc4dd074a19a1789d86d2c2a9f1.png)
+>
+> 由于写入操作在Peer集群执行可能乱序，左侧源集群的写入顺序到了Peer集群之后，就可能变成如右侧所示写入顺序。如果Peer集群在t7和t9之间，执行了完整的Major Compaction，那么执行Major Compaction之后，K0这一行数据全部都被清理，然后在t9这个时间点，时间戳为t2的Put开始在Peer集群执行。
+> 这样最终导致的结果就是：源集群上rowkey=K0的所有cell都被清除，但是到了Peer集群，用户还能读取到一个多余的Put（时间戳为t2）。在这种极端情况下，就造成主备之间最终数据的不一致。对于要求主备集群最终一致性的业务来说，同样不可接受。
+>
+
+为了解决非串行复制的问题，先思考一下产生该问题的原因。**根本原因在于，Region从一个RegionServer移动到另外一个RegionServer的过程中，Region的数据会分散在两个RegionServer的HLog上，而两个RegionServer完全独立地推送各自的HLog，从而导致同一个Region的数据并行写入Peer集群。**
+
+解决思路就是：把Region的数据按照Region移动发生的时间点t0分成两段，小于t0时间点的数据都在RegionServer0的HLog上，大于t0时间点的数据都在RegionServer1的HLog上。让RegionServer0先推小于t0的数据，等RegionServer0把小于t0的数据全部推送到Peer集群之后，RegionServer1再开始推送大于t0的数据。这样，就能保证Peer集群该Region的数据写入顺序完全和源集群的顺序一致，从而解决非串行复制带来的问题。
+
+
+```bash
+# 创建一个 serial replication的peer
+hbase> add_peer '1', CLUSTER_KEY => "server1.cie.com:2181:/hbase", SERIAL => true
+
+# 修改已创建的peer的serial flag，1为peer的id
+set_peer_serial '1', false
+set_peer_serial '1', true
+```
+
+**验证Replication数据**
+
+HBase提供了一个名为`VerifyReplication`的mapreduce job用于验证replication的数据。**源端集群执行**
+
+```bash
+$ HADOOP_CLASSPATH=`${HBASE_HOME}/bin/hbase classpath` "${HADOOP_HOME}/bin/hadoop" jar "${HBASE_HOME}/hbase-mapreduce-VERSION.jar" verifyrep --starttime=<timestamp> --endtime=<timestamp> --families=<myFam> <ID> <tableName>
+```
+
+- `<ID>` 指peer id
+- `<tableName>`指需要校验的表
+- `--families`指需要检验的cf
+- `--starttime`, `--endtime` 指校验指定时间范围内的数据
+
+Replication复制原理
+
+![replication overview](HBase2.x.assets/replication_overview.png)
+
+
+
+**Replication的内部原理**
+
+Replication的状态记录在源集群的ZK中的`/hbase/replication` znode下。
+
+- `/hbase/replication/peers`
+
+  存储了所有的replication peers，还有他们的状态。peer的值是他的`cluster key`，key包括了cluster的信息有： zookeeper，zookeeper port， hbase 在 hdfs 的目录。
+
+  ```bash
+  /hbase/replication/peers
+  	# 共2个peer，id分别为1,2
+    /1 [Value: zk1.host.com,zk2.host.com,zk3.host.com:2181:/hbase]
+    /2 [Value: zk5.host.com,zk6.host.com,zk7.host.com:2181:/hbase]
+    # 每个peer都有一个子节点，表示replication是否激活，这个节点没有任何子节点，只有一个boolean值
+    /hbase/replication/peers
+    /1/peer-state [Value: ENABLED]
+    /2/peer-state [Value: DISABLED]
+  ```
+
+  如果设置了基于replication peer storage的文件系统，则没有`peers`这个znode。
+
+- `/hbase/replication/rs`
+
+  保存replication queue的状态。rs znode包含了哪些WAL 是需要复制的，包括：rs hostname，client port，start code。
+
+  ```bash
+  /hbase/replication/rs
+    /hostname.example.org,6020,1234
+    /hostname2.example.org,6020,2856
+    
+  
+  /hbase/replication/rs
+  	# 每一个rs znode包括一个WAL replication 队列
+  	# 说明 hostname.example.org 的start code 为 1234 的wal 需要复制到 peer 1 和 peer 2
+    /hostname.example.org,6020,1234
+      /1
+      	#   每一个队列都有一个znode 标示 每一个WAL上次复制的位置，每次复制的时候都会更新这个值
+        23522342.23422 [VALUE: 254]
+        12340993.22342 [VALUE: 0]   
+      /2  
+  ```
+
+  HBase 3.0.0之后replication queue的信息存储在了`hbase:replication`表中。
+
+**从peer集群中选择RegionServer进行复制**
+
+源集群的RegionServer通过在`add peer`时提供的cluster key，可以连接到peer集群的ZK，并从`/hbase/rs` znode中获取到peer集群的所有RegionServer。默认随机选择10%个RegionServer来进行replication。不选择所有RegionServer，时因为复制时针对RegionServer的，如果源集群由m个RegionServer，peer集群有n个RegionServer，则需要m*n次复制连接，成本太高。 
+
+每一个源集群的 rs 都会在`${zookeeper.znode.parent}/rs` 节点中有一个`zookeeper watcher`，它来监控peer集群的变化，当peer集群接收数据的rs出现问题，源集群的rs 就会重新选择peer集群的RegionServer来接受replication。
+
+**跟踪WAL日志**
+
+有两种方式：
+
+- **基于ZooKeeper实现**
+
+  每一个源集群的rs在zookeeper中都有自己的znode，每一个peer都会对应一个znode，而且每一个znode都包含一个需要处理的WAL的队列。每个队列都会跟踪对应的rs 产生 的WAL。
+
+- **基于HBase表实现**
+
+  `HBase 3.0.0`之后支持此种方式。TODO
+
+**Reading, Filtering and Sending Edits.**
+
+默认的情况下，source端会尽快的读取WAL log 然后传送到复制流。传输的速度会被过滤器限制，只有 GLOBAL 范围的并且不属于系统表的log会被保留。传输速度还受制于向每个peer集群的 rs 发送的复制队列的大小，默认是64M。如果一个源集群有三个peer集群，那么一个rs 就会存储192M数据用来复制。
+
+一旦这个buffer（64M）被填满或者读到WAL log的最后，source 线程停止读取log，从之前随机选取peer集群中的rs子集中随机选择一个rs 发送数据。首先会发送一个RPC，如果RPC正常，正常发数据。如果WAL log文件已经读取完毕，source会将zookeeper 中的复制队列中对应的znode 删除。否则，记录下log的偏移量。如果RPC抛出异常，source将会重试10次，如果都失败，重新选择一个rs。
+**清除日志**
+
+如果没有配置replication，hbase集群的清理日志线程会根据TTL配置的时间删除旧的日志。如果配置了replication，这套机制就失效了。因为归档的日志有可能已经过了TTL但是还在replication的队列中。如果log过了TTL，这个时候清理日志线程会在每个复制队列中查找是否包含这个log，如果没有，就直接删除。如果找到了，就见这个队列记录起来，下次开始清理log的时候先到记录的队列里面查看。
+
+
+## 5.10 WAL原理
+
+正常情况下，HBase新增的数据都是有日志记录的，数据在落盘成HFile之前，任何一个Put和Delete操作都是记录日志并存放在WALs目录中，**日志中包含了所有已经写入Memstore但还未Flush到HFile的更改(edits)**。<font color="red">edit表示WAL中的一条记录，记录这对数据的写操作。</font>
+
+**默认情况下每个RegionServer只会写一个日志文件，该RS管理的所有region都在向这一个日志文件写入Put和Delete记录**，直到日志文件大小达到128MB(由`hbase.regionserver.hlog.blocksize`设置)后roll出一个新的日志文件，总共可以roll出32个日志文件(由`hbase.regionserver.maxlogs`设置)。
+
+如果日志文件未写满128MB，RegionServer间隔1小时也会roll出新一个新日志文件（由`hbase.regionserver.logroll.period`设置）。
+
+当日志文件中涉及的所有region的记录都flush成HFile后，这个日志文件就会转移至`oldWals`目录下归档， Master每间隔10分钟（`hbase.master.cleaner.interval`）会检查oldWALs目录下的过期日志文件，当文件过期时会被Master清理掉，（日志过期时间由`hbase.master.logcleaner.ttl`控制）。
+
+RegionServer默认间隔1小时（由`hbase.regionserver.optionalcacheflushinterval`设置）会对它管理的region做一次flush动作，所以WALs目录中一直会有新的日志文件生成，并伴随着老的日志文件移动到`oldWALs`目录中。
+
+一个RegionServer可以管理多个region，所有的region共享同一个活跃的WAL文件，在WAL中每一条edit都指明了其所属的region是哪个。当region打开之后，会将WAL中属于此region的edit进行重播。因此需要对WAL中edit按照region进行分组，这个分组的过程称之为`log split`。
+
+![img](HBase2.x.assets/20180419134053354)
+
+RegionServer宕机之后又恢复，其上所有的region需要重放该RegionServer的WAL中的该region对应的edit，当所有edit恢复完之后，该Region才可用。
+
+HBase集群启动时`log split`由HMaster完成，RegionServer宕机时由`ServerShutdownHandler` 完成。所以，**当HBase集群启动或者RegionServer宕机时才会触发`log split`**。
+
+> log split的步骤：
+>
+> （1）重命名`/hbase/WALs/<host>,<port>,<startcode>`目录为`/hbase/WALs/<host>,<port>,<startcode>-splitting`目录
+>
+> （2）每个日志文件都被拆分，每次一个。log splitter每次从WAL中读取一条edit，将edit放入其所属region对应的buffer中，然后由write 线程将此buffer中的edit写入对应的region的指定目录下（`/hbase/<table_name>/<region_id>/recovered.edit/.tmp`文件中），`.tmp`文件存放该region在此RegionServer的WAL中的所有edit，log split完成之后，将`.tmp`文件重命名为`.tmp`文件中第一条edit的sequence ID（应该不是RowKey，相当与每个操作都有一唯一有序的ID吧）。
+>
+> 等log split 完成后，会比较该region的HFile中最大的sequence ID和`.tmp`重命名之后的文件的sequence ID。若前者大，表示该region的所有edit操作都以写入HFile中了。
+>
+> （3）log split完成之后，会将涉及的每个region分配给一个RegionServer进行管理。当region打开之后，会检查每个region下的`recovered.edit`目录下是否有待恢复的edit文件。如果存在此类文件，则读取每条edit并将其保存到新RegionServer的memstore中，回放了所有的edit之后，将memstore中的内容flush到HFile中，并删除edit文件。
 
 # 6. HBase生产调优
 
