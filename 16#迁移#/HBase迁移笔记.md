@@ -1,16 +1,20 @@
+# 1. 概述
 
+HBase数据迁移是很常见的操作，目前业界主要的迁移方式主要分为以下几类：
 
 ![img](HBase迁移笔记.assets/8bd3437f00d8ee078449d393e167c437.png)
 
+从上面图中可看出，目前的方案主要有四类，Hadoop层有一类，HBase层有三类。下面分别介绍一下。
 
+- **distcp**
 
-# 1. 概述
+  直接拷贝HBase的`/hbase/data`目录下的数据，在目标端恢复.
 
-- **=暴力法=**
-
-  直接拷贝HBase的`/hbase/data`目录下的数据，在目标端恢复，并重建元数据，TODO hbck2？？
+  参考：https://blog.csdn.net/wypblog/article/details/108030883
 
 - **copyTable**
+
+  参考：https://blog.csdn.net/wypblog/article/details/108030883
 
   copyTable也是属于HBase数据迁移的工具之一，以**表级别**进行数据迁移。**copyTable的本质也是利用MapReduce进行同步的，与DistCp不同的时，它是利用MR去scan  原表的数据，然后把scan出来的数据写入到目标集群的表。**这种方式也有很多局限，如一个表数据量达到TB级，同时又在读写的情况下，全量scan表无疑会对集群性能造成影响。 来看下copyTable的一些使用参数：
 
@@ -42,7 +46,7 @@
   hbase org.apache.hadoop.hbase.mapreduce.Import <tableName> <input_hdfs_path>
   ```
 
-  
+  参考：https://blog.csdn.net/wypblog/article/details/108030883
 
 - **Snapshot+Replication（推荐）**
 
@@ -178,6 +182,8 @@ alter 'students',{NAME => 'info',REPLICATION_SCOPE => '1'}
 snapshot 'students','students_table_snapshot_20230717'
 ```
 
+创建的snapshot放在目录`/hbase/.hbase-snapshot/`下， 元数据信息放在`/hbase/.hbase-snapshot/data.manifest`中
+
 ### 2.2.4 在集群A中导出快照到新集群
 
 在源集群A的命令行中
@@ -289,3 +295,15 @@ disable 'students'
 drop 'students'
 ```
 
+### 2.2.10 数据验证
+
+HBase提供了一个名为`VerifyReplication`的mapreduce job用于验证replication的数据。**源端集群执行**
+
+```bash
+$ HADOOP_CLASSPATH=`${HBASE_HOME}/bin/hbase classpath` "${HADOOP_HOME}/bin/hadoop" jar "${HBASE_HOME}/hbase-mapreduce-VERSION.jar" verifyrep --starttime=<timestamp> --endtime=<timestamp> --families=<myFam> <ID> <tableName>
+```
+
+- `<ID>` 指peer id
+- `<tableName>`指需要校验的表
+- `--families`指需要检验的cf
+- `--starttime`, `--endtime` 指校验指定时间范围内的数据
