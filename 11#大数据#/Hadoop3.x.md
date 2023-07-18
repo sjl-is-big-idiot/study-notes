@@ -3016,7 +3016,9 @@ TODO
 
 ![image-20210615180835140](Hadoop3.x.assets/image-20210615180835140.png)
 
-##### 2.3.2.1 时间服务器配置（**必须root用户**）f
+参考：https://www.cnblogs.com/quchunhui/p/7658853.html
+
+##### 2.3.2.1 时间服务器配置（**必须root用户**）
 
 1. 检查ntp是否安装
 
@@ -3032,22 +3034,28 @@ TODO
    ntpdate-4.2.6p5-29.el7.centos.x86_64
    ```
 
-   如果未安装ntp，使用如下命令进行安装
+   如果未安装ntp，所有节点使用如下命令进行安装
 
    ```bash
    yum install ntp -y
    ```
 
-   
-
 2. 修改ntp配置文件
 
-   ```shell
+   **（1）选择一个节点，作为其他节点的ntpd服务端，修改其/etc/ntp.conf**
+
+   假设以192.168.61.129作为集群的ntp服务器
+
+   【命令】vi /etc/ntp.conf
+
+   【内容】在server部分添加一下部分，并注释掉server 0 ~ n
+
+   ```bash
    [root@hadoop322-node02 hadoop-3.2.2]# vim /etc/ntp.conf
    # 修改内容如下：
    
-   # 修改1. 授权192.168.10-192.168.1.255 网段上的所有机器可以从这台机器上查询和同步时间，取消注释
-   restrict 192.168.61.0 mask 255.255.255.0 nomodify notrap
+   # 修改1. 授权192.168.61.0-192.168.1.255 网段上的所有机器可以从这台机器上查询和同步时间，取消注释
+   restrict 192.168.61.0 mask 255.255.255.0 nomodify notrap nopeer noquery
    # 修改2. 集群在局域网中，不适用其他互联网上的时间，所以都注释掉
    #server 0.centos.pool.ntp.org iburst
    #server 1.centos.pool.ntp.org iburst
@@ -3060,7 +3068,31 @@ TODO
    logfile /var/log/ntp.log　　　 #配置日志目录
    ```
 
-3. 修改`/etc/sysconfig/ntpd`文件
+   **（2）除上述节点以外，其余节点修改/etc/ntp.conf**
+
+   【命令】vi /etc/ntp.conf
+
+   【内容】将server指向上述节点的ntp服务。
+
+   ```bash
+   [root@hadoop322-node02 hadoop-3.2.2]# vim /etc/ntp.conf
+   # 修改内容如下：
+   
+   # 修改1. 授权192.168.61.0-192.168.1.255 网段上的所有机器可以从这台机器上查询和同步时间，取消注释
+   restrict 192.168.61.0 mask 255.255.255.0 nomodify notrap nopeer noquery
+   # 修改2. 集群在局域网中，不适用其他互联网上的时间，所以都注释掉
+   #server 0.centos.pool.ntp.org iburst
+   #server 1.centos.pool.ntp.org iburst
+   #server 2.centos.pool.ntp.org iburst
+   #server 3.centos.pool.ntp.org iburst
+   
+   # 添加3.当该节点丢失网络连接，依然可以采用本地时间作为时间服务器为集群中的其他节点提供时间同步
+   server 192.168.61.129						
+   fudge 192.168.61.129 stratum 10	
+   logfile /var/log/ntp.log　　　 #配置日志目录
+   ```
+
+3. 所有节点修改`/etc/sysconfig/ntpd`文件
 
    ```shell
    [root@hadoop322-node01 hadoop-3.2.2]# vim /etc/sysconfig/ntpd
@@ -3068,7 +3100,7 @@ TODO
    SYNC_HWCLOCK=yes
    ```
 
-4. 重新启动`ntpd`服务
+4. 所有节点重新启动`ntpd`服务
 
    ```shell
    service ntpd status
@@ -3117,6 +3149,8 @@ TODO
 ##### 2.3.2.2 其他机器配置（必须root用户）
 
 1. 在其它机器配置10min与时间服务器同步一次
+
+   <font color="red">由于所有节点都安装了ntpd，而上面也配置了192.168.61.129作为集群的ntpd服务器，所以此处就可以不同crontab定时同步时间了。</font>
 
    ```shell
    crontab -e
